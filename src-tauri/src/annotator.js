@@ -349,6 +349,26 @@
     }
   });
 
+  // ── Block external navigation ──
+  // Intercept all link clicks: prevent navigation inside iframe,
+  // notify parent to open in external browser if needed.
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest("a[href]");
+    if (!link) return;
+
+    const href = link.getAttribute("href");
+    if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Tell parent about the link click (parent can open in external browser)
+    window.parent.postMessage(
+      { type: "shibei:link-clicked", url: link.href },
+      "*"
+    );
+  }, true);
+
   // Signal that annotator is ready
   window.parent.postMessage({ type: "shibei:annotator-ready" }, "*");
 })();

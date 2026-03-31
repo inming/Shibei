@@ -19,6 +19,7 @@ pub struct Resource {
 }
 
 pub struct CreateResourceInput {
+    pub id: Option<String>,
     pub title: String,
     pub url: String,
     pub domain: Option<String>,
@@ -34,7 +35,7 @@ pub fn create_resource(
     conn: &Connection,
     input: CreateResourceInput,
 ) -> Result<Resource, DbError> {
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = input.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let now = now_iso8601();
 
     conn.execute(
@@ -206,7 +207,7 @@ mod tests {
     fn create_test_resource(conn: &Connection, folder_id: &str) -> Resource {
         create_resource(
             conn,
-            CreateResourceInput {
+            CreateResourceInput { id: None,
                 title: "Test Page".to_string(),
                 url: "https://example.com/article".to_string(),
                 domain: Some("example.com".to_string()),

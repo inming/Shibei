@@ -122,7 +122,7 @@ mod tests {
         let folder = folders::create_folder(conn, "docs", "__root__").unwrap();
         resources::create_resource(
             conn,
-            resources::CreateResourceInput {
+            resources::CreateResourceInput { id: None,
                 title: "test".to_string(),
                 url: "https://example.com".to_string(),
                 domain: None,

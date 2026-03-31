@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "拾贝 — 网页收藏助手",
+  "version": "0.1.0",
+  "description": "一键保存网页快照到拾贝桌面端",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html"
+  },
+  "background": {
+    "service_worker": "src/background/background.js",
+    "type": "module"
+  }
+}

@@ -65,6 +65,13 @@ export function ReaderView({ resource }: ReaderViewProps) {
         case "shibei:highlight-clicked":
           setActiveHighlightId(msg.id);
           break;
+
+        case "shibei:link-clicked":
+          // Open external links in default browser
+          if (msg.url) {
+            window.open(msg.url, "_blank");
+          }
+          break;
       }
     }
 

@@ -10,7 +10,6 @@ pub enum StorageError {
 }
 
 /// Initialize the storage directory structure under the given base path.
-/// Creates `storage/` subdirectory if it doesn't exist.
 pub fn init_storage(base_path: &Path) -> Result<(), StorageError> {
     fs::create_dir_all(base_path.join("storage"))?;
     Ok(())
@@ -21,8 +20,8 @@ pub fn resource_dir(base_path: &Path, resource_id: &str) -> PathBuf {
     base_path.join("storage").join(resource_id)
 }
 
-/// Save MHTML snapshot content to disk.
-/// Creates `{base}/storage/{resource_id}/snapshot.mhtml` and returns the relative path.
+/// Save snapshot content to disk.
+/// Creates `{base}/storage/{resource_id}/snapshot.html` and returns the relative path.
 pub fn save_snapshot(
     base_path: &Path,
     resource_id: &str,
@@ -30,12 +29,11 @@ pub fn save_snapshot(
 ) -> Result<PathBuf, StorageError> {
     let dir = resource_dir(base_path, resource_id);
     fs::create_dir_all(&dir)?;
-    let file_path = dir.join("snapshot.mhtml");
+    let file_path = dir.join("snapshot.html");
     fs::write(&file_path, content)?;
-    // Return relative path from base
     Ok(PathBuf::from("storage")
         .join(resource_id)
-        .join("snapshot.mhtml"))
+        .join("snapshot.html"))
 }
 
 #[cfg(test)]
@@ -69,12 +67,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         init_storage(dir.path()).unwrap();
 
-        let content = b"<html>test mhtml content</html>";
+        let content = b"<html>test content</html>";
         let rel_path = save_snapshot(dir.path(), "res-001", content).unwrap();
 
         assert_eq!(
             rel_path,
-            PathBuf::from("storage/res-001/snapshot.mhtml")
+            PathBuf::from("storage/res-001/snapshot.html")
         );
 
         let abs_path = dir.path().join(&rel_path);
