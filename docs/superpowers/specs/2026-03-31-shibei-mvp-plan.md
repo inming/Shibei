@@ -14,57 +14,89 @@
 - 初始化 Tauri 2.x 项目（Rust + React + TypeScript + Vite）
 - 配置项目结构：`src-tauri/`（Rust 后端）、`src/`（React 前端）、`extension/`（浏览器插件）
 - 初始化 git 仓库
-- 设置 SQLite 集成（rusqlite），创建数据库初始化和 migration 机制
-- 创建所有表结构（folders, resources, tags, resource_tags, highlights, comments）
+- 设置测试框架：
+  - Rust：`cargo test`（标准库自带），使用 `tempfile` crate 创建临时数据库/目录用于测试隔离
+  - 前端：Vitest + React Testing Library（轻量，与 Vite 无缝集成）
+  - E2E：Tauri 内置的 WebDriver 测试（后续按需启用，MVP 暂不强制）
+- 设置 SQLite 集成（rusqlite），实现 migration 版本管理：
+  - 使用 `user_version` pragma 跟踪当前数据库版本号
+  - SQL migration 文件按版本编号存放（如 `migrations/001_init.sql`、`002_xxx.sql`）
+  - 应用启动时自动检测版本差异并依次执行未应用的 migration
+  - migration 在事务中执行，失败则回滚
+- 创建初始 migration：所有表结构（folders, resources, tags, resource_tags, highlights, comments）
 - 设置本地文件存储目录结构（`~/.shibei/`）
 
 ### Phase 2: Rust 后端核心
-- 实现文件夹 CRUD（创建、重命名、删除、移动、排序）
-- 实现资料存储：接收 MHTML 数据，保存到文件系统，写入 SQLite 元信息
-- 实现标签 CRUD
-- 实现资料-标签关联管理
-- 实现高亮 CRUD（含 anchor 序列化/反序列化）
-- 实现评论 CRUD（支持一个高亮多条评论）
+本阶段实现纯 Rust 层的 db 操作和存储逻辑，不依赖 HTTP Server 或 Tauri 运行时。单元测试直接调用 Rust 函数，用 tempfile 创建临时 db/目录做隔离。
+- 实现文件夹 CRUD（创建、重命名、删除、移动、排序）+ 单元测试
+- 实现资料存储：接收 MHTML 字节流（`&[u8]`），写入文件系统 + SQLite 元信息 + 单元测试
+- 实现标签 CRUD + 单元测试
+- 实现资料-标签关联管理 + 单元测试
+- 实现高亮 CRUD（含 anchor 序列化/反序列化）+ 单元测试
+- 实现评论 CRUD（支持一个高亮多条评论）+ 单元测试
 - 将以上功能暴露为 Tauri Commands
 
-### Phase 3: 本地 HTTP Server（插件通信）
+### Phase 3: 插件技术调研
+- 调研 Zotero Connector 插件的实现方式：网页快照保存机制、选区处理、资源打包（图片/CSS/字体）、与桌面端通信
+- 调研 SingleFile 等开源网页归档工具的技术方案
+- 评估区域选择的实现路径：(a) 整页 MHTML + 选区标记 (b) 借助现有库做片段打包 (c) 其他方案
+- 输出调研结论，必要时修订设计文档中插件和存储相关的技术方案
+
+### Phase 4: 本地 HTTP Server（插件通信）
 - 在 Tauri 应用中启动本地 HTTP Server（端口 21519）
-- 实现 `POST /api/save` — 接收插件发送的网页快照数据
+- 实现 `POST /api/save` — 接收插件发送的网页快照数据 + 集成测试（接口设计依据 Phase 3 调研结论）
 - 实现 `GET /api/folders` — 返回文件夹树
 - 实现 `GET /api/tags` — 返回标签列表
 - 实现 `GET /api/ping` — 健康检查
-- 处理 HTML fragment → MHTML 的转换（区域选择场景）
 
-### Phase 4: React 前端 — 资料库管理
+### Phase 5: React 前端 — 资料库管理
 - 三栏布局框架（左侧边栏 + 中间阅读区 + 右侧标注面板）
+- 使用 CSS 变量定义颜色体系（为后续 Dark Mode 预留），MVP 只实现浅色主题
 - 左侧边栏：文件夹树组件（可折叠、拖拽排序）
 - 左侧边栏：标签筛选组件
 - 左侧边栏：资料列表组件（当前文件夹下的资料）
 - 资料元信息显示（标题、URL、保存时间、标签）
+- UI 文案与组件逻辑分离（为后续 i18n 多语言预留），MVP 先用中文
 
-### Phase 5: React 前端 — 阅读器与标注
-- Webview 阅读器：加载并渲染 MHTML 快照
-- 标注脚本注入：在 Webview 中注入 JS 实现高亮功能
-- 高亮创建：选中文字 → 浮动工具条 → 选择颜色 / 添加评论
-- 高亮恢复：打开资料时从 SQLite 加载已有标注并渲染
+### Phase 6a: 阅读器 — MHTML 加载与渲染
+- 实现 Tauri 自定义协议 `shibei://resource/{id}`，Rust 端读取 MHTML 文件并返回内容
+- 在主界面中间区域嵌入 Webview，通过自定义协议加载 MHTML
+- 验证各类网页快照的渲染效果（图片、CSS 样式、中英文内容）
+- 顶部元信息栏展示（标题、原始 URL、保存时间）
+
+### Phase 6b: 标注 — 高亮创建与持久化
+- 编写注入脚本基础框架，通过 `with_initialization_script()` 注入 Webview
+- 实现选中文字 → 弹出浮动工具条（颜色选择）
+- 实现选区 → TextPositionSelector + TextQuoteSelector 锚点计算
+- 使用 `<shibei-hl>` 自定义元素渲染高亮（样式隔离）
+- 通过 Tauri IPC 将高亮数据写入 SQLite
+
+### Phase 6c: 标注 — 高亮恢复与评论
+- 打开资料时从 SQLite 加载已有高亮，注入脚本根据 anchor 恢复渲染
+- 处理锚点定位失败的降级策略（用 textQuote 模糊匹配 fallback）
+- 实现评论创建/追加 UI（浮动工具条 → 评论输入框）
+
+### Phase 6d: 标注 — 侧边栏与双向联动
 - 右侧标注面板：高亮列表 + 评论串展示
-- 双向联动：点击高亮 ↔ 侧边栏滚动定位
+- 点击 Webview 高亮 → 侧边栏滚动定位到对应条目
+- 点击侧边栏条目 → Webview 滚动到对应高亮位置并闪烁
+- 高亮和评论的删除操作
 
-### Phase 6: Chrome 浏览器插件
+### Phase 7: Chrome 浏览器插件
 - Manifest V3 插件基础结构
 - 整页保存：使用 `pageCapture.saveAsMHTML()` API
-- 区域选择模式：Content Script 实现 DOM 元素选择器（悬停高亮 + 点击确认）
+- 区域选择模式：具体方案依据 Phase 3 调研结论
 - 元信息提取：从 meta/og 标签提取 title、author、description
 - 保存面板 UI：文件夹选择 + 标签选择 + 保存按钮
 - 与 Tauri 本地 HTTP Server 通信
 
-### Phase 7: 集成测试与打磨
+### Phase 8: 集成测试与打磨
 - 端到端流程验证（参见设计文档验证方案）
 - 错误处理和边界情况
 - UI 细节打磨
 
 ## 建议执行顺序
 
-Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7
+Phase 1 → Phase 2 → Phase 3（调研） → Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 8
 
-每个 Phase 完成后验证再继续下一个。Phase 4 和 Phase 6 可以部分并行（前端资料管理和插件开发相对独立）。
+Phase 3 调研与 Phase 4/5 前端开发可以并行，调研结论在 Phase 7 插件实现前落地即可。

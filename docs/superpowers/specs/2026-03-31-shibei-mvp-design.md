@@ -92,6 +92,14 @@
         └── meta.json        # 元信息备份（冗余，方便迁移）
 ```
 
+### Migration 策略
+
+使用 SQLite `user_version` pragma 管理数据库版本：
+- SQL migration 文件按版本编号存放在 `src-tauri/migrations/`（如 `001_init.sql`、`002_add_selector.sql`）
+- 应用启动时读取 `PRAGMA user_version`，与最新 migration 版本比对，依次执行未应用的 migration
+- 每次 migration 在事务中执行，失败则回滚，不会产生半更新状态
+- 不引入外部 migration 框架，用 rusqlite 手写即可满足需求
+
 ### SQLite 表结构
 
 #### folders（文件夹）
@@ -285,9 +293,24 @@ Tauri 应用启动时监听本地 HTTP 端口（默认 `localhost:21519`）。
 
 ### 标注技术实现
 
-Tauri Webview 加载 MHTML 后注入标注脚本：
+#### MHTML 加载与脚本注入
 
-1. **初始化**：从 SQLite 读取该资料的所有高亮，JS 脚本根据 anchor 信息在 DOM 中恢复高亮渲染（用 `<mark>` 标签包裹）
+MHTML 通过 Tauri 自定义协议加载（如 `shibei://resource/{id}`），Rust 端读取文件并返回内容。不使用 `file://` 协议，避免系统级安全限制。
+
+标注脚本通过 Tauri 特权 API 注入，不受同源策略约束：
+- **`WebviewBuilder::with_initialization_script()`**：页面加载前注册脚本，保证 MHTML 渲染时脚本已就绪
+- **`webview.eval()`**：运行时动态注入（如加载已有高亮数据后恢复渲染）
+
+#### 高亮渲染与样式隔离
+
+使用自定义元素 `<shibei-hl>` 代替 `<mark>`，避免原始网页 CSS 冲突：
+- 原始网页几乎不可能有针对 `<shibei-hl>` 的样式规则，天然隔离
+- 注入样式使用高特异性属性选择器 + `!important` 兜底：`shibei-hl[data-hl-id] { background: var(--shibei-hl-color) !important; }`
+- 若遇到极端冲突，可将 `<shibei-hl>` 注册为 Web Component 并用 Shadow DOM 做完全样式隔离
+
+#### 标注流程
+
+1. **初始化**：从 SQLite 读取该资料的所有高亮，JS 脚本根据 anchor 信息在 DOM 中恢复高亮渲染（用 `<shibei-hl>` 自定义元素包裹）
 2. **创建高亮**：监听 `mouseup` 事件，通过 `window.getSelection()` 获取选区，计算 TextPositionSelector + TextQuoteSelector
 3. **通信**：通过 Tauri IPC（`window.__TAURI__.invoke()`）将标注数据发回 Rust 后端存入 SQLite
 4. **同步**：前端 React 通过 Tauri event 监听标注变更，实时更新侧边栏
@@ -303,6 +326,8 @@ Tauri Webview 加载 MHTML 后注入标注脚本：
 - **MCP 接入**：Tauri 后端可暴露 MCP Server，让 AI 访问资料库内容和标注
 - **云同步**：存储层抽象接口，后续可接入 S3/WebDAV
 - **更多导入源**：HTTP Server API 设计通用，未来其他客户端（移动端、CLI）可复用
+- **多语言 (i18n)**：UI 文案抽取为语言包，支持中英文切换；MVP 阶段先用中文硬编码，但组件设计上避免文案与逻辑耦合，便于后续抽取
+- **深色模式 (Dark Mode)**：使用 CSS 变量定义颜色体系（`--color-bg-primary`、`--color-text-primary` 等），MVP 阶段只实现浅色主题，后续通过新增变量集切换深色主题；标注高亮颜色需同时定义浅色/深色两套色值
 
 ---
 
