@@ -6,6 +6,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
 test("renders library tab and sidebar", () => {
   render(<App />);
   expect(screen.getByText("资料库")).toBeInTheDocument();

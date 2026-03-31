@@ -47,12 +47,30 @@
 }
 
 .itemMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.deleteBtn {
+  visibility: hidden;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  padding: 0 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.item:hover .deleteBtn {
+  visibility: visible;
+}
+
+.deleteBtn:hover {
+  background: var(--color-danger);
+  color: white;
 }
 
 .empty {

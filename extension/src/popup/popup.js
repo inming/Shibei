@@ -47,11 +47,24 @@ async function init() {
     console.log("[shibei] current tab:", tab?.url);
 
     if (tab) {
+      // Check for restricted pages
+      const url = tab.url || "";
+      if (url.startsWith("chrome://") || url.startsWith("about:") || url.startsWith("edge://") || url.startsWith("chrome-extension://")) {
+        showMessage("不支持保存系统页面", "error");
+        saveBtn.disabled = true;
+        pageTitleEl.textContent = tab.title || "系统页面";
+        pageUrlEl.textContent = url;
+        return;
+      }
+
+      let domain = "";
+      try { domain = new URL(url).hostname; } catch { domain = ""; }
+
       pageInfo = {
         tabId: tab.id,
         title: tab.title || "无标题",
-        url: tab.url,
-        domain: new URL(tab.url).hostname,
+        url,
+        domain,
         author: null,
         description: null,
       };
@@ -228,7 +241,14 @@ saveBtn.addEventListener("click", async () => {
     saveBtn.textContent = "已保存";
   } catch (err) {
     console.error("[shibei] error:", err);
-    showMessage(`错误: ${err.message}`, "error");
+    const msg = err.message || String(err);
+    if (msg.includes("Cannot access") || msg.includes("Cannot read")) {
+      showMessage("页面受安全策略限制，无法抓取", "error");
+    } else if (msg.includes("No tab with id") || msg.includes("Invalid tab")) {
+      showMessage("无法访问当前页面", "error");
+    } else {
+      showMessage(`错误: ${msg}`, "error");
+    }
     saveBtn.disabled = false;
   }
 });

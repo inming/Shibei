@@ -1,6 +1,5 @@
 mod commands;
 mod db;
-mod mhtml;
 mod server;
 mod storage;
 
@@ -33,44 +32,14 @@ fn inject_annotator_script(html: &str) -> String {
     }
 }
 
-/// Load a resource's snapshot HTML. Tries .html first, falls back to .mhtml (legacy).
+/// Load a resource's snapshot HTML.
 fn load_resource_html(base_dir: &PathBuf, resource_id: &str) -> Option<String> {
     let html_path = base_dir
         .join("storage")
         .join(resource_id)
         .join("snapshot.html");
 
-    if let Ok(content) = std::fs::read_to_string(&html_path) {
-        return Some(content);
-    }
-
-    // Fallback: try legacy MHTML
-    let mhtml_path = base_dir
-        .join("storage")
-        .join(resource_id)
-        .join("snapshot.mhtml");
-
-    if let Ok(data) = std::fs::read(&mhtml_path) {
-        if let Some(archive) = mhtml::parse_mhtml(&data) {
-            let html = String::from_utf8_lossy(&archive.html).to_string();
-            // For legacy MHTML, inline resources via data URIs
-            let mut result = html;
-            for part in &archive.parts {
-                if let Some(ref loc) = part.content_location {
-                    let mime = &part.content_type;
-                    let b64 = base64::Engine::encode(
-                        &base64::engine::general_purpose::STANDARD,
-                        &part.body,
-                    );
-                    let data_uri = format!("data:{};base64,{}", mime, b64);
-                    result = result.replace(loc, &data_uri);
-                }
-            }
-            return Some(result);
-        }
-    }
-
-    None
+    std::fs::read_to_string(&html_path).ok()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -84,24 +53,17 @@ pub fn run() {
     let db_path = base_dir.join("shibei.db");
     let conn = db::init_db(&db_path).expect("failed to initialize database");
 
-    // Seed demo data if database is empty
-    seed_demo_data(&conn);
-
     // Shared state for Tauri commands
     let cmd_state = Arc::new(commands::AppState {
         conn: TokioMutex::new(conn),
         base_dir: base_dir.clone(),
     });
 
-    // Separate connection for HTTP server
+    // Separate connection for HTTP server (app_handle added in setup)
     let server_conn = db::init_db(&db_path).expect("failed to open server db connection");
     let server_token = uuid::Uuid::new_v4().to_string();
-
-    let server_state = Arc::new(server::AppState {
-        conn: TokioMutex::new(server_conn),
-        base_dir: base_dir.clone(),
-        token: server_token,
-    });
+    let server_base_dir = base_dir.clone();
+    let server_token_clone = server_token.clone();
 
     let protocol_base_dir = base_dir.clone();
 
@@ -150,97 +112,19 @@ pub fn run() {
                 None => not_found(&format!("resource not found: {}", resource_id)),
             }
         })
-        .setup(move |_app| {
+        .setup(move |app| {
+            // Create server state with app_handle for event emission
+            let server_state = Arc::new(server::AppState {
+                conn: TokioMutex::new(server_conn),
+                base_dir: server_base_dir,
+                token: server_token_clone,
+                app_handle: app.handle().clone(),
+            });
             tauri::async_runtime::spawn(server::start_server(server_state));
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-/// Seed demo data on first run (when no folders exist).
-fn seed_demo_data(conn: &rusqlite::Connection) {
-    use db::{folders, resources, tags};
-
-    let existing = folders::list_children(conn, "__root__").unwrap_or_default();
-    if !existing.is_empty() {
-        return;
-    }
-
-    let tech = folders::create_folder(conn, "技术文章", "__root__").unwrap();
-    let research = folders::create_folder(conn, "研究资料", "__root__").unwrap();
-    let reading = folders::create_folder(conn, "稍后阅读", "__root__").unwrap();
-    let _sub = folders::create_folder(conn, "Rust 笔记", &tech.id).unwrap();
-
-    let tag_rust = tags::create_tag(conn, "Rust", "#E44D26").unwrap();
-    let tag_web = tags::create_tag(conn, "Web", "#3B82F6").unwrap();
-    let tag_ai = tags::create_tag(conn, "AI", "#8B5CF6").unwrap();
-    let _tag_paper = tags::create_tag(conn, "论文", "#10B981").unwrap();
-
-    let r1 = resources::create_resource(conn, resources::CreateResourceInput {
-        id: None,
-        title: "Rust 异步编程指南".to_string(),
-        url: "https://rust-lang.github.io/async-book/".to_string(),
-        domain: Some("rust-lang.github.io".to_string()),
-        author: Some("Rust Team".to_string()),
-        description: Some("Rust 异步编程的官方指南".to_string()),
-        folder_id: tech.id.clone(),
-        resource_type: "webpage".to_string(),
-        file_path: format!("storage/{}/snapshot.html", uuid::Uuid::new_v4()),
-        captured_at: "2026-03-28T10:00:00Z".to_string(),
-    }).unwrap();
-
-    let r2 = resources::create_resource(conn, resources::CreateResourceInput {
-        id: None,
-        title: "WebAssembly 与 Rust 实战".to_string(),
-        url: "https://rustwasm.github.io/docs/book/".to_string(),
-        domain: Some("rustwasm.github.io".to_string()),
-        author: None,
-        description: Some("使用 Rust 和 WebAssembly 构建高性能 Web 应用".to_string()),
-        folder_id: tech.id.clone(),
-        resource_type: "webpage".to_string(),
-        file_path: format!("storage/{}/snapshot.html", uuid::Uuid::new_v4()),
-        captured_at: "2026-03-29T14:30:00Z".to_string(),
-    }).unwrap();
-
-    let r3 = resources::create_resource(conn, resources::CreateResourceInput {
-        id: None,
-        title: "Attention Is All You Need".to_string(),
-        url: "https://arxiv.org/abs/1706.03762".to_string(),
-        domain: Some("arxiv.org".to_string()),
-        author: Some("Vaswani et al.".to_string()),
-        description: Some("Transformer 架构的开创性论文".to_string()),
-        folder_id: research.id.clone(),
-        resource_type: "webpage".to_string(),
-        file_path: format!("storage/{}/snapshot.html", uuid::Uuid::new_v4()),
-        captured_at: "2026-03-30T09:15:00Z".to_string(),
-    }).unwrap();
-
-    let _r4 = resources::create_resource(conn, resources::CreateResourceInput {
-        id: None,
-        title: "Tauri 2.0 发布公告".to_string(),
-        url: "https://tauri.app/blog/tauri-2-0/".to_string(),
-        domain: Some("tauri.app".to_string()),
-        author: None,
-        description: Some("Tauri 2.0 正式发布，支持移动端开发".to_string()),
-        folder_id: reading.id.clone(),
-        resource_type: "webpage".to_string(),
-        file_path: format!("storage/{}/snapshot.html", uuid::Uuid::new_v4()),
-        captured_at: "2026-03-31T08:00:00Z".to_string(),
-    }).unwrap();
-
-    // Real demo resource (MHTML legacy — backward compat test)
-    let now = db::now_iso8601();
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at)
-         VALUES ('demo', '知识星球 — 真实快照测试', 'https://wx.zsxq.com/group/51111821451424', 'wx.zsxq.com', NULL, '用于测试渲染和标注功能', ?1, 'webpage', 'storage/demo/snapshot.mhtml', ?2, '2026-03-31T16:00:00Z')",
-        rusqlite::params![tech.id, now],
-    );
-
-    let _ = tags::add_tag_to_resource(conn, &r1.id, &tag_rust.id);
-    let _ = tags::add_tag_to_resource(conn, &r2.id, &tag_rust.id);
-    let _ = tags::add_tag_to_resource(conn, &r2.id, &tag_web.id);
-    let _ = tags::add_tag_to_resource(conn, &r3.id, &tag_ai.id);
 }
 
 fn not_found(msg: &str) -> tauri::http::Response<Vec<u8>> {

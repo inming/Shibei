@@ -11,6 +11,8 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+use tauri::Emitter;
+
 use crate::db::{folders, resources, tags};
 use crate::storage;
 
@@ -19,6 +21,7 @@ pub struct AppState {
     pub conn: Mutex<Connection>,
     pub base_dir: PathBuf,
     pub token: String,
+    pub app_handle: tauri::AppHandle,
 }
 
 #[derive(Serialize)]
@@ -251,6 +254,12 @@ async fn handle_save(
 
         let _ = tags::add_tag_to_resource(&conn, &resource.id, &tag_id);
     }
+
+    // Notify desktop app that a new resource was saved
+    let _ = state.app_handle.emit("resource-saved", serde_json::json!({
+        "resource_id": resource.id,
+        "folder_id": resource.folder_id,
+    }));
 
     Ok(Json(SaveResponse {
         resource_id: resource.id,

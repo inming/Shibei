@@ -1,4 +1,5 @@
 import { useResources } from "@/hooks/useResources";
+import * as cmd from "@/lib/commands";
 import type { Resource } from "@/types";
 import styles from "./ResourceList.module.css";
 
@@ -9,7 +10,18 @@ interface ResourceListProps {
 }
 
 export function ResourceList({ folderId, selectedResourceId, onSelectResource }: ResourceListProps) {
-  const { resources } = useResources(folderId);
+  const { resources, loading, refresh } = useResources(folderId);
+
+  async function handleDelete(e: React.MouseEvent, resource: Resource) {
+    e.stopPropagation();
+    if (!window.confirm(`确定删除资料「${resource.title}」吗？`)) return;
+    try {
+      await cmd.deleteResource(resource.id);
+      refresh();
+    } catch (err: unknown) {
+      alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   return (
     <div className={styles.section}>
@@ -17,7 +29,8 @@ export function ResourceList({ folderId, selectedResourceId, onSelectResource }:
       {!folderId && (
         <div className={styles.empty}>选择文件夹查看资料</div>
       )}
-      {folderId && resources.length === 0 && (
+      {loading && <div className={styles.empty}>加载中...</div>}
+      {folderId && !loading && resources.length === 0 && (
         <div className={styles.empty}>该文件夹暂无资料</div>
       )}
       {resources.map((resource) => (
@@ -28,7 +41,14 @@ export function ResourceList({ folderId, selectedResourceId, onSelectResource }:
         >
           <div className={styles.itemTitle}>{resource.title}</div>
           <div className={styles.itemMeta}>
-            {resource.domain ?? new URL(resource.url).hostname} · {new Date(resource.created_at).toLocaleDateString()}
+            <span>{resource.domain ?? new URL(resource.url).hostname} · {new Date(resource.created_at).toLocaleDateString()}</span>
+            <button
+              className={styles.deleteBtn}
+              onClick={(e) => handleDelete(e, resource)}
+              title="删除资料"
+            >
+              ×
+            </button>
           </div>
         </div>
       ))}

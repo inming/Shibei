@@ -9,7 +9,7 @@ interface FolderTreeProps {
 }
 
 export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps) {
-  const { folders, refresh } = useFolders("__root__");
+  const { folders, loading, refresh } = useFolders("__root__");
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
 
@@ -20,8 +20,23 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       setNewName("");
       setIsCreating(false);
       refresh();
-    } catch (err) {
-      console.error("Failed to create folder:", err);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("UNIQUE constraint")) {
+        alert("文件夹名称已存在，请换一个名称");
+      } else {
+        alert(`创建失败: ${msg}`);
+      }
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!window.confirm(`确定删除文件夹「${name}」及其所有资料吗？`)) return;
+    try {
+      await cmd.deleteFolder(id);
+      refresh();
+    } catch (err: unknown) {
+      alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -65,7 +80,9 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
         </form>
       )}
 
-      {folders.length === 0 && !isCreating && (
+      {loading && <div className={styles.empty}>加载中...</div>}
+
+      {!loading && folders.length === 0 && !isCreating && (
         <div className={styles.empty}>暂无文件夹</div>
       )}
 
@@ -75,7 +92,17 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
           className={`${styles.item} ${selectedFolderId === folder.id ? styles.itemSelected : ""}`}
           onClick={() => onSelectFolder(folder.id)}
         >
-          📁 {folder.name}
+          <span style={{ flex: 1 }}>📁 {folder.name}</span>
+          <button
+            className={styles.deleteBtn}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete(folder.id, folder.name);
+            }}
+            title="删除文件夹"
+          >
+            ×
+          </button>
         </div>
       ))}
     </div>

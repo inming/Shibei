@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
 
@@ -24,6 +25,16 @@ export function useResources(folderId: string | null) {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // Auto-refresh when a new resource is saved via the extension
+  useEffect(() => {
+    const unlisten = listen("resource-saved", () => {
+      refresh();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [refresh]);
 
   return { resources, loading, refresh };
