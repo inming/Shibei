@@ -16,7 +16,9 @@ fn get_app_base_dir() -> PathBuf {
         .join("shibei")
 }
 
-/// Rewrite resource references in HTML so they go through the custom protocol.
+const ANNOTATOR_JS: &str = include_str!("annotator.js");
+
+/// Rewrite resource references in HTML and inject the annotator script.
 fn rewrite_html_references(html: &str, resource_id: &str, archive: &mhtml::MhtmlArchive) -> String {
     let mut result = html.to_string();
     for part in &archive.parts {
@@ -26,6 +28,18 @@ fn rewrite_html_references(html: &str, resource_id: &str, archive: &mhtml::Mhtml
             result = result.replace(loc, &new_url);
         }
     }
+
+    // Inject annotator script into <head>
+    let script_tag = format!("<script>{}</script>", ANNOTATOR_JS);
+    if let Some(pos) = result.find("</head>") {
+        result.insert_str(pos, &script_tag);
+    } else if let Some(pos) = result.find("<body") {
+        result.insert_str(pos, &script_tag);
+    } else {
+        // Prepend if no head/body found
+        result = format!("{}{}", script_tag, result);
+    }
+
     result
 }
 
@@ -271,6 +285,15 @@ fn seed_demo_data(conn: &rusqlite::Connection) {
         file_path: format!("storage/{}/snapshot.mhtml", uuid::Uuid::new_v4()),
         captured_at: "2026-03-31T08:00:00Z".to_string(),
     }).unwrap();
+
+    // A real resource using the demo MHTML (if it exists).
+    // Insert with fixed id "demo" so the protocol handler finds storage/demo/snapshot.mhtml.
+    let now = db::now_iso8601();
+    let _ = conn.execute(
+        "INSERT OR IGNORE INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at)
+         VALUES ('demo', '知识星球 — 真实 MHTML 测试', 'https://wx.zsxq.com/group/51111821451424', 'wx.zsxq.com', NULL, '用于测试 MHTML 渲染和标注功能', ?1, 'webpage', 'storage/demo/snapshot.mhtml', ?2, '2026-03-31T16:00:00Z')",
+        rusqlite::params![tech.id, now],
+    );
 
     // Tag resources
     let _ = tags::add_tag_to_resource(conn, &r1.id, &tag_rust.id);

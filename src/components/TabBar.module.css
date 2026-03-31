@@ -9,6 +9,24 @@
   -webkit-app-region: drag;
 }
 
+/* Always show thin scrollbar on macOS */
+.tabBar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tabBar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tabBar::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+.tabBar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
 .tab {
   display: flex;
   align-items: center;
