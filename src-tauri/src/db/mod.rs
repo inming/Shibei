@@ -1,4 +1,9 @@
+pub mod comments;
+pub mod folders;
+pub mod highlights;
 pub mod migration;
+pub mod resources;
+pub mod tags;
 
 use std::path::Path;
 
@@ -11,6 +16,10 @@ pub enum DbError {
     Sqlite(#[from] rusqlite::Error),
     #[error("migration error: {0}")]
     Migration(#[from] migration::MigrationError),
+    #[error("not found: {0}")]
+    NotFound(String),
+    #[error("invalid operation: {0}")]
+    InvalidOperation(String),
 }
 
 pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
@@ -18,6 +27,19 @@ pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
     conn.execute_batch("PRAGMA foreign_keys = ON")?;
     migration::run_migrations(&mut conn)?;
     Ok(conn)
+}
+
+pub fn now_iso8601() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+/// Create an in-memory database with migrations applied, for testing.
+#[cfg(test)]
+pub fn test_db() -> Connection {
+    let mut conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+    migration::run_migrations(&mut conn).unwrap();
+    conn
 }
 
 #[cfg(test)]
@@ -36,7 +58,6 @@ mod tests {
             .unwrap();
         assert_eq!(version, 1);
 
-        // Verify foreign keys are enabled
         let fk_enabled: bool = conn
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))
             .unwrap();
