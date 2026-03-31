@@ -1,37 +1,67 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import type { Resource } from "@/types";
+import { TabBar, type TabItem } from "@/components/TabBar";
+import { LibraryView } from "@/components/Layout";
+import { ReaderView } from "@/components/ReaderView";
+import styles from "./App.module.css";
+
+const LIBRARY_TAB_ID = "__library__";
+
+interface ReaderTab {
+  resource: Resource;
+}
 
 function App() {
-  const [resourceId, setResourceId] = useState("");
-  const [loadedUrl, setLoadedUrl] = useState("");
+  const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
+  const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
 
-  function loadResource() {
-    if (resourceId.trim()) {
-      // macOS/Linux format: shibei://localhost/resource/{id}
-      setLoadedUrl(`shibei://localhost/resource/${resourceId.trim()}`);
-    }
-  }
+  const openResource = useCallback((resource: Resource) => {
+    setReaderTabs((prev) => {
+      const next = new Map(prev);
+      if (!next.has(resource.id)) {
+        next.set(resource.id, { resource });
+      }
+      return next;
+    });
+    setActiveTabId(resource.id);
+  }, []);
+
+  const closeTab = useCallback((id: string) => {
+    setReaderTabs((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+  }, []);
+
+  const tabs: TabItem[] = [
+    { id: LIBRARY_TAB_ID, label: "资料库", closable: false },
+    ...Array.from(readerTabs.entries()).map(([id, tab]) => ({
+      id,
+      label: tab.resource.title,
+      closable: true,
+    })),
+  ];
 
   return (
-    <main style={{ padding: "16px", height: "100vh", display: "flex", flexDirection: "column" }}>
-      <h1>拾贝 — MHTML Spike</h1>
-      <div style={{ marginBottom: "12px" }}>
-        <input
-          value={resourceId}
-          onChange={(e) => setResourceId(e.target.value)}
-          placeholder="Enter resource ID..."
-          style={{ marginRight: "8px", padding: "4px 8px" }}
-        />
-        <button onClick={loadResource}>Load</button>
-        {loadedUrl && <span style={{ marginLeft: "12px", fontSize: "12px", color: "#666" }}>{loadedUrl}</span>}
+    <div className={styles.app}>
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={setActiveTabId}
+        onCloseTab={closeTab}
+      />
+      <div className={styles.content}>
+        {activeTabId === LIBRARY_TAB_ID ? (
+          <LibraryView onOpenResource={openResource} />
+        ) : (
+          readerTabs.has(activeTabId) && (
+            <ReaderView resource={readerTabs.get(activeTabId)!.resource} />
+          )
+        )}
       </div>
-      {loadedUrl && (
-        <iframe
-          src={loadedUrl}
-          style={{ flex: 1, border: "1px solid #ccc", borderRadius: "4px" }}
-          title="MHTML Viewer"
-        />
-      )}
-    </main>
+    </div>
   );
 }
 

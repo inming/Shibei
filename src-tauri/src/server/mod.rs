@@ -1,0 +1,251 @@
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use axum::extract::State;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::Json;
+use axum::routing::{get, post};
+use axum::Router;
+use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
+
+use crate::db::{folders, resources, tags};
+use crate::storage;
+
+/// Shared state for the HTTP server.
+pub struct AppState {
+    pub conn: Mutex<Connection>,
+    pub base_dir: PathBuf,
+    pub token: String,
+}
+
+#[derive(Serialize)]
+struct PingResponse {
+    status: String,
+}
+
+#[derive(Serialize)]
+struct FolderNode {
+    id: String,
+    name: String,
+    children: Vec<FolderNode>,
+}
+
+#[derive(Deserialize)]
+struct SaveRequest {
+    title: String,
+    url: String,
+    domain: Option<String>,
+    author: Option<String>,
+    description: Option<String>,
+    content: String,
+    content_type: String,
+    folder_id: String,
+    tags: Vec<String>,
+    captured_at: String,
+}
+
+#[derive(Serialize)]
+struct SaveResponse {
+    resource_id: String,
+}
+
+#[derive(Serialize)]
+struct ErrorResponse {
+    error: String,
+}
+
+/// Start the HTTP server on 127.0.0.1:21519.
+pub async fn start_server(state: Arc<AppState>) {
+    let app = Router::new()
+        .route("/api/ping", get(handle_ping))
+        .route("/api/folders", get(handle_folders))
+        .route("/api/tags", get(handle_tags))
+        .route("/api/save", post(handle_save))
+        .with_state(state)
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(
+            50 * 1024 * 1024,
+        ));
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 21519));
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
+fn verify_token(headers: &HeaderMap, expected: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let auth = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if let Some(token) = auth.strip_prefix("Bearer ") {
+        if token == expected {
+            return Ok(());
+        }
+    }
+
+    Err((
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            error: "invalid or missing token".to_string(),
+        }),
+    ))
+}
+
+async fn handle_ping() -> Json<PingResponse> {
+    Json(PingResponse {
+        status: "ok".to_string(),
+    })
+}
+
+async fn handle_folders(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<FolderNode>>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+
+    let conn = state.conn.lock().await;
+    let tree = build_folder_tree(&conn, "__root__").map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(Json(tree))
+}
+
+fn build_folder_tree(
+    conn: &Connection,
+    parent_id: &str,
+) -> Result<Vec<FolderNode>, crate::db::DbError> {
+    let children = folders::list_children(conn, parent_id)?;
+    let mut nodes = Vec::new();
+    for folder in children {
+        let sub_children = build_folder_tree(conn, &folder.id)?;
+        nodes.push(FolderNode {
+            id: folder.id,
+            name: folder.name,
+            children: sub_children,
+        });
+    }
+    Ok(nodes)
+}
+
+async fn handle_tags(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<tags::Tag>>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+
+    let conn = state.conn.lock().await;
+    let tag_list = tags::list_tags(&conn).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(Json(tag_list))
+}
+
+async fn handle_save(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<SaveRequest>,
+) -> Result<Json<SaveResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+
+    // Validate content_type
+    if payload.content_type != "mhtml" && payload.content_type != "html_fragment" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "content_type must be 'mhtml' or 'html_fragment'".to_string(),
+            }),
+        ));
+    }
+
+    // Decode base64 content
+    let content_bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &payload.content)
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: format!("invalid base64 content: {}", e),
+                    }),
+                )
+            })?;
+
+    // Generate resource_id and save to filesystem
+    let resource_id = uuid::Uuid::new_v4().to_string();
+    let rel_path =
+        storage::save_snapshot(&state.base_dir, &resource_id, &content_bytes).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("storage error: {}", e),
+                }),
+            )
+        })?;
+
+    let conn = state.conn.lock().await;
+
+    // Create resource in database
+    let resource = resources::create_resource(
+        &conn,
+        resources::CreateResourceInput {
+            title: payload.title,
+            url: payload.url,
+            domain: payload.domain,
+            author: payload.author,
+            description: payload.description,
+            folder_id: payload.folder_id,
+            resource_type: payload.content_type,
+            file_path: rel_path.to_string_lossy().to_string(),
+            captured_at: payload.captured_at,
+        },
+    )
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("db error: {}", e),
+            }),
+        )
+    })?;
+
+    // Associate tags (create if not exist, then link)
+    for tag_name in &payload.tags {
+        let tag = tags::list_tags(&conn)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|t| t.name == *tag_name);
+
+        let tag_id = match tag {
+            Some(t) => t.id,
+            None => {
+                let new_tag = tags::create_tag(&conn, tag_name, "#888888").map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: format!("tag error: {}", e),
+                        }),
+                    )
+                })?;
+                new_tag.id
+            }
+        };
+
+        let _ = tags::add_tag_to_resource(&conn, &resource.id, &tag_id);
+    }
+
+    Ok(Json(SaveResponse {
+        resource_id: resource.id,
+    }))
+}
