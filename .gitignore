@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+target/
+
+# Build output
+dist/
+dist-tauri/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Tauri
+src-tauri/target/
+WixTools/
+
+# SQLite
+*.db
+*.db-journal
+*.db-wal
