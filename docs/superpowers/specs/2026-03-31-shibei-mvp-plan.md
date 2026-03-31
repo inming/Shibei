@@ -25,6 +25,12 @@
   - migration 在事务中执行，失败则回滚
 - 创建初始 migration：所有表结构（folders, resources, tags, resource_tags, highlights, comments）
 - 设置本地文件存储目录结构（`~/.shibei/`）
+- **技术 Spike：MHTML 渲染验证**（阻塞性风险，必须在 Phase 1 完成）
+  - 实现最简自定义协议（`shibei://`），从本地读取 MHTML 并在 Webview 中加载
+  - 准备 3-5 个测试用 MHTML 样本：中文页面、图片密集页面、复杂 CSS 页面、大体积页面（>5MB）
+  - 验证项：图片是否正常显示、CSS 样式是否保留、中文编码是否正确、大页面渲染性能
+  - 验证 `with_initialization_script()` 注入是否被页面 CSP 阻止
+  - 如果验证不通过，在此阶段就调整技术方案（如改用 iframe + blob URL、或 PDF 化存储等），不要带着风险进入后续阶段
 
 ### Phase 2: Rust 后端核心
 本阶段实现纯 Rust 层的 db 操作和存储逻辑，不依赖 HTTP Server 或 Tauri 运行时。单元测试直接调用 Rust 函数，用 tempfile 创建临时 db/目录做隔离。
@@ -82,13 +88,13 @@
 - 点击侧边栏条目 → Webview 滚动到对应高亮位置并闪烁
 - 高亮和评论的删除操作
 
-### Phase 7: Chrome 浏览器插件
+### Phase 7: Chrome 浏览器插件 — 整页保存
 - Manifest V3 插件基础结构
 - 整页保存：使用 `pageCapture.saveAsMHTML()` API
-- 区域选择模式：具体方案依据 Phase 3 调研结论
 - 元信息提取：从 meta/og 标签提取 title、author、description
 - 保存面板 UI：文件夹选择 + 标签选择 + 保存按钮
 - 与 Tauri 本地 HTTP Server 通信
+- **验证标准**：浏览器一键保存 → Tauri 中打开 → 阅读 → 标注，整条链路跑通
 
 ### Phase 8: 集成测试与打磨
 - 端到端流程验证（参见设计文档验证方案）
@@ -97,6 +103,18 @@
 
 ## 建议执行顺序
 
-Phase 1 → Phase 2 → Phase 3（调研） → Phase 4 → Phase 5 → Phase 6 → Phase 7 → Phase 8
+Phase 1 → Phase 2 → Phase 3（调研） → Phase 4 → Phase 5 → Phase 6a/b/c/d → Phase 7 → Phase 8
 
-Phase 3 调研与 Phase 4/5 前端开发可以并行，调研结论在 Phase 7 插件实现前落地即可。
+Phase 3 调研可与 Phase 4/5 并行，调研结论在 Phase 7 之前落地即可。
+
+## MVP 之外（v1.1+）
+
+以下功能不在 MVP 范围，按优先级排列：
+
+1. **区域选择保存**：具体方案依据 Phase 3 调研结论，可能是整页 MHTML + 选区标记，也可能是 fragment 打包。如果调研发现 fragment 打包成本过高应及时调整方案
+2. **全文搜索**：SQLite FTS5
+3. **PDF 支持**
+4. **深色模式**
+5. **多语言 (i18n)**
+6. **MCP 接入**
+7. **云同步**

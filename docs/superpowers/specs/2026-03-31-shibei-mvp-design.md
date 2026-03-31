@@ -12,13 +12,14 @@
 
 ### MVP 范围
 
-| 包含 | 不包含（后续扩展） |
-|------|-------------------|
-| 网页快照保存与浏览 | PDF 及其他格式支持 |
-| 浏览器插件（Chrome） | MCP / AI 分析 |
-| 文件夹 + 标签组织 | 云同步 |
-| 高亮标注 + 评论 | 全文搜索 |
-| 纯本地存储 | 多设备同步 |
+| 包含 | 不包含（v1.1+） |
+|------|-----------------|
+| 网页整页快照保存与浏览 | 区域选择保存 |
+| 浏览器插件（Chrome，整页保存） | PDF 及其他格式支持 |
+| 文件夹 + 标签组织 | 全文搜索 |
+| 高亮标注 + 评论 | 深色模式 / 多语言 |
+| 纯本地存储 | MCP / AI 分析 |
+| | 云同步 |
 
 ---
 
@@ -108,10 +109,12 @@
 |------|------|------|
 | id | TEXT (UUID) | 主键 |
 | name | TEXT | 文件夹名称 |
-| parent_id | TEXT | 父文件夹 ID，NULL 为根 |
+| parent_id | TEXT (NOT NULL) | 父文件夹 ID（外键） |
 | sort_order | INTEGER | 排序权重 |
 | created_at | TEXT (ISO 8601) | 创建时间 |
 | updated_at | TEXT (ISO 8601) | 更新时间 |
+
+**虚拟根节点**：初始 migration 插入一条固定记录 `id = '__root__'`，作为所有顶层文件夹的 parent。这样 parent_id 永远 NOT NULL，`UNIQUE(parent_id, name)` 在所有层级（包括根级）都能正确生效。虚拟根节点不在 UI 中展示，查询顶层文件夹用 `WHERE parent_id = '__root__'`。
 
 #### resources（资料）
 
@@ -169,6 +172,97 @@
 
 一个高亮可以有多条评论（一对多），支持随时追加想法。highlight_id 为空时表示资料级别的笔记。
 
+### 去重策略
+
+**允许同一 URL 重复保存**，但给用户明确提示：
+
+- **不做强制去重**：同一 URL 可以保存多次。理由：网页内容会更新，用户可能保存不同时间点的快照；区域选择场景下同一 URL 可能保存不同片段
+- **保存时查重提示**：插件发起保存时，后端按 URL 查询已有资料。如果存在匹配项，返回提示信息给插件，插件在保存面板中展示："该 URL 已保存过 N 次，最近一次：{时间}，位于 {文件夹名}"，用户可选择继续保存或跳转查看已有资料
+- **URL 归一化**：查重时对 URL 做基本归一化（去除 trailing slash、去除 fragment `#`、统一 scheme 大小写），避免 `https://example.com` 和 `https://example.com/` 被视为不同资料
+- **不做内容 hash 去重**：实现成本高且收益有限，不同时间抓取的同一页面 MHTML 几乎不会完全一致
+
+为支持查重，添加索引：
+```sql
+CREATE INDEX idx_resources_url ON resources(url);
+```
+
+### 数据约束
+
+#### 删除与移动规则
+
+**删除顺序原则**：始终先删数据库，再删文件系统。最差情况是留下孤立文件（仅浪费磁盘），避免数据库记录指向不存在的文件（会导致应用报错）。
+
+**删除文件夹**：
+- 允许递归删除（含所有子文件夹和其中的资料）
+- UI 上如果文件夹非空，弹出确认对话框，明确提示将删除的资料数量
+- 执行顺序：
+  1. 先查询该文件夹下所有资料的 resource_id 列表（递归）
+  2. 在事务中执行 SQL 删除（CASCADE 清理 folders、resources、highlights、comments、resource_tags）
+  3. 事务提交后，异步清理文件系统中对应的 `storage/{resource_id}/` 目录
+  4. 文件系统清理失败则记录日志，不影响用户操作（孤立文件可后续清理）
+
+**删除资料**：
+- 执行顺序：先在事务中删除 db 记录（CASCADE 清理关联），再删除文件系统中的 `storage/{resource_id}/` 目录
+- 文件删除失败同上，记录日志，不阻塞
+- UI 上弹出确认对话框
+
+**删除高亮**：
+- CASCADE 删除该高亮下的所有评论
+- 资料级笔记（highlight_id 为空的 comments）不受影响
+- 不需要额外确认（操作可以通过 Ctrl+Z 撤销——MVP 阶段先不做撤销，但预留 command 模式的设计空间）
+
+**删除评论**：
+- 只删除单条评论，不影响高亮和其他评论
+- 如果是高亮下的最后一条评论，高亮本身保留（高亮和评论是独立的）
+
+**删除标签**：
+- 只删除标签定义和所有 resource_tags 关联，不影响资料本身
+
+**移动资料到其他文件夹**：
+- 只更新 resources.folder_id，文件系统路径不变（路径是按 resource_id 组织的，与文件夹无关）
+
+**移动文件夹**：
+- 更新 folders.parent_id，检查不能移动到自身或其子文件夹下（防循环）
+
+#### 外键约束（SQL 层）
+
+- **folders.parent_id → folders.id**：`ON DELETE CASCADE`
+- **resources.folder_id → folders.id**：`NOT NULL`，`ON DELETE CASCADE`
+- **highlights.resource_id → resources.id**：`ON DELETE CASCADE`
+- **comments.resource_id → resources.id**：`ON DELETE CASCADE`
+- **comments.highlight_id → highlights.id**：`ON DELETE CASCADE`，可为空。高亮删除时级联删除其下所有评论；highlight_id 为空表示资料级笔记，不受高亮删除影响
+- **resource_tags → resources.id / tags.id**：双向 `ON DELETE CASCADE`
+
+注意：SQLite 默认不启用外键约束，需在每次连接时执行 `PRAGMA foreign_keys = ON`。
+
+#### 唯一性与业务规则
+
+- **folders**：同一 parent_id 下 name 唯一（`UNIQUE(parent_id, name)`）。因为引入了虚拟根节点，parent_id 永远 NOT NULL，该约束在所有层级均有效
+- **folders.sort_order**：同一 parent_id 下的排序值，新建文件夹取当前同级最大值 +1
+- **tags.name**：全局唯一（已有 UNIQUE 约束）
+- **resources.folder_id**：NOT NULL，不允许"无归属"的游离资料
+
+#### 索引
+
+```sql
+-- 资料列表查询（按文件夹 + 时间排序）
+CREATE INDEX idx_resources_folder_created ON resources(folder_id, created_at DESC);
+
+-- 高亮查询（按资料）
+CREATE INDEX idx_highlights_resource ON highlights(resource_id);
+
+-- 评论查询（按资料、按高亮）
+CREATE INDEX idx_comments_resource ON comments(resource_id);
+CREATE INDEX idx_comments_highlight ON comments(highlight_id);
+
+-- 标签关联查询（双向）
+CREATE INDEX idx_resource_tags_resource ON resource_tags(resource_id);
+CREATE INDEX idx_resource_tags_tag ON resource_tags(tag_id);
+
+-- 文件夹排序
+CREATE INDEX idx_folders_parent_sort ON folders(parent_id, sort_order);
+```
+
 ### 文本锚点格式（anchor）
 
 采用 W3C Web Annotation Data Model 规范，组合两种选择器确保定位稳定：
@@ -215,7 +309,20 @@
 
 ### 插件 → Tauri 通信协议
 
-Tauri 应用启动时监听本地 HTTP 端口（默认 `localhost:21519`）。
+Tauri 应用启动时监听本地 HTTP 端口（默认 `127.0.0.1:21519`）。
+
+#### 安全边界
+
+本地 HTTP Server 虽然仅供插件通信，但浏览器环境中任意页面理论上都可以尝试访问本地端口，因此必须设防：
+
+- **仅监听 127.0.0.1**：不绑定 `0.0.0.0`，拒绝外部网络访问
+- **会话 Token 鉴权**：Tauri 每次启动时生成随机 token，插件首次连接时通过 Chrome Extension storage 获取（Tauri 启动后写入已知位置或通过初次握手交换）。所有请求必须携带 `Authorization: Bearer <token>` 头，未携带或不匹配则返回 401
+- **Origin 校验**：校验请求的 `Origin` 头，仅允许来自 Chrome Extension 的请求（`chrome-extension://<extension-id>`），其余来源返回 403
+- **请求体大小限制**：`POST /api/save` 限制请求体最大 50MB（单个网页快照的合理上限），超出返回 413
+- **输入校验**：对 base64 content 进行格式校验，非法输入返回 400 并附带错误描述；folder_id 必须为合法 UUID；tags 数组限制最大长度
+- **CORS**：不设置 `Access-Control-Allow-Origin: *`，仅响应来自合法 Extension Origin 的预检请求
+
+#### 接口定义
 
 **POST /api/save**
 
