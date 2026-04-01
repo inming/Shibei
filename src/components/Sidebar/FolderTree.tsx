@@ -64,17 +64,12 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     });
   }
 
-  const parentId = selectedFolderId || "__root__";
-
   async function handleCreate() {
     if (!newName.trim()) return;
     try {
-      await cmd.createFolder(newName.trim(), parentId);
+      await cmd.createFolder(newName.trim(), "__root__");
       setNewName("");
       setIsCreating(false);
-      if (selectedFolderId) {
-        setExpandedIds((prev) => new Set(prev).add(selectedFolderId));
-      }
       refreshAll();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -101,8 +96,36 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     setContextMenu({ x: e.clientX, y: e.clientY, folderId, folderName });
   }
 
+  const [subfolderTarget, setSubfolderTarget] = useState<string | null>(null);
+  const [subfolderName, setSubfolderName] = useState("");
+
+  async function handleCreateSubfolder() {
+    if (!subfolderTarget || !subfolderName.trim()) return;
+    try {
+      await cmd.createFolder(subfolderName.trim(), subfolderTarget);
+      setSubfolderName("");
+      setSubfolderTarget(null);
+      setExpandedIds((prev) => new Set(prev).add(subfolderTarget));
+      refreshAll();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("UNIQUE constraint")) {
+        alert("文件夹名称已存在，请换一个名称");
+      } else {
+        alert(`创建失败: ${msg}`);
+      }
+    }
+  }
+
   const menuItems: MenuItem[] = contextMenu
     ? [
+        {
+          label: "新建子文件夹",
+          onClick: () => {
+            setSubfolderTarget(contextMenu.folderId);
+            setSubfolderName("");
+          },
+        },
         {
           label: "编辑",
           onClick: () => setEditFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
@@ -175,6 +198,62 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
           items={menuItems}
           onClose={() => setContextMenu(null)}
         />
+      )}
+
+      {subfolderTarget && (
+        <Modal title="新建子文件夹" onClose={() => setSubfolderTarget(null)}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleCreateSubfolder();
+            }}
+          >
+            <input
+              value={subfolderName}
+              onChange={(e) => setSubfolderName(e.target.value)}
+              placeholder="子文件夹名称..."
+              autoFocus
+              style={{
+                width: "100%",
+                padding: "var(--spacing-xs) var(--spacing-sm)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "4px",
+                fontSize: "var(--font-size-base)",
+                marginBottom: "var(--spacing-lg)",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--spacing-sm)" }}>
+              <button
+                type="button"
+                onClick={() => setSubfolderTarget(null)}
+                style={{
+                  padding: "var(--spacing-xs) var(--spacing-md)",
+                  borderRadius: "4px",
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-bg-primary)",
+                  cursor: "pointer",
+                  fontSize: "var(--font-size-base)",
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                style={{
+                  padding: "var(--spacing-xs) var(--spacing-md)",
+                  borderRadius: "4px",
+                  border: "none",
+                  background: "var(--color-accent)",
+                  color: "white",
+                  cursor: "pointer",
+                  fontSize: "var(--font-size-base)",
+                }}
+              >
+                创建
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {editFolder && (
