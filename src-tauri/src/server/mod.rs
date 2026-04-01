@@ -72,6 +72,8 @@ pub async fn start_server(state: Arc<AppState>) {
         .route("/api/ping", get(handle_ping))
         .route("/api/folders", get(handle_folders))
         .route("/api/tags", get(handle_tags))
+        .route("/api/folder-counts", get(handle_folder_counts))
+        .route("/api/check-url", get(handle_check_url))
         .route("/api/save", post(handle_save))
         .with_state(state)
         .layer(cors)
@@ -161,6 +163,52 @@ async fn handle_tags(
         )
     })?;
     Ok(Json(tag_list))
+}
+
+async fn handle_folder_counts(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<std::collections::HashMap<String, i64>>, (StatusCode, Json<ErrorResponse>)> {
+    let _ = &headers;
+
+    let conn = state.conn.lock().await;
+    let counts = resources::count_by_folder(&conn).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(Json(counts))
+}
+
+#[derive(Deserialize)]
+struct CheckUrlQuery {
+    url: String,
+}
+
+#[derive(Serialize)]
+struct CheckUrlResponse {
+    count: usize,
+}
+
+async fn handle_check_url(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Query(query): axum::extract::Query<CheckUrlQuery>,
+) -> Result<Json<CheckUrlResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let conn = state.conn.lock().await;
+    let matches = resources::find_by_url(&conn, &query.url).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(Json(CheckUrlResponse {
+        count: matches.len(),
+    }))
 }
 
 async fn handle_save(

@@ -156,6 +156,19 @@ pub fn delete_resource(conn: &Connection, id: &str) -> Result<String, DbError> {
     Ok(id.to_string())
 }
 
+pub fn count_by_folder(conn: &Connection) -> Result<std::collections::HashMap<String, i64>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT folder_id, COUNT(*) FROM resources GROUP BY folder_id",
+    )?;
+    let counts = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(counts)
+}
+
 /// Normalize a URL for dedup comparison: remove trailing slash, fragment, lowercase scheme.
 fn normalize_url(url: &str) -> String {
     let mut s = url.to_string();
@@ -303,6 +316,21 @@ mod tests {
         // Should not match different URL
         let found = find_by_url(&conn, "https://example.com/other").unwrap();
         assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_count_by_folder() {
+        let conn = test_db();
+        let f1 = folders::create_folder(&conn, "a", "__root__").unwrap();
+        let f2 = folders::create_folder(&conn, "b", "__root__").unwrap();
+
+        create_test_resource(&conn, &f1.id);
+        create_test_resource(&conn, &f1.id);
+        create_test_resource(&conn, &f2.id);
+
+        let counts = count_by_folder(&conn).unwrap();
+        assert_eq!(counts.get(&f1.id), Some(&2));
+        assert_eq!(counts.get(&f2.id), Some(&1));
     }
 
     #[test]

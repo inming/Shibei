@@ -235,3 +235,11 @@ pub async fn cmd_delete_comment(
     let conn = state.conn.lock().await;
     comments::delete_comment(&conn, &id).map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn cmd_get_folder_counts(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<std::collections::HashMap<String, i64>, CommandError> {
+    let conn = state.conn.lock().await;
+    resources::count_by_folder(&conn).map_err(Into::into)
+}

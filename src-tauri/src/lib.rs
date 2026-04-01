@@ -90,6 +90,7 @@ pub fn run() {
             commands::cmd_create_comment,
             commands::cmd_update_comment,
             commands::cmd_delete_comment,
+            commands::cmd_get_folder_counts,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

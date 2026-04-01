@@ -19,6 +19,10 @@ export function deleteFolder(id: string): Promise<string[]> {
   return invoke("cmd_delete_folder", { id });
 }
 
+export function getFolderCounts(): Promise<Record<string, number>> {
+  return invoke("cmd_get_folder_counts");
+}
+
 export function moveFolder(id: string, newParentId: string): Promise<void> {
   return invoke("cmd_move_folder", { id, newParentId });
 }
