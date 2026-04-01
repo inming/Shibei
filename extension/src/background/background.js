@@ -1,5 +1,23 @@
 const API_BASE = "http://127.0.0.1:21519";
 
+let cachedToken = null;
+
+async function getToken() {
+  if (cachedToken) return cachedToken;
+  const res = await fetch(`${API_BASE}/token`, { signal: AbortSignal.timeout(2000) });
+  if (!res.ok) throw new Error(`Failed to fetch token: HTTP ${res.status}`);
+  const data = await res.json();
+  cachedToken = data.token;
+  return cachedToken;
+}
+
+function authHeaders(token) {
+  return {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  };
+}
+
 // Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "save-page") {
@@ -35,9 +53,10 @@ async function handleSavePage(data) {
     captured_at: new Date().toISOString(),
   };
 
+  const token = await getToken();
   const response = await fetch(`${API_BASE}/api/save`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(token),
     body: JSON.stringify(payload),
   });
 
@@ -68,9 +87,10 @@ async function handleSaveRegion(data) {
     selection_meta: data.selection_meta,
   };
 
+  const token = await getToken();
   const response = await fetch(`${API_BASE}/api/save`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(token),
     body: JSON.stringify(payload),
   });
 

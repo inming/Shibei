@@ -53,15 +53,19 @@ pub fn run() {
     let db_path = base_dir.join("shibei.db");
     let conn = db::init_db(&db_path).expect("failed to initialize database");
 
+    // Generate a single auth token shared between Tauri commands and HTTP server
+    let auth_token = uuid::Uuid::new_v4().to_string();
+
     // Shared state for Tauri commands
     let cmd_state = Arc::new(commands::AppState {
         conn: TokioMutex::new(conn),
         base_dir: base_dir.clone(),
+        auth_token: auth_token.clone(),
     });
 
     // Separate connection for HTTP server (app_handle added in setup)
     let server_conn = db::init_db(&db_path).expect("failed to open server db connection");
-    let server_token = uuid::Uuid::new_v4().to_string();
+    let server_token = auth_token.clone();
     let server_base_dir = base_dir.clone();
     let server_token_clone = server_token.clone();
 
@@ -92,6 +96,7 @@ pub fn run() {
             commands::cmd_delete_comment,
             commands::cmd_get_folder_counts,
             commands::cmd_get_non_leaf_folder_ids,
+            commands::cmd_get_auth_token,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

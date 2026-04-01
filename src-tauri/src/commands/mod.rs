@@ -11,6 +11,7 @@ use crate::storage;
 pub struct AppState {
     pub conn: Mutex<Connection>,
     pub base_dir: std::path::PathBuf,
+    pub auth_token: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -251,4 +252,11 @@ pub async fn cmd_get_non_leaf_folder_ids(
     let conn = state.conn.lock().await;
     let set = folders::parent_ids_with_children(&conn).map_err(CommandError::from)?;
     Ok(set.into_iter().collect())
+}
+
+#[tauri::command]
+pub async fn cmd_get_auth_token(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<String, CommandError> {
+    Ok(state.auth_token.clone())
 }

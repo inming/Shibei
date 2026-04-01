@@ -1,5 +1,20 @@
 const API_BASE = "http://127.0.0.1:21519";
 
+let cachedToken = null;
+
+async function getToken() {
+  if (cachedToken) return cachedToken;
+  const res = await fetch(`${API_BASE}/token`, { signal: AbortSignal.timeout(2000) });
+  if (!res.ok) throw new Error(`Failed to fetch token: HTTP ${res.status}`);
+  const data = await res.json();
+  cachedToken = data.token;
+  return cachedToken;
+}
+
+function authHeader(token) {
+  return { "Authorization": `Bearer ${token}` };
+}
+
 const statusEl = document.getElementById("status");
 const offlineNotice = document.getElementById("offline-notice");
 const mainContent = document.getElementById("main-content");
@@ -28,6 +43,9 @@ async function init() {
     const res = await fetch(`${API_BASE}/api/ping`, { signal: AbortSignal.timeout(2000) });
     if (!res.ok) throw new Error("not ok");
     console.log("[shibei] ping ok");
+
+    // Fetch and cache auth token
+    await getToken();
 
     statusEl.textContent = "已连接";
     statusEl.className = "status status-online";
@@ -100,9 +118,10 @@ async function init() {
 
       // Check for duplicate URL
       try {
+        const token = await getToken();
         const checkRes = await fetch(
           `${API_BASE}/api/check-url?url=${encodeURIComponent(pageInfo.url)}`,
-          { signal: AbortSignal.timeout(2000) }
+          { signal: AbortSignal.timeout(2000), headers: authHeader(token) }
         );
         if (checkRes.ok) {
           const { count } = await checkRes.json();
@@ -122,7 +141,8 @@ async function init() {
 
   // Load folders
   try {
-    const res = await fetch(`${API_BASE}/api/folders`);
+    const token = await getToken();
+    const res = await fetch(`${API_BASE}/api/folders`, { headers: authHeader(token) });
     const folders = await res.json();
     console.log("[shibei] folders loaded:", folders.length);
     populateFolderSelect(folders, 0);
@@ -243,9 +263,10 @@ saveBtn.addEventListener("click", async () => {
 
     console.log("[shibei] posting to server, payload size:", base64Content.length);
 
+    const token = await getToken();
     const res = await fetch(`${API_BASE}/api/save`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader(token) },
       body: JSON.stringify(payload),
     });
 

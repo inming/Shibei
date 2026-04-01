@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::Json;
+use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::Router;
 use rusqlite::Connection;
@@ -27,6 +27,11 @@ pub struct AppState {
 #[derive(Serialize)]
 struct PingResponse {
     status: String,
+}
+
+#[derive(Serialize)]
+struct TokenResponse {
+    token: String,
 }
 
 #[derive(Serialize)]
@@ -70,6 +75,7 @@ pub async fn start_server(state: Arc<AppState>) {
 
     let app = Router::new()
         .route("/api/ping", get(handle_ping))
+        .route("/token", get(handle_token))
         .route("/api/folders", get(handle_folders))
         .route("/api/tags", get(handle_tags))
         .route("/api/folder-counts", get(handle_folder_counts))
@@ -110,13 +116,17 @@ async fn handle_ping() -> Json<PingResponse> {
     })
 }
 
+async fn handle_token(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(TokenResponse {
+        token: state.token.clone(),
+    })
+}
+
 async fn handle_folders(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<FolderNode>>, (StatusCode, Json<ErrorResponse>)> {
-    // TODO: Phase 8 — re-enable token verification
-    // verify_token(&headers, &state.token)?;
-    let _ = &headers;
+    verify_token(&headers, &state.token)?;
 
     let conn = state.conn.lock().await;
     let tree = build_folder_tree(&conn, "__root__").map_err(|e| {
@@ -151,7 +161,7 @@ async fn handle_tags(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<tags::Tag>>, (StatusCode, Json<ErrorResponse>)> {
-    let _ = &headers;
+    verify_token(&headers, &state.token)?;
 
     let conn = state.conn.lock().await;
     let tag_list = tags::list_tags(&conn).map_err(|e| {
@@ -169,7 +179,7 @@ async fn handle_folder_counts(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<std::collections::HashMap<String, i64>>, (StatusCode, Json<ErrorResponse>)> {
-    let _ = &headers;
+    verify_token(&headers, &state.token)?;
 
     let conn = state.conn.lock().await;
     let counts = resources::count_by_folder(&conn).map_err(|e| {
@@ -195,8 +205,10 @@ struct CheckUrlResponse {
 
 async fn handle_check_url(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     axum::extract::Query(query): axum::extract::Query<CheckUrlQuery>,
 ) -> Result<Json<CheckUrlResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
     let conn = state.conn.lock().await;
     let matches = resources::find_by_url(&conn, &query.url).map_err(|e| {
         (
@@ -216,7 +228,7 @@ async fn handle_save(
     headers: HeaderMap,
     Json(payload): Json<SaveRequest>,
 ) -> Result<Json<SaveResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let _ = &headers;
+    verify_token(&headers, &state.token)?;
 
     // Validate content_type
     if payload.content_type != "html" && payload.content_type != "html_fragment" {
