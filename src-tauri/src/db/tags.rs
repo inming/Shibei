@@ -108,7 +108,7 @@ pub fn get_resources_by_tag(
     tag_id: &str,
 ) -> Result<Vec<Resource>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, r.resource_type, r.file_path, r.created_at, r.captured_at
+        "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta
          FROM resources r
          JOIN resource_tags rt ON r.id = rt.resource_id
          WHERE rt.tag_id = ?1",
@@ -127,6 +127,7 @@ pub fn get_resources_by_tag(
                 file_path: row.get(8)?,
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
+                selection_meta: row.get(11)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -181,7 +182,8 @@ mod tests {
         let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
         let resource = resources::create_resource(
             &conn,
-            resources::CreateResourceInput { id: None,
+            resources::CreateResourceInput {
+                id: None,
                 title: "test".to_string(),
                 url: "https://example.com".to_string(),
                 domain: None,
@@ -191,6 +193,7 @@ mod tests {
                 resource_type: "webpage".to_string(),
                 file_path: "x".to_string(),
                 captured_at: "2026-01-01".to_string(),
+                selection_meta: None,
             },
         )
         .unwrap();
@@ -216,7 +219,8 @@ mod tests {
         let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
         let resource = resources::create_resource(
             &conn,
-            resources::CreateResourceInput { id: None,
+            resources::CreateResourceInput {
+                id: None,
                 title: "test".to_string(),
                 url: "https://example.com".to_string(),
                 domain: None,
@@ -226,6 +230,7 @@ mod tests {
                 resource_type: "webpage".to_string(),
                 file_path: "x".to_string(),
                 captured_at: "2026-01-01".to_string(),
+                selection_meta: None,
             },
         )
         .unwrap();

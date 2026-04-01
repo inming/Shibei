@@ -115,7 +115,8 @@ mod tests {
         let folder = folders::create_folder(conn, "docs", "__root__").unwrap();
         resources::create_resource(
             conn,
-            resources::CreateResourceInput { id: None,
+            resources::CreateResourceInput {
+                id: None,
                 title: "test".to_string(),
                 url: "https://example.com".to_string(),
                 domain: None,
@@ -125,6 +126,7 @@ mod tests {
                 resource_type: "webpage".to_string(),
                 file_path: "x".to_string(),
                 captured_at: "2026-01-01".to_string(),
+                selection_meta: None,
             },
         )
         .unwrap()

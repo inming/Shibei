@@ -16,6 +16,7 @@ pub struct Resource {
     pub file_path: String,
     pub created_at: String,
     pub captured_at: String,
+    pub selection_meta: Option<String>,
 }
 
 pub struct CreateResourceInput {
@@ -29,6 +30,7 @@ pub struct CreateResourceInput {
     pub resource_type: String,
     pub file_path: String,
     pub captured_at: String,
+    pub selection_meta: Option<String>,
 }
 
 pub fn create_resource(
@@ -39,8 +41,8 @@ pub fn create_resource(
     let now = now_iso8601();
 
     conn.execute(
-        "INSERT INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             id,
             input.title,
@@ -53,6 +55,7 @@ pub fn create_resource(
             input.file_path,
             now,
             input.captured_at,
+            input.selection_meta,
         ],
     )?;
 
@@ -68,12 +71,13 @@ pub fn create_resource(
         file_path: input.file_path,
         created_at: now,
         captured_at: input.captured_at,
+        selection_meta: input.selection_meta,
     })
 }
 
 pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
     conn.query_row(
-        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at
+        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
          FROM resources WHERE id = ?1",
         params![id],
         |row| {
@@ -89,6 +93,7 @@ pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
                 file_path: row.get(8)?,
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
+                selection_meta: row.get(11)?,
             })
         },
     )
@@ -103,7 +108,7 @@ pub fn list_resources_by_folder(
     folder_id: &str,
 ) -> Result<Vec<Resource>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at
+        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
          FROM resources WHERE folder_id = ?1
          ORDER BY created_at DESC",
     )?;
@@ -121,6 +126,7 @@ pub fn list_resources_by_folder(
                 file_path: row.get(8)?,
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
+                selection_meta: row.get(11)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -174,7 +180,7 @@ pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbErro
 
     // We need to check against normalized versions of stored URLs
     let mut stmt = conn.prepare(
-        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at
+        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
          FROM resources",
     )?;
     let resources = stmt
@@ -191,6 +197,7 @@ pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbErro
                 file_path: row.get(8)?,
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
+                selection_meta: row.get(11)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -207,7 +214,8 @@ mod tests {
     fn create_test_resource(conn: &Connection, folder_id: &str) -> Resource {
         create_resource(
             conn,
-            CreateResourceInput { id: None,
+            CreateResourceInput {
+                id: None,
                 title: "Test Page".to_string(),
                 url: "https://example.com/article".to_string(),
                 domain: Some("example.com".to_string()),
@@ -217,6 +225,7 @@ mod tests {
                 resource_type: "webpage".to_string(),
                 file_path: "storage/test/snapshot.mhtml".to_string(),
                 captured_at: "2026-01-01T00:00:00Z".to_string(),
+                selection_meta: None,
             },
         )
         .unwrap()
@@ -306,5 +315,60 @@ mod tests {
             normalize_url("https://example.com/page#top"),
             "https://example.com/page"
         );
+    }
+
+    #[test]
+    fn test_create_resource_with_selection_meta() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let resource = create_resource(
+            &conn,
+            CreateResourceInput {
+                id: None,
+                title: "Clipped Article".to_string(),
+                url: "https://example.com/article".to_string(),
+                domain: Some("example.com".to_string()),
+                author: None,
+                description: None,
+                folder_id: folder.id,
+                resource_type: "html".to_string(),
+                file_path: "storage/test/snapshot.html".to_string(),
+                captured_at: "2026-01-01T00:00:00Z".to_string(),
+                selection_meta: Some("{\"selector\":\"article.post\",\"tag_name\":\"article\",\"text_preview\":\"Hello world\"}".to_string()),
+            },
+        )
+        .unwrap();
+
+        let fetched = get_resource(&conn, &resource.id).unwrap();
+        assert_eq!(
+            fetched.selection_meta,
+            Some("{\"selector\":\"article.post\",\"tag_name\":\"article\",\"text_preview\":\"Hello world\"}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_create_resource_without_selection_meta() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let resource = create_resource(
+            &conn,
+            CreateResourceInput {
+                id: None,
+                title: "Full Page".to_string(),
+                url: "https://example.com/page".to_string(),
+                domain: Some("example.com".to_string()),
+                author: None,
+                description: None,
+                folder_id: folder.id,
+                resource_type: "html".to_string(),
+                file_path: "storage/test/snapshot.html".to_string(),
+                captured_at: "2026-01-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            },
+        )
+        .unwrap();
+
+        let fetched = get_resource(&conn, &resource.id).unwrap();
+        assert_eq!(fetched.selection_meta, None);
     }
 }

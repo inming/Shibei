@@ -219,6 +219,7 @@ async fn handle_save(
             resource_type: payload.content_type,
             file_path: rel_path.to_string_lossy().to_string(),
             captured_at: payload.captured_at,
+            selection_meta: None,
         },
     )
     .map_err(|e| {
