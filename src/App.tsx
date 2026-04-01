@@ -21,6 +21,9 @@ function App() {
       const next = new Map(prev);
       if (!next.has(resource.id)) {
         next.set(resource.id, { resource, initialHighlightId: highlightId ?? null });
+      } else if (highlightId) {
+        const existing = next.get(resource.id)!;
+        next.set(resource.id, { ...existing, initialHighlightId: highlightId });
       }
       return next;
     });

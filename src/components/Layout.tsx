@@ -3,6 +3,7 @@ import type { Resource } from "@/types";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
+import { PreviewPanel } from "@/components/PreviewPanel";
 import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
@@ -40,9 +41,11 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       {/* Col 3: Preview or placeholder */}
       <div className={styles.main}>
         {selectedResource ? (
-          <div className={styles.mainPlaceholder}>
-            预览面板 — 下一步实现
-          </div>
+          <PreviewPanel
+            key={selectedResource.id}
+            resource={selectedResource}
+            onOpenInReader={(highlightId) => onOpenResource(selectedResource, highlightId)}
+          />
         ) : (
           <div className={styles.mainPlaceholder}>
             双击资料在新标签页中打开阅读

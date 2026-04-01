@@ -24,6 +24,11 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
 
+  // Reset scroll guard when initialHighlightId changes
+  useEffect(() => {
+    didScrollToInitial.current = false;
+  }, [initialHighlightId]);
+
   const {
     highlights,
     getCommentsForHighlight,
