@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { Highlight, Comment } from "@/types";
 import styles from "./AnnotationPanel.module.css";
+import { Modal } from "@/components/Modal";
 
 interface AnnotationPanelProps {
   highlights: Highlight[];
@@ -25,7 +26,37 @@ export function AnnotationPanel({
   onEditComment,
   resourceNotes,
 }: AnnotationPanelProps) {
+  type DeleteConfirm = {
+    type: "highlight" | "comment" | "note";
+    id: string;
+    commentCount?: number;
+  };
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
+
   const activeRef = useRef<HTMLDivElement>(null);
+
+  function getDeleteMessage(confirm: DeleteConfirm): string {
+    switch (confirm.type) {
+      case "highlight":
+        return confirm.commentCount
+          ? `确定删除此高亮标注？关联的 ${confirm.commentCount} 条评论也会一并删除。`
+          : "确定删除此高亮标注？";
+      case "comment":
+        return "确定删除此评论？";
+      case "note":
+        return "确定删除此笔记？";
+    }
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteConfirm) return;
+    if (deleteConfirm.type === "highlight") {
+      onDeleteHighlight(deleteConfirm.id);
+    } else {
+      onDeleteComment(deleteConfirm.id);
+    }
+    setDeleteConfirm(null);
+  }
 
   // Scroll to active highlight when it changes
   useEffect(() => {
@@ -49,9 +80,15 @@ export function AnnotationPanel({
             isActive={activeHighlightId === hl.id}
             ref={activeHighlightId === hl.id ? activeRef : null}
             onClick={() => onClickHighlight(hl.id)}
-            onDelete={() => onDeleteHighlight(hl.id)}
+            onDelete={() =>
+              setDeleteConfirm({
+                type: "highlight",
+                id: hl.id,
+                commentCount: getCommentsForHighlight(hl.id).length,
+              })
+            }
             onAddComment={(content) => onAddComment(hl.id, content)}
-            onDeleteComment={onDeleteComment}
+            onDeleteComment={(id) => setDeleteConfirm({ type: "comment", id })}
             onEditComment={onEditComment}
           />
         ))}
@@ -62,8 +99,44 @@ export function AnnotationPanel({
         notes={resourceNotes}
         onAdd={(content) => onAddComment(null, content)}
         onEdit={onEditComment}
-        onDelete={onDeleteComment}
+        onDelete={(id) => setDeleteConfirm({ type: "note", id })}
       />
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <Modal title="确认删除" onClose={() => setDeleteConfirm(null)}>
+          <p style={{ marginBottom: "var(--spacing-lg)", fontSize: "var(--font-size-base)" }}>
+            {getDeleteMessage(deleteConfirm)}
+          </p>
+          <div style={{ display: "flex", gap: "var(--spacing-sm)", justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setDeleteConfirm(null)}
+              style={{
+                padding: "6px 16px",
+                borderRadius: "4px",
+                fontSize: "var(--font-size-sm)",
+                background: "var(--color-bg-tertiary)",
+                cursor: "pointer",
+              }}
+            >
+              取消
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              style={{
+                padding: "6px 16px",
+                borderRadius: "4px",
+                fontSize: "var(--font-size-sm)",
+                background: "var(--color-danger)",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
