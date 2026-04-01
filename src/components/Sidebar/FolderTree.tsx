@@ -3,6 +3,7 @@ import { useFolders } from "@/hooks/useFolders";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { FolderEditDialog } from "@/components/Sidebar/FolderEditDialog";
+import { Modal } from "@/components/Modal";
 import styles from "./FolderTree.module.css";
 
 interface FolderTreeProps {
@@ -23,6 +24,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [editFolder, setEditFolder] = useState<{ id: string; name: string } | null>(null);
+  const [deleteFolder, setDeleteFolder] = useState<{ id: string; name: string } | null>(null);
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({});
   const [nonLeafIds, setNonLeafIds] = useState<Set<string>>(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
@@ -83,10 +85,10 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!window.confirm(`确定删除文件夹「${name}」及其所有资料吗？`)) return;
+  async function doDelete(id: string) {
     try {
       await cmd.deleteFolder(id);
+      setDeleteFolder(null);
       refreshAll();
     } catch (err: unknown) {
       alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -107,7 +109,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
         {
           label: "删除",
           danger: true,
-          onClick: () => handleDelete(contextMenu.folderId, contextMenu.folderName),
+          onClick: () => setDeleteFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
         },
       ]
     : [];
@@ -181,6 +183,43 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
           onClose={() => setEditFolder(null)}
           onSaved={refreshAll}
         />
+      )}
+
+      {deleteFolder && (
+        <Modal title="删除文件夹" onClose={() => setDeleteFolder(null)}>
+          <p style={{ marginBottom: "var(--spacing-lg)" }}>
+            确定删除文件夹「{deleteFolder.name}」及其所有资料吗？
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--spacing-sm)" }}>
+            <button
+              onClick={() => setDeleteFolder(null)}
+              style={{
+                padding: "var(--spacing-xs) var(--spacing-md)",
+                borderRadius: "4px",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-bg-primary)",
+                cursor: "pointer",
+                fontSize: "var(--font-size-base)",
+              }}
+            >
+              取消
+            </button>
+            <button
+              onClick={() => doDelete(deleteFolder.id)}
+              style={{
+                padding: "var(--spacing-xs) var(--spacing-md)",
+                borderRadius: "4px",
+                border: "none",
+                background: "var(--color-danger)",
+                color: "white",
+                cursor: "pointer",
+                fontSize: "var(--font-size-base)",
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
