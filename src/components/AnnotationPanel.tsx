@@ -11,6 +11,7 @@ interface AnnotationPanelProps {
   onAddComment: (highlightId: string | null, content: string) => void;
   onDeleteComment: (id: string) => void;
   onEditComment: (id: string, content: string) => void;
+  resourceNotes: Comment[];
 }
 
 export function AnnotationPanel({
@@ -22,6 +23,7 @@ export function AnnotationPanel({
   onAddComment,
   onDeleteComment,
   onEditComment,
+  resourceNotes,
 }: AnnotationPanelProps) {
   const activeRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +56,14 @@ export function AnnotationPanel({
           />
         ))}
       </div>
+
+      {/* Notes section */}
+      <NotesSection
+        notes={resourceNotes}
+        onAdd={(content) => onAddComment(null, content)}
+        onEdit={onEditComment}
+        onDelete={onDeleteComment}
+      />
     </div>
   );
 }
@@ -229,3 +239,119 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     );
   },
 );
+
+interface NotesSectionProps {
+  notes: Comment[];
+  onAdd: (content: string) => void;
+  onEdit: (id: string, content: string) => void;
+  onDelete: (id: string) => void;
+}
+
+function NotesSection({ notes, onAdd, onEdit, onDelete }: NotesSectionProps) {
+  const [noteText, setNoteText] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+
+  function handleSubmit() {
+    if (!noteText.trim()) return;
+    onAdd(noteText.trim());
+    setNoteText("");
+  }
+
+  return (
+    <div className={styles.notesSection}>
+      <div className={styles.notesHeader}>📝 笔记 ({notes.length})</div>
+
+      {notes.map((note) => (
+        <div key={note.id} className={styles.noteItem}>
+          {editingNoteId === note.id ? (
+            <div>
+              <textarea
+                className={styles.noteInput}
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (editText.trim()) {
+                      onEdit(note.id, editText.trim());
+                      setEditingNoteId(null);
+                    }
+                  }
+                  if (e.key === "Escape") setEditingNoteId(null);
+                }}
+              />
+              <div className={styles.commentActions}>
+                <button
+                  className={styles.submitBtn}
+                  onClick={() => {
+                    if (editText.trim()) {
+                      onEdit(note.id, editText.trim());
+                      setEditingNoteId(null);
+                    }
+                  }}
+                >
+                  保存
+                </button>
+                <button className={styles.cancelBtn} onClick={() => setEditingNoteId(null)}>
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={styles.noteContent}>{note.content}</div>
+              <div className={styles.noteMeta}>
+                <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                <span>
+                  <button
+                    className={styles.editBtn}
+                    onClick={() => {
+                      setEditingNoteId(note.id);
+                      setEditText(note.content);
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button className={styles.deleteBtn} onClick={() => onDelete(note.id)}>
+                    删除
+                  </button>
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+
+      {/* Add note input */}
+      <div style={{ marginTop: notes.length > 0 ? "var(--spacing-xs)" : 0 }}>
+        <textarea
+          className={styles.noteInput}
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          placeholder="添加笔记..."
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
+        />
+        {noteText.trim() && (
+          <div className={styles.commentActions}>
+            <button className={styles.submitBtn} onClick={handleSubmit}>
+              保存
+            </button>
+            <button
+              className={styles.cancelBtn}
+              onClick={() => setNoteText("")}
+            >
+              取消
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

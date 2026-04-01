@@ -32,6 +32,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const {
     highlights,
     getCommentsForHighlight,
+    resourceNotes,
     addHighlight,
     removeHighlight,
     addComment,
@@ -204,6 +205,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       <AnnotationPanel
         highlights={highlights}
         getCommentsForHighlight={getCommentsForHighlight}
+        resourceNotes={resourceNotes}
         activeHighlightId={activeHighlightId}
         onClickHighlight={handlePanelClickHighlight}
         onDeleteHighlight={handleDeleteHighlight}
