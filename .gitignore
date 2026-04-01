@@ -5,6 +5,7 @@ target/
 # Build output
 dist/
 dist-tauri/
+src-tauri/src/annotator.js
 
 # IDE
 .idea/
