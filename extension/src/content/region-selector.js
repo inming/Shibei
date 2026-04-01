@@ -157,10 +157,6 @@
     toast.style.display = "block";
   }
 
-  function hideToast() {
-    toast.style.display = "none";
-  }
-
   // ═══════════════════════════════════════════
   // Element Filtering & Selection
   // ═══════════════════════════════════════════
