@@ -145,7 +145,9 @@
   }
 
   /**
-   * Walk all text nodes under root in document order, skipping invisible nodes.
+   * Walk all text nodes under root in document order, skipping non-content nodes.
+   * Only filters by tag name (not getComputedStyle) to avoid timing issues —
+   * styles may not be computed when annotator runs during early page load.
    */
   function getTextNodes(root: Node): Text[] {
     const nodes: Text[] = [];
@@ -153,13 +155,7 @@
       acceptNode(node: Node): number {
         const parent = node.parentElement;
         if (!parent) return NodeFilter.FILTER_ACCEPT;
-        // Skip text inside script/style/noscript/template
         if (EXCLUDED_TAGS.has(parent.tagName)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        // Skip text inside hidden elements
-        const style = getComputedStyle(parent);
-        if (style.display === "none" || style.visibility === "hidden") {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
