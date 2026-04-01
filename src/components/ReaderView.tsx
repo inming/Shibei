@@ -104,9 +104,12 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  // Send highlights to iframe when ready
+  // Send highlights to iframe once when iframe becomes ready.
+  // Only fires on initial load — individual adds/removes use their own messages.
+  const didSendInitialHighlights = useRef(false);
   useEffect(() => {
-    if (iframeReady && highlights.length > 0 && iframeRef.current?.contentWindow) {
+    if (iframeReady && highlights.length > 0 && !didSendInitialHighlights.current && iframeRef.current?.contentWindow) {
+      didSendInitialHighlights.current = true;
       iframeRef.current.contentWindow.postMessage(
         { type: "shibei:render-highlights", highlights },
         "*",
