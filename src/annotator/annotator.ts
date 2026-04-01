@@ -276,6 +276,136 @@
     return null;
   }
 
+  interface FuzzyMatch {
+    start: number;
+    end: number;
+    errors: number;
+  }
+
+  /**
+   * Bitap approximate string search.
+   * Finds the best match of `pattern` in `text` within `maxErrors` edit distance.
+   * Uses position hint for tie-breaking when multiple matches have the same error count.
+   *
+   * Pattern length is limited to 32 characters (JavaScript bitwise limit).
+   * For longer patterns, the first 32 chars are used to locate candidates,
+   * then full text comparison validates.
+   */
+  function fuzzySearch(
+    text: string,
+    pattern: string,
+    maxErrors: number,
+    positionHint: number,
+  ): FuzzyMatch | null {
+    if (pattern.length === 0) return null;
+
+    // For patterns > 32 chars, use prefix to locate, then validate full match
+    const searchPattern = pattern.length > 32 ? pattern.slice(0, 32) : pattern;
+    const m = searchPattern.length;
+    const k = Math.min(maxErrors, m - 1);
+
+    // Build character masks
+    const charMask: Record<string, number> = {};
+    for (let i = 0; i < m; i++) {
+      const c = searchPattern[i];
+      charMask[c] = (charMask[c] ?? ~0) & ~(1 << i);
+    }
+
+    // State arrays for each error level
+    const state: number[] = new Array(k + 1).fill(~0);
+
+    let bestMatch: FuzzyMatch | null = null;
+
+    for (let i = 0; i < text.length; i++) {
+      const charBit = charMask[text[i]] ?? ~0;
+
+      // Update states from highest error count down
+      let oldState = state[0];
+      state[0] = (state[0] << 1) | charBit;
+
+      for (let d = 1; d <= k; d++) {
+        const prevState = oldState;
+        oldState = state[d];
+        // Shift + char match OR insertion OR deletion OR substitution
+        state[d] = ((state[d] << 1) | charBit) & (prevState << 1) & ((oldState | prevState) << 1) & prevState;
+      }
+
+      // Check for matches at each error level (prefer fewer errors)
+      for (let d = 0; d <= k; d++) {
+        if ((state[d] & (1 << (m - 1))) === 0) {
+          const matchEnd = i + 1;
+          let matchStart: number;
+          let errors: number;
+
+          if (pattern.length > 32) {
+            // Validate full pattern at this position
+            matchStart = matchEnd - m;
+            if (matchStart < 0) continue;
+            // Extend to full pattern length
+            const candidateEnd = matchStart + pattern.length;
+            if (candidateEnd > text.length) continue;
+            const candidate = text.slice(matchStart, candidateEnd);
+            errors = levenshteinDistance(candidate, pattern);
+            if (errors > maxErrors) continue;
+          } else {
+            matchStart = matchEnd - m;
+            errors = d;
+          }
+
+          // Score: fewer errors better, closer to position hint better
+          if (
+            !bestMatch ||
+            errors < bestMatch.errors ||
+            (errors === bestMatch.errors &&
+              Math.abs(matchStart - positionHint) < Math.abs(bestMatch.start - positionHint))
+          ) {
+            bestMatch = {
+              start: matchStart,
+              end: pattern.length > 32 ? matchStart + pattern.length : matchEnd,
+              errors,
+            };
+          }
+          break; // Found match at this error level, don't check higher
+        }
+      }
+    }
+
+    return bestMatch;
+  }
+
+  /**
+   * Simple Levenshtein distance for validating long pattern matches.
+   * Only used for patterns > 32 chars where Bitap searched by prefix.
+   */
+  function levenshteinDistance(a: string, b: string): number {
+    const m = a.length;
+    const n = b.length;
+    const dp: number[] = Array.from({ length: n + 1 }, (_, i) => i);
+
+    for (let i = 1; i <= m; i++) {
+      let prev = dp[0];
+      dp[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const temp = dp[j];
+        dp[j] = a[i - 1] === b[j - 1]
+          ? prev
+          : 1 + Math.min(prev, dp[j], dp[j - 1]);
+        prev = temp;
+      }
+    }
+    return dp[n];
+  }
+
+  /**
+   * Normalized string similarity (0.0 = completely different, 1.0 = identical).
+   */
+  function similarity(a: string, b: string): number {
+    if (a.length === 0 && b.length === 0) return 1;
+    const maxLen = Math.max(a.length, b.length);
+    if (maxLen === 0) return 1;
+    return 1 - levenshteinDistance(a, b) / maxLen;
+  }
+
   /**
    * Resolve anchor using textQuote (fuzzy fallback).
    */
@@ -283,24 +413,57 @@
     const bodyText = getBodyText();
     const { exact, prefix, suffix } = anchor.text_quote;
 
-    // Try to find exact match with context
-    const searchStr = prefix + exact + suffix;
-    const idx = bodyText.indexOf(searchStr);
-    if (idx === -1) {
-      // Try just the exact text
-      const simpleIdx = bodyText.indexOf(exact);
-      if (simpleIdx === -1) return null;
+    // Step 1: Exact match with full context (prefix + exact + suffix)
+    const contextStr = prefix + exact + suffix;
+    const idx = bodyText.indexOf(contextStr);
+    if (idx !== -1) {
+      const start = idx + prefix.length;
+      const end = start + exact.length;
+      return resolveByPosition({
+        text_position: { start, end },
+        text_quote: anchor.text_quote,
+      });
+    }
+
+    // Step 2: Exact match on just the quote text
+    const simpleIdx = bodyText.indexOf(exact);
+    if (simpleIdx !== -1) {
       return resolveByPosition({
         text_position: { start: simpleIdx, end: simpleIdx + exact.length },
         text_quote: anchor.text_quote,
       });
     }
 
-    const start = idx + prefix.length;
-    const end = start + exact.length;
+    // Step 3: Fuzzy match on exact text (tolerant of minor differences)
+    const maxErrors = Math.min(32, Math.floor(exact.length / 5));
+    if (maxErrors < 1) return null;
+
+    const match = fuzzySearch(bodyText, exact, maxErrors, anchor.text_position.start);
+    if (!match) return null;
+
+    // Validate with context: at least one of prefix/suffix should roughly match
+    const candidatePrefix = bodyText.slice(
+      Math.max(0, match.start - prefix.length),
+      match.start,
+    );
+    const candidateSuffix = bodyText.slice(
+      match.end,
+      Math.min(bodyText.length, match.end + suffix.length),
+    );
+    const prefixSim = prefix.length > 0 ? similarity(candidatePrefix, prefix) : 1;
+    const suffixSim = suffix.length > 0 ? similarity(candidateSuffix, suffix) : 1;
+
+    // Require at least one context side to be a reasonable match
+    if (prefixSim < 0.5 && suffixSim < 0.5) return null;
+
+    // Build a new position-based anchor from the fuzzy match
     return resolveByPosition({
-      text_position: { start, end },
-      text_quote: anchor.text_quote,
+      text_position: { start: match.start, end: match.end },
+      text_quote: {
+        exact: bodyText.slice(match.start, match.end),
+        prefix: anchor.text_quote.prefix,
+        suffix: anchor.text_quote.suffix,
+      },
     });
   }
 
