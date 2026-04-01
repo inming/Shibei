@@ -43,7 +43,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           onClick={() => {
             const action = item.onClick;
             onClose();
-            action();
+            setTimeout(action, 0);
           }}
         >
           {item.label}
