@@ -97,6 +97,24 @@ async function init() {
 
       pageTitleEl.textContent = pageInfo.title;
       pageUrlEl.textContent = pageInfo.url;
+
+      // Check for duplicate URL
+      try {
+        const checkRes = await fetch(
+          `${API_BASE}/api/check-url?url=${encodeURIComponent(pageInfo.url)}`,
+          { signal: AbortSignal.timeout(2000) }
+        );
+        if (checkRes.ok) {
+          const { count } = await checkRes.json();
+          if (count > 0) {
+            const warningEl = document.getElementById("url-warning");
+            warningEl.textContent = `该 URL 已保存过 ${count} 次`;
+            warningEl.style.display = "block";
+          }
+        }
+      } catch (e) {
+        console.log("[shibei] url check failed (ok):", e.message);
+      }
     }
   } catch (err) {
     console.error("[shibei] tab query failed:", err);

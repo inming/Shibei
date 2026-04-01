@@ -64,6 +64,16 @@ body {
   white-space: nowrap;
 }
 
+.url-warning {
+  margin-bottom: 12px;
+  padding: 6px 8px;
+  background: #fef9c3;
+  color: #854d0e;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: center;
+}
+
 .field {
   margin-bottom: 12px;
 }
