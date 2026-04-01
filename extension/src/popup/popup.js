@@ -8,6 +8,7 @@ const pageUrlEl = document.getElementById("page-url");
 const folderSelect = document.getElementById("folder-select");
 const tagsInput = document.getElementById("tags-input");
 const saveBtn = document.getElementById("save-btn");
+const selectSaveBtn = document.getElementById("select-save-btn");
 const messageEl = document.getElementById("message");
 
 let pageInfo = null;
@@ -52,6 +53,7 @@ async function init() {
       if (url.startsWith("chrome://") || url.startsWith("about:") || url.startsWith("edge://") || url.startsWith("chrome-extension://")) {
         showMessage("不支持保存系统页面", "error");
         saveBtn.disabled = true;
+        selectSaveBtn.disabled = true;
         pageTitleEl.textContent = tab.title || "系统页面";
         pageUrlEl.textContent = url;
         return;
@@ -251,6 +253,66 @@ saveBtn.addEventListener("click", async () => {
     }
     saveBtn.disabled = false;
   }
+});
+
+selectSaveBtn.addEventListener("click", async () => {
+  console.log("[shibei] select-save clicked");
+
+  if (!pageInfo?.tabId) {
+    showMessage("无法获取当前页面信息", "error");
+    return;
+  }
+
+  const folderId = folderSelect.value;
+  if (!folderId) {
+    showMessage("请选择文件夹", "error");
+    return;
+  }
+
+  const tags = tagsInput.value
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  // Store save parameters for the region selector to use later
+  await chrome.storage.session.set({
+    shibeiSelectSave: {
+      tabId: pageInfo.tabId,
+      title: pageInfo.title,
+      url: pageInfo.url,
+      domain: pageInfo.domain,
+      author: pageInfo.author || null,
+      description: pageInfo.description || null,
+      folderId,
+      tags,
+    },
+  });
+
+  // Inject SingleFile bundle first (pre-load, don't execute capture)
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
+      files: ["lib/single-file-bundle.js"],
+      world: "MAIN",
+    });
+  } catch (e) {
+    console.log("[shibei] SingleFile pre-inject failed (may already be injected):", e.message);
+  }
+
+  // Inject the region selector script
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
+      files: ["src/content/region-selector.js"],
+      world: "MAIN",
+    });
+  } catch (e) {
+    showMessage("注入选区脚本失败: " + e.message, "error");
+    return;
+  }
+
+  // Close popup — user interacts with the page now
+  window.close();
 });
 
 init();

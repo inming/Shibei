@@ -116,6 +116,31 @@ body {
   cursor: not-allowed;
 }
 
+.btn-group {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-group .save-btn {
+  flex: 1;
+}
+
+.save-btn-outline {
+  background: white !important;
+  color: #3b82f6 !important;
+  border: 1.5px solid #3b82f6 !important;
+}
+
+.save-btn-outline:hover {
+  background: #eff6ff !important;
+}
+
+.save-btn-outline:disabled {
+  background: white !important;
+  color: #9ca3af !important;
+  border-color: #9ca3af !important;
+}
+
 .message {
   margin-top: 8px;
   padding: 6px 8px;
