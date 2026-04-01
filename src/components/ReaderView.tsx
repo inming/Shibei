@@ -6,6 +6,12 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import * as cmd from "@/lib/commands";
 import styles from "./ReaderView.module.css";
 
+// Tauri 2 uses different protocol URLs per platform:
+// macOS/Linux: shibei://localhost/...
+// Windows:     http://shibei.localhost/...
+const IS_WINDOWS = navigator.userAgent.includes("Windows");
+const PROTOCOL_BASE = IS_WINDOWS ? "http://shibei.localhost" : "shibei://localhost";
+
 interface ReaderViewProps {
   resource: Resource;
   initialHighlightId: string | null;
@@ -213,7 +219,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         <iframe
           ref={iframeRef}
           className={styles.iframe}
-          src={`shibei://localhost/resource/${resource.id}`}
+          src={`${PROTOCOL_BASE}/resource/${resource.id}`}
           title={resource.title}
         />
       </div>
