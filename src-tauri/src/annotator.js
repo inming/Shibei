@@ -1,7 +1,8 @@
 "use strict";
 (function () {
-    // Only activate in shibei:// protocol frames
-    if (!window.location.href.startsWith("shibei://"))
+    // Only activate in shibei protocol frames (macOS: shibei://, Windows: http://shibei.localhost)
+    const href = window.location.href;
+    if (!href.startsWith("shibei://") && !href.startsWith("http://shibei.localhost"))
         return;
     // ── Styles ──
     const style = document.createElement("style");

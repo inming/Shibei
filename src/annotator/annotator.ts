@@ -1,6 +1,7 @@
 (function () {
-  // Only activate in shibei:// protocol frames
-  if (!window.location.href.startsWith("shibei://")) return;
+  // Only activate in shibei protocol frames (macOS: shibei://, Windows: http://shibei.localhost)
+  const href = window.location.href;
+  if (!href.startsWith("shibei://") && !href.startsWith("http://shibei.localhost")) return;
 
   // ── Local type definitions (mirrors src/types/index.ts — no imports allowed) ──
 
