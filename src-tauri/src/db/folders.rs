@@ -156,6 +156,18 @@ pub fn list_children(conn: &Connection, parent_id: &str) -> Result<Vec<Folder>, 
     Ok(folders)
 }
 
+/// Returns the set of folder IDs that have at least one child folder.
+pub fn parent_ids_with_children(conn: &Connection) -> Result<std::collections::HashSet<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT parent_id FROM folders WHERE id != '__root__'",
+    )?;
+    let ids = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(ids)
+}
+
 pub fn reorder_folder(conn: &Connection, id: &str, new_sort_order: i64) -> Result<(), DbError> {
     let now = now_iso8601();
     let changed = conn.execute(

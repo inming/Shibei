@@ -23,6 +23,10 @@ export function getFolderCounts(): Promise<Record<string, number>> {
   return invoke("cmd_get_folder_counts");
 }
 
+export function getNonLeafFolderIds(): Promise<string[]> {
+  return invoke("cmd_get_non_leaf_folder_ids");
+}
+
 export function moveFolder(id: string, newParentId: string): Promise<void> {
   return invoke("cmd_move_folder", { id, newParentId });
 }

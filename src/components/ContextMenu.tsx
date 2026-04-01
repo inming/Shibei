@@ -41,8 +41,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           key={item.label}
           className={`${styles.menuItem} ${item.danger ? styles.danger : ""}`}
           onClick={() => {
-            item.onClick();
+            const action = item.onClick;
             onClose();
+            action();
           }}
         >
           {item.label}

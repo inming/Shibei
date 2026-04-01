@@ -24,25 +24,29 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [editFolder, setEditFolder] = useState<{ id: string; name: string } | null>(null);
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({});
+  const [nonLeafIds, setNonLeafIds] = useState<Set<string>>(new Set());
   const [refreshKey, setRefreshKey] = useState(0);
-  const [leafIds, setLeafIds] = useState<Set<string>>(new Set());
 
-  const loadCounts = useCallback(async () => {
+  const loadMeta = useCallback(async () => {
     try {
-      const counts = await cmd.getFolderCounts();
+      const [counts, ids] = await Promise.all([
+        cmd.getFolderCounts(),
+        cmd.getNonLeafFolderIds(),
+      ]);
       setFolderCounts(counts);
+      setNonLeafIds(new Set(ids));
     } catch (err) {
-      console.error("Failed to load folder counts:", err);
+      console.error("Failed to load folder metadata:", err);
     }
   }, []);
 
   useEffect(() => {
-    loadCounts();
-  }, [loadCounts]);
+    loadMeta();
+  }, [loadMeta]);
 
   function refreshAll() {
     setRefreshKey((k) => k + 1);
-    loadCounts();
+    loadMeta();
   }
 
   function toggleExpand(id: string) {
@@ -57,18 +61,6 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     });
   }
 
-  function markLeaf(id: string) {
-    setLeafIds((prev) => new Set(prev).add(id));
-  }
-
-  function unmarkLeaf(id: string) {
-    setLeafIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }
-
   const parentId = selectedFolderId || "__root__";
 
   async function handleCreate() {
@@ -79,7 +71,6 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       setIsCreating(false);
       if (selectedFolderId) {
         setExpandedIds((prev) => new Set(prev).add(selectedFolderId));
-        unmarkLeaf(selectedFolderId);
       }
       refreshAll();
     } catch (err: unknown) {
@@ -166,13 +157,12 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
         depth={0}
         selectedFolderId={selectedFolderId}
         expandedIds={expandedIds}
-        leafIds={leafIds}
+        nonLeafIds={nonLeafIds}
         folderCounts={folderCounts}
         refreshKey={refreshKey}
         onSelect={onSelectFolder}
         onToggleExpand={toggleExpand}
         onContextMenu={handleContextMenu}
-        onLeafDetected={markLeaf}
       />
 
       {contextMenu && (
@@ -203,13 +193,12 @@ interface FolderNodeProps {
   depth: number;
   selectedFolderId: string | null;
   expandedIds: Set<string>;
-  leafIds: Set<string>;
+  nonLeafIds: Set<string>;
   folderCounts: Record<string, number>;
   refreshKey: number;
   onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string, name: string) => void;
-  onLeafDetected: (id: string) => void;
 }
 
 function FolderNode({
@@ -217,13 +206,12 @@ function FolderNode({
   depth,
   selectedFolderId,
   expandedIds,
-  leafIds,
+  nonLeafIds,
   folderCounts,
   refreshKey,
   onSelect,
   onToggleExpand,
   onContextMenu,
-  onLeafDetected,
 }: FolderNodeProps) {
   const { folders, loading } = useFolders(parentId, refreshKey);
 
@@ -239,7 +227,7 @@ function FolderNode({
     <>
       {folders.map((folder) => {
         const isExpanded = expandedIds.has(folder.id);
-        const isLeaf = leafIds.has(folder.id);
+        const hasChildren = nonLeafIds.has(folder.id);
         const isSelected = selectedFolderId === folder.id;
         const count = folderCounts[folder.id];
 
@@ -251,9 +239,7 @@ function FolderNode({
               onClick={() => onSelect(folder.id)}
               onContextMenu={(e) => onContextMenu(e, folder.id, folder.name)}
             >
-              {isLeaf ? (
-                <span className={styles.arrow} />
-              ) : (
+              {hasChildren ? (
                 <span
                   className={styles.arrow}
                   onClick={(e) => {
@@ -263,24 +249,25 @@ function FolderNode({
                 >
                   {isExpanded ? "▼" : "▶"}
                 </span>
+              ) : (
+                <span className={styles.arrow} />
               )}
               <span className={styles.folderName}>📁 {folder.name}</span>
               {count ? <span className={styles.count}>{count}</span> : null}
             </div>
-            {isExpanded && !isLeaf && (
+            {isExpanded && hasChildren && (
               <div className={styles.children}>
-                <ChildFolderNode
+                <FolderNode
                   parentId={folder.id}
                   depth={depth + 1}
                   selectedFolderId={selectedFolderId}
                   expandedIds={expandedIds}
-                  leafIds={leafIds}
+                  nonLeafIds={nonLeafIds}
                   folderCounts={folderCounts}
                   refreshKey={refreshKey}
                   onSelect={onSelect}
                   onToggleExpand={onToggleExpand}
                   onContextMenu={onContextMenu}
-                  onLeafDetected={onLeafDetected}
                 />
               </div>
             )}
@@ -288,23 +275,5 @@ function FolderNode({
         );
       })}
     </>
-  );
-}
-
-// Wrapper that detects empty children and reports leaf status
-function ChildFolderNode(props: FolderNodeProps) {
-  const { folders, loading } = useFolders(props.parentId, props.refreshKey);
-
-  useEffect(() => {
-    if (!loading && folders.length === 0) {
-      props.onLeafDetected(props.parentId);
-    }
-  }, [loading, folders.length, props.parentId, props.onLeafDetected]);
-
-  if (loading) return null;
-  if (folders.length === 0) return null;
-
-  return (
-    <FolderNode {...props} />
   );
 }

@@ -243,3 +243,12 @@ pub async fn cmd_get_folder_counts(
     let conn = state.conn.lock().await;
     resources::count_by_folder(&conn).map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn cmd_get_non_leaf_folder_ids(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<String>, CommandError> {
+    let conn = state.conn.lock().await;
+    let set = folders::parent_ids_with_children(&conn).map_err(CommandError::from)?;
+    Ok(set.into_iter().collect())
+}
