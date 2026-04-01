@@ -274,21 +274,32 @@ selectSaveBtn.addEventListener("click", async () => {
     .map((t) => t.trim())
     .filter(Boolean);
 
-  // Store save parameters for the region selector to use later
-  await chrome.storage.session.set({
-    shibeiSelectSave: {
-      tabId: pageInfo.tabId,
-      title: pageInfo.title,
-      url: pageInfo.url,
-      domain: pageInfo.domain,
-      author: pageInfo.author || null,
-      description: pageInfo.description || null,
-      folderId,
-      tags,
-    },
-  });
+  const saveParams = {
+    title: pageInfo.title,
+    url: pageInfo.url,
+    domain: pageInfo.domain,
+    author: pageInfo.author || null,
+    description: pageInfo.description || null,
+    folderId,
+    tags,
+  };
 
-  // Inject SingleFile bundle first (pre-load, don't execute capture)
+  // Inject save parameters into page global scope (MAIN world)
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
+      world: "MAIN",
+      func: (params) => {
+        window.__shibeiSaveParams = params;
+      },
+      args: [saveParams],
+    });
+  } catch (e) {
+    showMessage("注入参数失败: " + e.message, "error");
+    return;
+  }
+
+  // Inject SingleFile bundle (pre-load, don't execute capture)
   try {
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },

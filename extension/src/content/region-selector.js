@@ -321,9 +321,8 @@
     const textPreview = (element.textContent || "").trim().slice(0, 50);
     const tagName = element.tagName.toLowerCase();
 
-    // Get save parameters from session storage
-    const stored = await chrome.storage.session.get("shibeiSelectSave");
-    const params = stored.shibeiSelectSave;
+    // Get save parameters from global variable (set by popup via executeScript)
+    const params = window.__shibeiSaveParams;
     if (!params) {
       showToast("保存参数丢失，请重新操作", "#dc2626");
       setTimeout(cleanup, 2000);
@@ -403,8 +402,8 @@
       }
 
       showToast("保存成功!", "#16a34a");
-      // Clean up session storage
-      await chrome.storage.session.remove("shibeiSelectSave");
+      // Clean up global params
+      delete window.__shibeiSaveParams;
       setTimeout(cleanup, 1500);
     } catch (err) {
       showToast("保存失败: " + err.message, "#dc2626");
