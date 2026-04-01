@@ -48,6 +48,7 @@ struct SaveRequest {
     folder_id: String,
     tags: Vec<String>,
     captured_at: String,
+    selection_meta: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -219,7 +220,7 @@ async fn handle_save(
             resource_type: payload.content_type,
             file_path: rel_path.to_string_lossy().to_string(),
             captured_at: payload.captured_at,
-            selection_meta: None,
+            selection_meta: payload.selection_meta,
         },
     )
     .map_err(|e| {
