@@ -217,3 +217,39 @@
   outline: none;
   border-color: var(--color-accent);
 }
+
+.modalMessage {
+  margin-bottom: var(--spacing-lg);
+  font-size: var(--font-size-base);
+}
+
+.modalActions {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+}
+
+.modalCancelBtn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  background: var(--color-bg-tertiary);
+  cursor: pointer;
+}
+
+.modalDangerBtn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  background: var(--color-danger);
+  color: white;
+  cursor: pointer;
+}
+
+.addCommentWrap {
+  margin-top: var(--spacing-xs);
+}
+
+.addNoteWrap {
+  margin-top: var(--spacing-xs);
+}

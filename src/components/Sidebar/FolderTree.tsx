@@ -3,6 +3,7 @@ import { useFolders } from "@/hooks/useFolders";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { FolderEditDialog } from "@/components/Sidebar/FolderEditDialog";
+import { Spinner } from "@/components/Spinner";
 import { Modal } from "@/components/Modal";
 import styles from "./FolderTree.module.css";
 
@@ -255,7 +256,7 @@ function FolderNode({
   const { folders, loading } = useFolders(parentId, refreshKey);
 
   if (loading && depth === 0) {
-    return <div className={styles.empty}>加载中...</div>;
+    return <Spinner />;
   }
 
   if (!loading && folders.length === 0 && depth === 0) {

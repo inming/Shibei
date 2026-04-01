@@ -49,6 +49,7 @@
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
   font-weight: 500;
+  box-shadow: inset 0 -2px 0 var(--color-accent);
 }
 
 .tabLabel {

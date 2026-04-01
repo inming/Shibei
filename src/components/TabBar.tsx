@@ -22,7 +22,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab }: TabBarPro
           className={`${styles.tab} ${activeTabId === tab.id ? styles.tabActive : ""}`}
           onClick={() => onSelectTab(tab.id)}
         >
-          <span className={styles.tabLabel}>{tab.label}</span>
+          <span className={styles.tabLabel} title={tab.label}>{tab.label}</span>
           {tab.closable && (
             <button
               className={styles.tabClose}

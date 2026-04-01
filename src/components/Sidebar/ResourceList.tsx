@@ -1,6 +1,7 @@
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
 import type { Resource } from "@/types";
+import { Spinner } from "@/components/Spinner";
 import styles from "./ResourceList.module.css";
 
 interface ResourceListProps {
@@ -30,7 +31,7 @@ export function ResourceList({ folderId, selectedResourceId, onSelect, onOpen }:
       {!folderId && (
         <div className={styles.empty}>选择文件夹查看资料</div>
       )}
-      {loading && <div className={styles.empty}>加载中...</div>}
+      {loading && <Spinner />}
       {folderId && !loading && resources.length === 0 && (
         <div className={styles.empty}>该文件夹暂无资料</div>
       )}

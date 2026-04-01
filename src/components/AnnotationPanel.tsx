@@ -107,33 +107,14 @@ export function AnnotationPanel({
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <Modal title="确认删除" onClose={() => setDeleteConfirm(null)}>
-          <p style={{ marginBottom: "var(--spacing-lg)", fontSize: "var(--font-size-base)" }}>
+          <p className={styles.modalMessage}>
             {getDeleteMessage(deleteConfirm)}
           </p>
-          <div style={{ display: "flex", gap: "var(--spacing-sm)", justifyContent: "flex-end" }}>
-            <button
-              onClick={() => setDeleteConfirm(null)}
-              style={{
-                padding: "6px 16px",
-                borderRadius: "4px",
-                fontSize: "var(--font-size-sm)",
-                background: "var(--color-bg-tertiary)",
-                cursor: "pointer",
-              }}
-            >
+          <div className={styles.modalActions}>
+            <button className={styles.modalCancelBtn} onClick={() => setDeleteConfirm(null)}>
               取消
             </button>
-            <button
-              onClick={handleConfirmDelete}
-              style={{
-                padding: "6px 16px",
-                borderRadius: "4px",
-                fontSize: "var(--font-size-sm)",
-                background: "var(--color-danger)",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
+            <button className={styles.modalDangerBtn} onClick={handleConfirmDelete}>
               删除
             </button>
           </div>
@@ -272,7 +253,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
         {/* Add comment */}
         <div onClick={(e) => e.stopPropagation()}>
           {showInput ? (
-            <div style={{ marginTop: "4px" }}>
+            <div className={styles.addCommentWrap}>
               <textarea
                 className={styles.commentInput}
                 value={commentText}
@@ -400,7 +381,7 @@ function NotesSection({ notes, onAdd, onEdit, onDelete }: NotesSectionProps) {
       ))}
 
       {/* Add note input */}
-      <div style={{ marginTop: notes.length > 0 ? "var(--spacing-xs)" : 0 }}>
+      <div className={notes.length > 0 ? styles.addNoteWrap : undefined}>
         <textarea
           className={styles.noteInput}
           value={noteText}
