@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。**
 
 ---
 
@@ -52,14 +52,17 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。**
 
 ### 调研目标
 
-- [ ] **失败模式分析** — 收集并分类 anchor 解析失败的具体场景，理解根因
-- [ ] **业界方案对比** — 调研 Hypothesis、Readwise、Omnivore 等工具的 anchor 策略，对比 text position / text quote / CSS selector / XPath / Range 序列化等方案的兼容性和复杂度
-- [ ] **方案选型** — 确定增强方向（多策略 fallback、模糊匹配增强、CSS Selector 锚点等），评估改动范围和风险
-- [ ] **失败可视化** — 短期改进：anchor 解析失败时在 AnnotationPanel 标记"定位失败"而非静默丢失
+- [x] **失败模式分析** — 收集并分类 anchor 解析失败的具体场景，理解根因
+- [x] **业界方案对比** — 调研 Hypothesis、Readwise、Omnivore 等工具的 anchor 策略，对比 text position / text quote / CSS selector / XPath / Range 序列化等方案的兼容性和复杂度
+- [x] **方案选型** — 确定增强方向（多策略 fallback、模糊匹配增强、CSS Selector 锚点等），评估改动范围和风险
+- [x] **失败可视化** — anchor 解析失败时在 AnnotationPanel 标记"定位失败"而非静默丢失
+- [x] **getTextNodes 加固** — 过滤隐藏元素、脚本标签文本节点，标准化零宽字符
+- [x] **模糊匹配** — Bitap 算法 fuzzy fallback，容忍轻微文本差异
 
 ### 产出
 
-调研文档 → 设计方案 → 实现计划，作为独立 session 推进。
+- 调研文档：`docs/superpowers/specs/2026-04-01-anchor-enhancement-design.md`
+- 实现计划：`docs/superpowers/plans/2026-04-01-anchor-enhancement.md`
 
 ---
 
