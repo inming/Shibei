@@ -19,6 +19,7 @@ export interface Resource {
   file_path: string;
   created_at: string;
   captured_at: string;
+  selection_meta: string | null;
 }
 
 export interface Tag {

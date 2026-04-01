@@ -39,7 +39,10 @@ export function ResourceList({ folderId, selectedResourceId, onSelectResource }:
           className={`${styles.item} ${selectedResourceId === resource.id ? styles.itemSelected : ""}`}
           onClick={() => onSelectResource(resource)}
         >
-          <div className={styles.itemTitle}>{resource.title}</div>
+          <div className={styles.itemTitle}>
+            {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
+            {resource.title}
+          </div>
           <div className={styles.itemMeta}>
             <span>{resource.domain ?? new URL(resource.url).hostname} · {new Date(resource.created_at).toLocaleDateString()}</span>
             <button
