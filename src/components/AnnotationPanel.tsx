@@ -5,6 +5,7 @@ import { Modal } from "@/components/Modal";
 
 interface AnnotationPanelProps {
   highlights: Highlight[];
+  failedHighlightIds: Set<string>;
   getCommentsForHighlight: (highlightId: string) => Comment[];
   activeHighlightId: string | null;
   onClickHighlight: (id: string) => void;
@@ -18,6 +19,7 @@ interface AnnotationPanelProps {
 
 export function AnnotationPanel({
   highlights,
+  failedHighlightIds,
   getCommentsForHighlight,
   activeHighlightId,
   onClickHighlight,
@@ -99,6 +101,7 @@ export function AnnotationPanel({
               highlight={hl}
               comments={getCommentsForHighlight(hl.id)}
               isActive={activeHighlightId === hl.id}
+              isFailed={failedHighlightIds.has(hl.id)}
               ref={activeHighlightId === hl.id ? activeRef : null}
               onClick={() => onClickHighlight(hl.id)}
               onDelete={() =>
@@ -163,6 +166,7 @@ interface HighlightEntryProps {
   highlight: Highlight;
   comments: Comment[];
   isActive: boolean;
+  isFailed: boolean;
   onClick: () => void;
   onDelete: () => void;
   onAddComment: (content: string) => void;
@@ -174,7 +178,7 @@ import { forwardRef } from "react";
 
 const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
   function HighlightEntry(
-    { highlight, comments, isActive, onClick, onDelete, onAddComment, onDeleteComment, onEditComment },
+    { highlight, comments, isActive, isFailed, onClick, onDelete, onAddComment, onDeleteComment, onEditComment },
     ref,
   ) {
     const [showInput, setShowInput] = useState(false);
@@ -192,12 +196,13 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     return (
       <div
         ref={ref}
-        className={`${styles.highlightItem} ${isActive ? styles.highlightItemActive : ""}`}
-        style={{ borderLeftColor: highlight.color }}
+        className={`${styles.highlightItem} ${isActive ? styles.highlightItemActive : ""} ${isFailed ? styles.highlightItemFailed : ""}`}
+        style={{ borderLeftColor: isFailed ? "#ccc" : highlight.color }}
         onClick={onClick}
       >
         <div className={styles.highlightText}>{highlight.text_content}</div>
         <div className={styles.highlightMeta}>
+          {isFailed && <span className={styles.failedBadge}>定位失败</span>}
           <span>{new Date(highlight.created_at).toLocaleDateString()}</span>
           <button
             className={styles.deleteBtn}

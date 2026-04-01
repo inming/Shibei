@@ -277,3 +277,17 @@
 .addNoteWrap {
   margin-top: var(--spacing-xs);
 }
+
+.highlightItemFailed {
+  opacity: 0.6;
+}
+
+.failedBadge {
+  display: inline-block;
+  padding: 1px 4px;
+  margin-right: var(--spacing-xs);
+  border-radius: 3px;
+  font-size: 10px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-muted);
+}

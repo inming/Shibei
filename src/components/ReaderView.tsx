@@ -32,6 +32,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
+  const [failedHighlightIds, setFailedHighlightIds] = useState<Set<string>>(new Set());
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -88,6 +89,12 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           // Open external links in default browser
           if (msg.url) {
             window.open(msg.url, "_blank");
+          }
+          break;
+
+        case "shibei:render-result":
+          if (Array.isArray(msg.failedIds)) {
+            setFailedHighlightIds(new Set(msg.failedIds as string[]));
           }
           break;
       }
@@ -190,11 +197,14 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   // Handle click on annotation panel → scroll iframe to highlight
   const handlePanelClickHighlight = useCallback((id: string) => {
     setActiveHighlightId(id);
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: "shibei:scroll-to-highlight", id },
-      "*",
-    );
-  }, []);
+    // Don't scroll to highlight if it failed to anchor in the DOM
+    if (!failedHighlightIds.has(id)) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "shibei:scroll-to-highlight", id },
+        "*",
+      );
+    }
+  }, [failedHighlightIds]);
 
   return (
     <div ref={containerRef} className={styles.container}>
@@ -242,6 +252,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         getCommentsForHighlight={getCommentsForHighlight}
         resourceNotes={resourceNotes}
         activeHighlightId={activeHighlightId}
+        failedHighlightIds={failedHighlightIds}
         onClickHighlight={handlePanelClickHighlight}
         onDeleteHighlight={handleDeleteHighlight}
         onAddComment={(hlId, content) => addComment(hlId, content)}
