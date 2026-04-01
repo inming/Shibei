@@ -9,6 +9,7 @@
 | 决策点 | 选择 | 理由 |
 |--------|------|------|
 | 多级展开 | 递归组件 + 懒加载 | 后端已支持嵌套，前端只需递归渲染 |
+| 资料数量 | 批量接口 `GET /api/folder-counts` | 一次请求拿到所有文件夹的 count，避免逐个请求 |
 | 文件夹编辑入口 | 右键上下文菜单 | 避免双击误操作，未来可扩展更多操作 |
 | 编辑方式 | 模态对话框 | 未来可扩展图标选择等更多属性 |
 | URL 查重 | 插件加载时自动查询 | 不阻止重复保存，只做提示 |
@@ -28,14 +29,22 @@
 - 子文件夹通过 `padding-left` 缩进，每级 16px
 - 展开时才调用 `useFolders(folderId)` 加载子文件夹（懒加载，避免一次性加载所有层级）
 - 创建文件夹时 `parentId` 使用当前选中的文件夹（若无选中则为 `__root__`）
+- 文件夹名后显示该文件夹下的资料数量（如 "技术 8"），数量为 0 时不显示
+
+### 资料数量
+
+- 后端新增 `GET /api/folder-counts` 接口，返回所有文件夹的资料数量 map：`{ "folder_id_1": 3, "folder_id_2": 8 }`
+- 后端通过 `SELECT folder_id, COUNT(*) FROM resources GROUP BY folder_id` 一次查询
+- 前端在 FolderTree 加载时请求一次，展开/折叠/刷新时重新请求
+- 数量显示在文件夹名右侧，颜色使用 muted text
 
 ### 组件结构
 
 ```
-FolderTree（根组件，管理选中/展开状态）
+FolderTree（根组件，管理选中/展开状态，持有 folderCounts）
   └─ FolderNode（递归组件，渲染单个文件夹 + 子级）
        ├─ 展开箭头
-       ├─ 📁 文件夹名
+       ├─ 📁 文件夹名  数量
        └─ [展开时] 子 FolderNode 列表
 ```
 
@@ -109,6 +118,9 @@ FolderTree（根组件，管理选中/展开状态）
 |------|------|---------|
 | 多级展开 | `FolderTree.tsx` | 重构：递归组件 |
 | 多级展开 | `FolderTree.module.css` | 修改：缩进/箭头样式 |
+| 资料数量 | `server/mod.rs` | 修改：新增 `/api/folder-counts` |
+| 资料数量 | `db/resources.rs` | 修改：新增 `count_by_folder` 查询 |
+| 资料数量 | `FolderTree.tsx` | 修改：请求并显示 count |
 | 右键菜单 | `components/ContextMenu.tsx` | **新增** |
 | 模态对话框 | `components/Modal.tsx` | **新增** |
 | 文件夹编辑 | `components/Sidebar/FolderEditDialog.tsx` | **新增** |
