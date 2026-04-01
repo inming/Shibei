@@ -14,10 +14,16 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    sql: include_str!("../../migrations/001_init.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        sql: include_str!("../../migrations/001_init.sql"),
+    },
+    Migration {
+        version: 2,
+        sql: include_str!("../../migrations/002_add_selection_meta.sql"),
+    },
+];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), MigrationError> {
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -79,7 +85,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[test]
@@ -97,7 +103,7 @@ mod tests {
         let after: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(after, 1);
+        assert_eq!(after, 2);
     }
 
     #[test]
@@ -147,5 +153,35 @@ mod tests {
             [],
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_migration_002_adds_selection_meta() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        run_migrations(&mut conn).unwrap();
+
+        // Verify column exists by inserting with it
+        conn.execute(
+            "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at)
+             VALUES ('f1', 'test', '__root__', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO resources (id, title, url, folder_id, resource_type, file_path, created_at, captured_at, selection_meta)
+             VALUES ('r1', 'test', 'http://x', 'f1', 'html', 'x', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '{\"selector\":\"article\"}')",
+            [],
+        )
+        .unwrap();
+
+        let meta: Option<String> = conn
+            .query_row(
+                "SELECT selection_meta FROM resources WHERE id = 'r1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(meta, Some("{\"selector\":\"article\"}".to_string()));
     }
 }
