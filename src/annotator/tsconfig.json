@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "None",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "outDir": "../../src-tauri/src",
+    "outFile": "../../src-tauri/src/annotator.js",
+    "removeComments": false,
+    "skipLibCheck": true
+  },
+  "include": ["annotator.ts"]
+}

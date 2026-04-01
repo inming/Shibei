@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npm run build:annotator && tsc && vite build",
+    "build:annotator": "tsc -p src/annotator/tsconfig.json",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run"
