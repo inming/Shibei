@@ -8,7 +8,6 @@
   if (window.__shibeiRegionSelector) return;
   window.__shibeiRegionSelector = true;
 
-  const API_BASE = "http://127.0.0.1:21519";
   const ATTR = "data-shibei-selector";
   const Z = 2147483647;
 
@@ -360,28 +359,18 @@
       return;
     }
 
-    // Base64 encode
+    // Send to background via relay (MAIN world cannot fetch to localhost due to CSP)
     showToast("正在保存...", "#1e40af");
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(clippedHtml);
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64Content = btoa(binary);
 
-    // Build payload
-    const payload = {
+    const saveData = {
       title: params.title,
       url: params.url,
       domain: params.domain,
       author: params.author,
       description: params.description,
-      content: base64Content,
-      content_type: "html",
-      folder_id: params.folderId,
+      content: clippedHtml,
+      folderId: params.folderId,
       tags: params.tags,
-      captured_at: new Date().toISOString(),
       selection_meta: JSON.stringify({
         selector: selector,
         tag_name: tagName,
@@ -389,26 +378,28 @@
       }),
     };
 
-    // POST to server
-    try {
-      const res = await fetch(API_BASE + "/api/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error("HTTP " + res.status + ": " + errText);
-      }
+    // Listen for result from relay
+    const resultHandler = (event) => {
+      if (event.source !== window) return;
+      if (event.data?.type !== "shibei:save-region-result") return;
+      window.removeEventListener("message", resultHandler);
 
-      showToast("保存成功!", "#16a34a");
-      // Clean up global params
-      delete window.__shibeiSaveParams;
-      setTimeout(cleanup, 1500);
-    } catch (err) {
-      showToast("保存失败: " + err.message, "#dc2626");
-      setTimeout(cleanup, 3000);
-    }
+      if (event.data.success) {
+        showToast("保存成功!", "#16a34a");
+        delete window.__shibeiSaveParams;
+        setTimeout(cleanup, 1500);
+      } else {
+        showToast("保存失败: " + (event.data.error || "未知错误"), "#dc2626");
+        setTimeout(cleanup, 3000);
+      }
+    };
+    window.addEventListener("message", resultHandler);
+
+    // Post to relay script in ISOLATED world
+    window.postMessage({
+      type: "shibei:save-region",
+      payload: saveData,
+    });
   }
 
   // ═══════════════════════════════════════════

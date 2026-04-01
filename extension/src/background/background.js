@@ -6,7 +6,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleSavePage(message.data)
       .then((result) => sendResponse({ success: true, data: result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
-    return true; // Keep message channel open for async response
+    return true;
+  }
+  if (message.type === "save-region") {
+    handleSaveRegion(message.data)
+      .then((result) => sendResponse({ success: true, data: result }))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
   }
 });
 
@@ -27,6 +33,39 @@ async function handleSavePage(data) {
     folder_id: data.folderId,
     tags: data.tags || [],
     captured_at: new Date().toISOString(),
+  };
+
+  const response = await fetch(`${API_BASE}/api/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: "Unknown error" }));
+    throw new Error(err.error || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function handleSaveRegion(data) {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(data.content);
+  const base64 = arrayBufferToBase64(bytes.buffer);
+
+  const payload = {
+    title: data.title,
+    url: data.url,
+    domain: data.domain,
+    author: data.author || null,
+    description: data.description || null,
+    content: base64,
+    content_type: "html",
+    folder_id: data.folderId,
+    tags: data.tags || [],
+    captured_at: new Date().toISOString(),
+    selection_meta: data.selection_meta,
   };
 
   const response = await fetch(`${API_BASE}/api/save`, {

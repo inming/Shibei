@@ -299,6 +299,16 @@ selectSaveBtn.addEventListener("click", async () => {
     return;
   }
 
+  // Inject relay script in ISOLATED world (bridges postMessage to background)
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
+      files: ["src/content/relay.js"],
+    });
+  } catch (e) {
+    console.log("[shibei] relay inject failed:", e.message);
+  }
+
   // Inject SingleFile bundle (pre-load, don't execute capture)
   try {
     await chrome.scripting.executeScript({
