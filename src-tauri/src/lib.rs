@@ -18,7 +18,8 @@ const ANNOTATOR_JS: &str = include_str!("annotator.js");
 
 /// Inject annotator script into HTML content.
 fn inject_annotator_script(html: &str) -> String {
-    let script_tag = format!("<script>{}</script>", ANNOTATOR_JS);
+    let override_css = "<style>*{-webkit-user-select:text!important;user-select:text!important;}</style>";
+    let script_tag = format!("{}<script>{}</script>", override_css, ANNOTATOR_JS);
     if let Some(pos) = html.find("</head>") {
         let mut result = html.to_string();
         result.insert_str(pos, &script_tag);
