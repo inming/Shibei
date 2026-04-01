@@ -39,7 +39,7 @@ src/                # React 前端
 extension/          # Chrome 浏览器插件
   src/
     background/     # Service Worker
-    content/        # Content Script（SingleFile 启动）
+    content/        # Content Script（region-selector.js 选区交互, relay.js 消息中继）
     popup/          # 插件弹窗 UI（保存面板）
   lib/              # SingleFile 打包（single-file-bundle.js）
 docs/               # 设计文档与规范
@@ -47,7 +47,8 @@ docs/               # 设计文档与规范
 
 ## 架构要点
 
-- **网页抓取**：Chrome 插件注入 SingleFile → 生成内联 HTML → POST 到本地 HTTP Server → Rust 存储为 snapshot.html
+- **网页抓取（整页）**：Chrome 插件注入 SingleFile → 生成内联 HTML → POST 到本地 HTTP Server → Rust 存储为 snapshot.html
+- **网页抓取（选区）**：插件注入选区脚本(MAIN world) → 用户选 DOM 元素 → SingleFile 整页抓取 → 裁剪子树(保留祖先链样式) → postMessage → relay.js(ISOLATED world) → background.js → POST 到 HTTP Server
 - **阅读渲染**：自定义协议 `shibei://resource/{id}` → 读取 snapshot.html → 注入 annotator.js → 返回给 WebView
 - **标注系统**：annotator.js 在 iframe 中运行，通过 postMessage 与 React 通信，持久化通过 Tauri invoke
 - **UI 布局**：Tab-based（资料库三栏 Tab + 阅读器全宽 Tab），资料列表独立成列
@@ -74,6 +75,7 @@ docs/               # 设计文档与规范
 - Manifest V3，不使用已废弃的 Manifest V2 API
 - Content Script 保持最小化，避免污染页面全局作用域
 - SingleFile 在 MAIN world 中执行（需要 DOM 访问）
+- **MAIN world 限制**：MAIN world 脚本受页面 CSP 限制，不能 fetch localhost，也不能使用 `chrome.*` API。需要网络请求或扩展 API 时，必须通过 ISOLATED world 中继脚本转发到 Background Service Worker
 
 ## AI 协作模式
 
@@ -107,6 +109,7 @@ docs/               # 设计文档与规范
 - **标注数据**：独立于原始资料存储，不修改快照文件
 - **脚本注入**：标注脚本通过 `<script>` 标签直接嵌入 HTML `<head>`，不使用 initialization_script
 - **外链处理**：iframe 内链接点击被拦截，在外部浏览器打开
+- **插件 MAIN world 通信**：MAIN world 脚本通过 `window.postMessage` → ISOLATED world `relay.js` → `chrome.runtime.sendMessage` → Background Service Worker 中继，绕过页面 CSP 限制
 
 ## 依赖管理
 
