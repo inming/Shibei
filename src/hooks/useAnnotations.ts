@@ -73,6 +73,22 @@ export function useAnnotations(resourceId: string) {
     [],
   );
 
+  const editComment = useCallback(
+    async (id: string, content: string) => {
+      try {
+        await cmd.updateComment(id, content);
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === id ? { ...c, content, updated_at: new Date().toISOString() } : c,
+          ),
+        );
+      } catch (err) {
+        console.error("Failed to update comment:", err);
+      }
+    },
+    [],
+  );
+
   const getCommentsForHighlight = useCallback(
     (highlightId: string) => {
       return comments.filter((c) => c.highlight_id === highlightId);
@@ -92,6 +108,7 @@ export function useAnnotations(resourceId: string) {
     removeHighlight,
     addComment,
     removeComment,
+    editComment,
     getCommentsForHighlight,
   };
 }

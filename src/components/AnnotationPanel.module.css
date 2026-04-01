@@ -152,3 +152,16 @@
   color: var(--color-text-muted);
   padding: 2px 8px;
 }
+
+.editBtn {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  margin-right: var(--spacing-xs);
+}
+
+.editBtn:hover {
+  background: var(--color-accent);
+  color: white;
+}

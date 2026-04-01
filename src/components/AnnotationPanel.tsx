@@ -10,6 +10,7 @@ interface AnnotationPanelProps {
   onDeleteHighlight: (id: string) => void;
   onAddComment: (highlightId: string | null, content: string) => void;
   onDeleteComment: (id: string) => void;
+  onEditComment: (id: string, content: string) => void;
 }
 
 export function AnnotationPanel({
@@ -20,6 +21,7 @@ export function AnnotationPanel({
   onDeleteHighlight,
   onAddComment,
   onDeleteComment,
+  onEditComment,
 }: AnnotationPanelProps) {
   const activeRef = useRef<HTMLDivElement>(null);
 
@@ -48,6 +50,7 @@ export function AnnotationPanel({
             onDelete={() => onDeleteHighlight(hl.id)}
             onAddComment={(content) => onAddComment(hl.id, content)}
             onDeleteComment={onDeleteComment}
+            onEditComment={onEditComment}
           />
         ))}
       </div>
@@ -63,17 +66,20 @@ interface HighlightEntryProps {
   onDelete: () => void;
   onAddComment: (content: string) => void;
   onDeleteComment: (id: string) => void;
+  onEditComment: (id: string, content: string) => void;
 }
 
 import { forwardRef } from "react";
 
 const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
   function HighlightEntry(
-    { highlight, comments, isActive, onClick, onDelete, onAddComment, onDeleteComment },
+    { highlight, comments, isActive, onClick, onDelete, onAddComment, onDeleteComment, onEditComment },
     ref,
   ) {
     const [showInput, setShowInput] = useState(false);
     const [commentText, setCommentText] = useState("");
+    const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+    const [editText, setEditText] = useState("");
 
     function handleSubmit() {
       if (!commentText.trim()) return;
@@ -108,16 +114,71 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
           <div className={styles.commentSection} onClick={(e) => e.stopPropagation()}>
             {comments.map((c) => (
               <div key={c.id} className={styles.commentItem}>
-                <div className={styles.commentContent}>{c.content}</div>
-                <div className={styles.commentMeta}>
-                  <span>{new Date(c.created_at).toLocaleDateString()}</span>
-                  <button
-                    className={styles.deleteBtn}
-                    onClick={() => onDeleteComment(c.id)}
-                  >
-                    删除
-                  </button>
-                </div>
+                {editingCommentId === c.id ? (
+                  <div>
+                    <textarea
+                      className={styles.commentInput}
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          if (editText.trim()) {
+                            onEditComment(c.id, editText.trim());
+                            setEditingCommentId(null);
+                          }
+                        }
+                        if (e.key === "Escape") {
+                          setEditingCommentId(null);
+                        }
+                      }}
+                    />
+                    <div className={styles.commentActions}>
+                      <button
+                        className={styles.submitBtn}
+                        onClick={() => {
+                          if (editText.trim()) {
+                            onEditComment(c.id, editText.trim());
+                            setEditingCommentId(null);
+                          }
+                        }}
+                      >
+                        保存
+                      </button>
+                      <button
+                        className={styles.cancelBtn}
+                        onClick={() => setEditingCommentId(null)}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className={styles.commentContent}>{c.content}</div>
+                    <div className={styles.commentMeta}>
+                      <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                      <span>
+                        <button
+                          className={styles.editBtn}
+                          onClick={() => {
+                            setEditingCommentId(c.id);
+                            setEditText(c.content);
+                          }}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          className={styles.deleteBtn}
+                          onClick={() => onDeleteComment(c.id)}
+                        >
+                          删除
+                        </button>
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>

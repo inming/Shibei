@@ -36,6 +36,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     removeHighlight,
     addComment,
     removeComment,
+    editComment,
   } = useAnnotations(resource.id);
 
   // Listen for messages from iframe
@@ -208,6 +209,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         onDeleteHighlight={handleDeleteHighlight}
         onAddComment={(hlId, content) => addComment(hlId, content)}
         onDeleteComment={removeComment}
+        onEditComment={editComment}
       />
     </div>
   );
