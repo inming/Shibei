@@ -9,17 +9,18 @@ const LIBRARY_TAB_ID = "__library__";
 
 interface ReaderTab {
   resource: Resource;
+  initialHighlightId: string | null;
 }
 
 function App() {
   const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
 
-  const openResource = useCallback((resource: Resource) => {
+  const openResource = useCallback((resource: Resource, highlightId?: string) => {
     setReaderTabs((prev) => {
       const next = new Map(prev);
       if (!next.has(resource.id)) {
-        next.set(resource.id, { resource });
+        next.set(resource.id, { resource, initialHighlightId: highlightId ?? null });
       }
       return next;
     });
@@ -57,7 +58,10 @@ function App() {
           <LibraryView onOpenResource={openResource} />
         ) : (
           readerTabs.has(activeTabId) && (
-            <ReaderView resource={readerTabs.get(activeTabId)!.resource} />
+            <ReaderView
+              resource={readerTabs.get(activeTabId)!.resource}
+              initialHighlightId={readerTabs.get(activeTabId)!.initialHighlightId}
+            />
           )
         )}
       </div>

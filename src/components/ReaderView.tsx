@@ -8,6 +8,7 @@ import styles from "./ReaderView.module.css";
 
 interface ReaderViewProps {
   resource: Resource;
+  initialHighlightId: string | null;
 }
 
 interface SelectionInfo {
@@ -16,8 +17,9 @@ interface SelectionInfo {
   rect: { top: number; left: number; width: number; height: number };
 }
 
-export function ReaderView({ resource }: ReaderViewProps) {
+export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const didScrollToInitial = useRef(false);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
@@ -88,6 +90,24 @@ export function ReaderView({ resource }: ReaderViewProps) {
       );
     }
   }, [iframeReady, highlights]);
+
+  // Scroll to initial highlight if specified (once only)
+  useEffect(() => {
+    if (
+      initialHighlightId &&
+      iframeReady &&
+      highlights.length > 0 &&
+      !didScrollToInitial.current &&
+      iframeRef.current?.contentWindow
+    ) {
+      didScrollToInitial.current = true;
+      setActiveHighlightId(initialHighlightId);
+      iframeRef.current.contentWindow.postMessage(
+        { type: "shibei:scroll-to-highlight", id: initialHighlightId },
+        "*",
+      );
+    }
+  }, [initialHighlightId, iframeReady, highlights]);
 
   // Handle color selection → create highlight
   const handleCreateHighlight = useCallback(

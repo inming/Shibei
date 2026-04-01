@@ -6,11 +6,12 @@ import { ResourceList } from "@/components/Sidebar/ResourceList";
 import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
-  onOpenResource: (resource: Resource) => void;
+  onOpenResource: (resource: Resource, highlightId?: string) => void;
 }
 
 export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
 
   return (
     <div className={styles.layout}>
@@ -18,7 +19,10 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       <div className={styles.sidebar}>
         <FolderTree
           selectedFolderId={selectedFolderId}
-          onSelectFolder={setSelectedFolderId}
+          onSelectFolder={(id) => {
+            setSelectedFolderId(id);
+            setSelectedResource(null);
+          }}
         />
         <TagFilter />
       </div>
@@ -27,16 +31,23 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       <div className={styles.listPanel}>
         <ResourceList
           folderId={selectedFolderId}
-          selectedResourceId={null}
-          onSelectResource={onOpenResource}
+          selectedResourceId={selectedResource?.id ?? null}
+          onSelect={setSelectedResource}
+          onOpen={(resource) => onOpenResource(resource)}
         />
       </div>
 
-      {/* Col 3: Welcome / placeholder */}
+      {/* Col 3: Preview or placeholder */}
       <div className={styles.main}>
-        <div className={styles.mainPlaceholder}>
-          双击资料在新标签页中打开阅读
-        </div>
+        {selectedResource ? (
+          <div className={styles.mainPlaceholder}>
+            预览面板 — 下一步实现
+          </div>
+        ) : (
+          <div className={styles.mainPlaceholder}>
+            双击资料在新标签页中打开阅读
+          </div>
+        )}
       </div>
     </div>
   );

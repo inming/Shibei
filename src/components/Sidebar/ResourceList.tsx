@@ -6,10 +6,11 @@ import styles from "./ResourceList.module.css";
 interface ResourceListProps {
   folderId: string | null;
   selectedResourceId: string | null;
-  onSelectResource: (resource: Resource) => void;
+  onSelect: (resource: Resource) => void;
+  onOpen: (resource: Resource) => void;
 }
 
-export function ResourceList({ folderId, selectedResourceId, onSelectResource }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceId, onSelect, onOpen }: ResourceListProps) {
   const { resources, loading, refresh } = useResources(folderId);
 
   async function handleDelete(e: React.MouseEvent, resource: Resource) {
@@ -37,7 +38,8 @@ export function ResourceList({ folderId, selectedResourceId, onSelectResource }:
         <div
           key={resource.id}
           className={`${styles.item} ${selectedResourceId === resource.id ? styles.itemSelected : ""}`}
-          onClick={() => onSelectResource(resource)}
+          onClick={() => onSelect(resource)}
+          onDoubleClick={() => onOpen(resource)}
         >
           <div className={styles.itemTitle}>
             {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
