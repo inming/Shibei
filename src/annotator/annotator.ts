@@ -693,8 +693,16 @@
     true
   );
 
-  // Signal that annotator is ready
-  const readyMsg: AnnotatorReadyMsg = { type: "shibei:annotator-ready" };
-  window.parent.postMessage(readyMsg, "*");
+  // Signal that annotator is ready — defer until DOM is fully parsed,
+  // since this script runs from <head> and body may not exist yet.
+  function signalReady(): void {
+    const readyMsg: AnnotatorReadyMsg = { type: "shibei:annotator-ready" };
+    window.parent.postMessage(readyMsg, "*");
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", signalReady);
+  } else {
+    signalReady();
+  }
 
 })();
