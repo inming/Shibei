@@ -273,6 +273,7 @@
             case "shibei:render-highlights":
                 // Batch render highlights on page load
                 if (Array.isArray(msg.highlights)) {
+                    const failedIds = [];
                     for (const hl of msg.highlights) {
                         try {
                             const range = resolveAnchor(hl.anchor);
@@ -281,12 +282,20 @@
                             }
                             else {
                                 console.warn("[shibei] Could not resolve anchor for:", hl.id);
+                                failedIds.push(hl.id);
                             }
                         }
                         catch (e) {
                             console.warn("[shibei] Failed to render highlight:", hl.id, e);
+                            failedIds.push(hl.id);
                         }
                     }
+                    // Report resolution results back to parent
+                    const renderResult = {
+                        type: "shibei:render-result",
+                        failedIds,
+                    };
+                    window.parent.postMessage(renderResult, "*");
                 }
                 break;
             case "shibei:add-highlight":

@@ -89,6 +89,11 @@
     type: "shibei:annotator-ready";
   }
 
+  interface RenderResultMsg {
+    type: "shibei:render-result";
+    failedIds: string[];
+  }
+
   // ── Styles ──
 
   const style = document.createElement("style");
@@ -397,6 +402,7 @@
       case "shibei:render-highlights":
         // Batch render highlights on page load
         if (Array.isArray(msg.highlights)) {
+          const failedIds: string[] = [];
           for (const hl of msg.highlights) {
             try {
               const range = resolveAnchor(hl.anchor);
@@ -404,11 +410,19 @@
                 wrapRange(range, hl.id, hl.color);
               } else {
                 console.warn("[shibei] Could not resolve anchor for:", hl.id);
+                failedIds.push(hl.id);
               }
             } catch (e) {
               console.warn("[shibei] Failed to render highlight:", hl.id, e);
+              failedIds.push(hl.id);
             }
           }
+          // Report resolution results back to parent
+          const renderResult: RenderResultMsg = {
+            type: "shibei:render-result",
+            failedIds,
+          };
+          window.parent.postMessage(renderResult, "*");
         }
         break;
 
