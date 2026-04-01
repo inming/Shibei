@@ -4,7 +4,7 @@
   background: var(--color-bg-secondary);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
@@ -18,9 +18,13 @@
   letter-spacing: 0.5px;
 }
 
-.list {
+.scrollArea {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+}
+
+.list {
   padding: var(--spacing-sm);
 }
 
@@ -167,8 +171,28 @@
 }
 
 .notesSection {
+  padding: var(--spacing-sm);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.stickyNotesHeader {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-accent);
+  border-top: 1px solid var(--color-border-light);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stickyNotesHeader:hover {
+  background: var(--color-bg-hover);
+}
+
+.noteInputFixed {
   border-top: 1px solid var(--color-border-light);
   padding: var(--spacing-sm);
+  flex-shrink: 0;
 }
 
 .notesHeader {

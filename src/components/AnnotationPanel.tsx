@@ -60,6 +60,10 @@ export function AnnotationPanel({
     setDeleteConfirm(null);
   }
 
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const notesHeaderRef = useRef<HTMLDivElement>(null);
+  const [notesHeaderHidden, setNotesHeaderHidden] = useState(false);
+
   // Scroll to active highlight when it changes
   useEffect(() => {
     if (activeHighlightId && activeRef.current) {
@@ -67,42 +71,73 @@ export function AnnotationPanel({
     }
   }, [activeHighlightId]);
 
+  // Watch whether notes header is scrolled out of view
+  useEffect(() => {
+    const header = notesHeaderRef.current;
+    const root = scrollAreaRef.current;
+    if (!header || !root) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setNotesHeaderHidden(!entry.isIntersecting),
+      { root, threshold: 0 },
+    );
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, [resourceNotes.length]);
+
   return (
     <div className={styles.panel} style={style}>
       <div className={styles.header}>标注 ({highlights.length})</div>
-      <div className={styles.list}>
-        {highlights.length === 0 && (
-          <div className={styles.empty}>选中文字创建标注</div>
-        )}
-        {highlights.map((hl) => (
-          <HighlightEntry
-            key={hl.id}
-            highlight={hl}
-            comments={getCommentsForHighlight(hl.id)}
-            isActive={activeHighlightId === hl.id}
-            ref={activeHighlightId === hl.id ? activeRef : null}
-            onClick={() => onClickHighlight(hl.id)}
-            onDelete={() =>
-              setDeleteConfirm({
-                type: "highlight",
-                id: hl.id,
-                commentCount: getCommentsForHighlight(hl.id).length,
-              })
-            }
-            onAddComment={(content) => onAddComment(hl.id, content)}
-            onDeleteComment={(id) => setDeleteConfirm({ type: "comment", id })}
-            onEditComment={onEditComment}
+      <div ref={scrollAreaRef} className={styles.scrollArea}>
+        <div className={styles.list}>
+          {highlights.length === 0 && (
+            <div className={styles.empty}>选中文字创建标注</div>
+          )}
+          {highlights.map((hl) => (
+            <HighlightEntry
+              key={hl.id}
+              highlight={hl}
+              comments={getCommentsForHighlight(hl.id)}
+              isActive={activeHighlightId === hl.id}
+              ref={activeHighlightId === hl.id ? activeRef : null}
+              onClick={() => onClickHighlight(hl.id)}
+              onDelete={() =>
+                setDeleteConfirm({
+                  type: "highlight",
+                  id: hl.id,
+                  commentCount: getCommentsForHighlight(hl.id).length,
+                })
+              }
+              onAddComment={(content) => onAddComment(hl.id, content)}
+              onDeleteComment={(id) => setDeleteConfirm({ type: "comment", id })}
+              onEditComment={onEditComment}
+            />
+          ))}
+        </div>
+
+        {/* Notes list (scrolls together with highlights) */}
+        {resourceNotes.length > 0 && (
+          <NotesList
+            ref={notesHeaderRef}
+            notes={resourceNotes}
+            onEdit={onEditComment}
+            onDelete={(id) => setDeleteConfirm({ type: "note", id })}
           />
-        ))}
+        )}
       </div>
 
-      {/* Notes section */}
-      <NotesSection
-        notes={resourceNotes}
-        onAdd={(content) => onAddComment(null, content)}
-        onEdit={onEditComment}
-        onDelete={(id) => setDeleteConfirm({ type: "note", id })}
-      />
+      {/* Sticky notes header — shows when notes section scrolled out */}
+      {resourceNotes.length > 0 && notesHeaderHidden && (
+        <div
+          className={styles.stickyNotesHeader}
+          onClick={() => notesHeaderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        >
+          📝 笔记 ({resourceNotes.length})
+        </div>
+      )}
+
+      {/* Fixed note input at bottom */}
+      <NoteInput onAdd={(content) => onAddComment(null, content)} />
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (
@@ -296,27 +331,20 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
   },
 );
 
-interface NotesSectionProps {
+interface NotesListProps {
   notes: Comment[];
-  onAdd: (content: string) => void;
   onEdit: (id: string, content: string) => void;
   onDelete: (id: string) => void;
 }
 
-function NotesSection({ notes, onAdd, onEdit, onDelete }: NotesSectionProps) {
-  const [noteText, setNoteText] = useState("");
+const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
+  function NotesList({ notes, onEdit, onDelete }, ref) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
 
-  function handleSubmit() {
-    if (!noteText.trim()) return;
-    onAdd(noteText.trim());
-    setNoteText("");
-  }
-
   return (
     <div className={styles.notesSection}>
-      <div className={styles.notesHeader}>📝 笔记 ({notes.length})</div>
+      <div ref={ref} className={styles.notesHeader}>📝 笔记 ({notes.length})</div>
 
       {notes.map((note) => (
         <div key={note.id} className={styles.noteItem}>
@@ -379,35 +407,43 @@ function NotesSection({ notes, onAdd, onEdit, onDelete }: NotesSectionProps) {
           )}
         </div>
       ))}
+    </div>
+  );
+});
 
-      {/* Add note input */}
-      <div className={notes.length > 0 ? styles.addNoteWrap : undefined}>
-        <textarea
-          className={styles.noteInput}
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          placeholder="添加笔记..."
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit();
-            }
-          }}
-        />
-        {noteText.trim() && (
-          <div className={styles.commentActions}>
-            <button className={styles.submitBtn} onClick={handleSubmit}>
-              保存
-            </button>
-            <button
-              className={styles.cancelBtn}
-              onClick={() => setNoteText("")}
-            >
-              取消
-            </button>
-          </div>
-        )}
-      </div>
+function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
+  const [noteText, setNoteText] = useState("");
+
+  function handleSubmit() {
+    if (!noteText.trim()) return;
+    onAdd(noteText.trim());
+    setNoteText("");
+  }
+
+  return (
+    <div className={styles.noteInputFixed}>
+      <textarea
+        className={styles.noteInput}
+        value={noteText}
+        onChange={(e) => setNoteText(e.target.value)}
+        placeholder="添加笔记..."
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit();
+          }
+        }}
+      />
+      {noteText.trim() && (
+        <div className={styles.commentActions}>
+          <button className={styles.submitBtn} onClick={handleSubmit}>
+            保存
+          </button>
+          <button className={styles.cancelBtn} onClick={() => setNoteText("")}>
+            取消
+          </button>
+        </div>
+      )}
     </div>
   );
 }
