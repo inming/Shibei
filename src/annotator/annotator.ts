@@ -115,12 +115,56 @@
 
   // ── Text offset utilities ──
 
+  const EXCLUDED_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]);
+
+  const ZERO_WIDTH_RE = /[\u200B\u200C\u200D\uFEFF]/g;
+
+  function normalizedLength(text: string): number {
+    return text.replace(ZERO_WIDTH_RE, "").length;
+  }
+
+  function normalizedText(text: string): string {
+    return text.replace(ZERO_WIDTH_RE, "");
+  }
+
   /**
-   * Walk all text nodes under root in document order.
+   * Given a raw string and a target offset in the normalized (zero-width-free) version,
+   * return the corresponding offset in the raw string.
+   */
+  function rawOffset(raw: string, normalizedOff: number): number {
+    let norm = 0;
+    for (let i = 0; i < raw.length; i++) {
+      if (norm >= normalizedOff) return i;
+      if (!ZERO_WIDTH_RE.test(raw[i])) {
+        norm++;
+      }
+      // Reset lastIndex since we use global regex for single char test
+      ZERO_WIDTH_RE.lastIndex = 0;
+    }
+    return raw.length;
+  }
+
+  /**
+   * Walk all text nodes under root in document order, skipping invisible nodes.
    */
   function getTextNodes(root: Node): Text[] {
     const nodes: Text[] = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node: Node): number {
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_ACCEPT;
+        // Skip text inside script/style/noscript/template
+        if (EXCLUDED_TAGS.has(parent.tagName)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        // Skip text inside hidden elements
+        const style = getComputedStyle(parent);
+        if (style.display === "none" || style.visibility === "hidden") {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
     let node: Node | null;
     while ((node = walker.nextNode())) {
       nodes.push(node as Text);
@@ -136,9 +180,9 @@
     let total = 0;
     for (const tn of textNodes) {
       if (tn === container) {
-        return total + offset;
+        return total + normalizedLength((tn.textContent ?? "").slice(0, offset));
       }
-      total += (tn.textContent ?? "").length;
+      total += normalizedLength(tn.textContent ?? "");
     }
     // If container is an element, find the offset-th child's text position
     if (container.nodeType === Node.ELEMENT_NODE) {
@@ -149,7 +193,7 @@
           if (childIndex >= offset) return total;
           childIndex++;
         }
-        total += (tn.textContent ?? "").length;
+        total += normalizedLength(tn.textContent ?? "");
       }
     }
     return total;
@@ -160,7 +204,7 @@
    */
   function getBodyText(): string {
     return getTextNodes(document.body)
-      .map((n) => n.textContent ?? "")
+      .map((n) => normalizedText(n.textContent ?? ""))
       .join("");
   }
 
@@ -202,14 +246,15 @@
     let endOff = 0;
 
     for (const tn of textNodes) {
-      const len = (tn.textContent ?? "").length;
+      const raw = tn.textContent ?? "";
+      const len = normalizedLength(raw);
       if (!startNode && offset + len > start) {
         startNode = tn;
-        startOff = start - offset;
+        startOff = rawOffset(raw, start - offset);
       }
       if (!endNode && offset + len >= end) {
         endNode = tn;
-        endOff = end - offset;
+        endOff = rawOffset(raw, end - offset);
         break;
       }
       offset += len;
@@ -221,8 +266,8 @@
       const range = document.createRange();
       range.setStart(startNode, startOff);
       range.setEnd(endNode, endOff);
-      // Verify the text matches
-      if (range.toString() === anchor.text_quote.exact) {
+      // Verify the text matches (compare normalized)
+      if (normalizedText(range.toString()) === normalizedText(anchor.text_quote.exact)) {
         return range;
       }
     } catch (_e) {
@@ -296,14 +341,19 @@
     const nodesToWrap: NodeWrapSpec[] = [];
 
     for (const tn of textNodes) {
-      const len = (tn.textContent ?? "").length;
+      const raw = tn.textContent ?? "";
+      const len = normalizedLength(raw);
       const nodeStart = offset;
       const nodeEnd = offset + len;
 
       if (nodeEnd > startOff && nodeStart < endOff) {
-        const wrapStart = Math.max(0, startOff - nodeStart);
-        const wrapEnd = Math.min(len, endOff - nodeStart);
-        nodesToWrap.push({ node: tn, start: wrapStart, end: wrapEnd });
+        const wrapStartNorm = Math.max(0, startOff - nodeStart);
+        const wrapEndNorm = Math.min(len, endOff - nodeStart);
+        nodesToWrap.push({
+          node: tn,
+          start: rawOffset(raw, wrapStartNorm),
+          end: rawOffset(raw, wrapEndNorm),
+        });
       }
       offset += len;
     }
