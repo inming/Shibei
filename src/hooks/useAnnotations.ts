@@ -27,11 +27,26 @@ export function useAnnotations(resourceId: string) {
     refresh();
   }, [refresh]);
 
+  // Auto-refresh when annotations change in another component (e.g. ReaderView)
+  useEffect(() => {
+    function handleChange(e: Event) {
+      const detail = (e as CustomEvent<string>).detail;
+      if (detail === resourceId) refresh();
+    }
+    window.addEventListener("shibei:annotations-changed", handleChange);
+    return () => window.removeEventListener("shibei:annotations-changed", handleChange);
+  }, [resourceId, refresh]);
+
+  function notifyChange(): void {
+    window.dispatchEvent(new CustomEvent("shibei:annotations-changed", { detail: resourceId }));
+  }
+
   const addHighlight = useCallback(
     (highlight: Highlight) => {
       setHighlights((prev) => [...prev, highlight]);
+      notifyChange();
     },
-    [],
+    [resourceId],
   );
 
   const removeHighlight = useCallback(
@@ -40,11 +55,12 @@ export function useAnnotations(resourceId: string) {
         await cmd.deleteHighlight(id);
         setHighlights((prev) => prev.filter((h) => h.id !== id));
         setComments((prev) => prev.filter((c) => c.highlight_id !== id));
+        notifyChange();
       } catch (err) {
         console.error("Failed to delete highlight:", err);
       }
     },
-    [],
+    [resourceId],
   );
 
   const addComment = useCallback(
@@ -52,6 +68,7 @@ export function useAnnotations(resourceId: string) {
       try {
         const comment = await cmd.createComment(resourceId, highlightId, content);
         setComments((prev) => [...prev, comment]);
+        notifyChange();
         return comment;
       } catch (err) {
         console.error("Failed to create comment:", err);
@@ -66,11 +83,12 @@ export function useAnnotations(resourceId: string) {
       try {
         await cmd.deleteComment(id);
         setComments((prev) => prev.filter((c) => c.id !== id));
+        notifyChange();
       } catch (err) {
         console.error("Failed to delete comment:", err);
       }
     },
-    [],
+    [resourceId],
   );
 
   const editComment = useCallback(
@@ -82,11 +100,12 @@ export function useAnnotations(resourceId: string) {
             c.id === id ? { ...c, content, updated_at: new Date().toISOString() } : c,
           ),
         );
+        notifyChange();
       } catch (err) {
         console.error("Failed to update comment:", err);
       }
     },
-    [],
+    [resourceId],
   );
 
   const getCommentsForHighlight = useCallback(
