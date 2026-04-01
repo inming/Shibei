@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { Resource } from "@/types";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
@@ -13,9 +13,35 @@ interface LibraryViewProps {
 export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
+  const [listPanelWidth, setListPanelWidth] = useState(340);
+  const dragging = useRef(false);
+
+  const layoutRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = useCallback(() => {
+    dragging.current = true;
+    layoutRef.current?.classList.add(styles.resizing);
+
+    function onMouseMove(e: MouseEvent) {
+      if (!dragging.current) return;
+      const sidebarWidth = document.querySelector(`.${styles.sidebar}`)?.getBoundingClientRect().width ?? 200;
+      const newWidth = e.clientX - sidebarWidth;
+      setListPanelWidth(Math.max(200, Math.min(600, newWidth)));
+    }
+
+    function onMouseUp() {
+      dragging.current = false;
+      layoutRef.current?.classList.remove(styles.resizing);
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, []);
 
   return (
-    <div className={styles.layout}>
+    <div ref={layoutRef} className={styles.layout}>
       {/* Col 1: Folder tree + Tags */}
       <div className={styles.sidebar}>
         <FolderTree
@@ -29,7 +55,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       </div>
 
       {/* Col 2: Resource list */}
-      <div className={styles.listPanel}>
+      <div className={styles.listPanel} style={{ width: listPanelWidth }}>
         <ResourceList
           folderId={selectedFolderId}
           selectedResourceId={selectedResource?.id ?? null}
@@ -37,6 +63,9 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
           onOpen={(resource) => onOpenResource(resource)}
         />
       </div>
+
+      {/* Resize handle */}
+      <div className={styles.resizeHandle} onMouseDown={handleMouseDown} />
 
       {/* Col 3: Preview or placeholder */}
       <div className={styles.main}>

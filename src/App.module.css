@@ -8,4 +8,14 @@
 .content {
   flex: 1;
   overflow: hidden;
+  position: relative;
+}
+
+.tabPane {
+  position: absolute;
+  inset: 0;
+}
+
+.tabPaneHidden {
+  display: none;
 }

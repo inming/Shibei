@@ -13,6 +13,7 @@ interface AnnotationPanelProps {
   onDeleteComment: (id: string) => void;
   onEditComment: (id: string, content: string) => void;
   resourceNotes: Comment[];
+  style?: React.CSSProperties;
 }
 
 export function AnnotationPanel({
@@ -25,6 +26,7 @@ export function AnnotationPanel({
   onDeleteComment,
   onEditComment,
   resourceNotes,
+  style,
 }: AnnotationPanelProps) {
   type DeleteConfirm = {
     type: "highlight" | "comment" | "note";
@@ -66,7 +68,7 @@ export function AnnotationPanel({
   }, [activeHighlightId]);
 
   return (
-    <div className={styles.panel}>
+    <div className={styles.panel} style={style}>
       <div className={styles.header}>标注 ({highlights.length})</div>
       <div className={styles.list}>
         {highlights.length === 0 && (

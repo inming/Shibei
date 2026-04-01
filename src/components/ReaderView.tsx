@@ -19,7 +19,10 @@ interface SelectionInfo {
 
 export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const didScrollToInitial = useRef(false);
+  const dragging = useRef(false);
+  const [panelWidth, setPanelWidth] = useState(280);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
@@ -156,6 +159,28 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     [removeHighlight, activeHighlightId],
   );
 
+  const handleResizeMouseDown = useCallback(() => {
+    dragging.current = true;
+    containerRef.current?.classList.add(styles.resizing);
+
+    function onMouseMove(e: MouseEvent) {
+      if (!dragging.current || !containerRef.current) return;
+      const containerRight = containerRef.current.getBoundingClientRect().right;
+      const newWidth = containerRight - e.clientX;
+      setPanelWidth(Math.max(220, Math.min(500, newWidth)));
+    }
+
+    function onMouseUp() {
+      dragging.current = false;
+      containerRef.current?.classList.remove(styles.resizing);
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, []);
+
   // Handle click on annotation panel → scroll iframe to highlight
   const handlePanelClickHighlight = useCallback((id: string) => {
     setActiveHighlightId(id);
@@ -166,7 +191,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   }, []);
 
   return (
-    <div className={styles.container}>
+    <div ref={containerRef} className={styles.container}>
       <div className={styles.reader}>
         {/* Meta bar */}
         <div className={styles.metaBar}>
@@ -201,8 +226,12 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         />
       )}
 
+      {/* Resize handle */}
+      <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown} />
+
       {/* Annotation panel */}
       <AnnotationPanel
+        style={{ width: panelWidth }}
         highlights={highlights}
         getCommentsForHighlight={getCommentsForHighlight}
         resourceNotes={resourceNotes}

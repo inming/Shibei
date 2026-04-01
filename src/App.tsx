@@ -57,16 +57,17 @@ function App() {
         onCloseTab={closeTab}
       />
       <div className={styles.content}>
-        {activeTabId === LIBRARY_TAB_ID ? (
+        <div className={`${styles.tabPane} ${activeTabId !== LIBRARY_TAB_ID ? styles.tabPaneHidden : ""}`}>
           <LibraryView onOpenResource={openResource} />
-        ) : (
-          readerTabs.has(activeTabId) && (
+        </div>
+        {Array.from(readerTabs.entries()).map(([id, tab]) => (
+          <div key={id} className={`${styles.tabPane} ${activeTabId !== id ? styles.tabPaneHidden : ""}`}>
             <ReaderView
-              resource={readerTabs.get(activeTabId)!.resource}
-              initialHighlightId={readerTabs.get(activeTabId)!.initialHighlightId}
+              resource={tab.resource}
+              initialHighlightId={tab.initialHighlightId}
             />
-          )
-        )}
+          </div>
+        ))}
       </div>
     </div>
   );

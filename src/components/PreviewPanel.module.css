@@ -98,3 +98,22 @@
   text-align: center;
   padding: var(--spacing-xl);
 }
+
+.noteItem {
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+}
+
+.noteContent {
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.noteMeta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: var(--spacing-xs);
+}

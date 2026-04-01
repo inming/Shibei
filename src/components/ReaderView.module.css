@@ -4,6 +4,29 @@
   width: 100%;
 }
 
+.resizeHandle {
+  width: 4px;
+  cursor: col-resize;
+  background: var(--color-border);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.resizeHandle:hover {
+  background: var(--color-accent);
+}
+
+.resizing {
+  cursor: col-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.resizing * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
 .reader {
   flex: 1;
   display: flex;

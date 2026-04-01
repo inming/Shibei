@@ -9,7 +9,7 @@ interface PreviewPanelProps {
 }
 
 export function PreviewPanel({ resource, onOpenInReader }: PreviewPanelProps) {
-  const { highlights, getCommentsForHighlight, loading } = useAnnotations(resource.id);
+  const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
 
   const domain = resource.domain ?? (() => {
@@ -30,11 +30,11 @@ export function PreviewPanel({ resource, onOpenInReader }: PreviewPanelProps) {
 
       {/* Highlights section */}
       <div className={styles.sectionLabel}>
-        高亮 ({loading ? "..." : highlights.length})
+        标注 ({loading ? "..." : highlights.length})
       </div>
 
       {!loading && highlights.length === 0 && (
-        <div className={styles.empty}>暂无高亮标注</div>
+        <div className={styles.empty}>暂无标注</div>
       )}
 
       {highlights.map((hl) => {
@@ -51,31 +51,53 @@ export function PreviewPanel({ resource, onOpenInReader }: PreviewPanelProps) {
             <div className={styles.highlightText}>{hl.text_content}</div>
             <div className={styles.highlightMeta}>
               <span>{new Date(hl.created_at).toLocaleDateString()}</span>
-              {comments.length > 0 && (
-                <span
-                  className={styles.commentToggle}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedHighlightId(isExpanded ? null : hl.id);
-                  }}
-                >
-                  💬 {comments.length} 条评论 {isExpanded ? "▲" : "▼"}
-                </span>
-              )}
             </div>
 
-            {isExpanded && comments.length > 0 && (
+            {comments.length > 0 && (
               <div className={styles.commentList} onClick={(e) => e.stopPropagation()}>
-                {comments.map((c) => (
-                  <div key={c.id} className={styles.commentItem}>
-                    {c.content}
-                  </div>
+                <div className={styles.commentItem}>{comments[0].content}</div>
+                {comments.length > 1 && !isExpanded && (
+                  <span
+                    className={styles.commentToggle}
+                    onClick={() => setExpandedHighlightId(hl.id)}
+                  >
+                    查看全部 {comments.length} 条评论
+                  </span>
+                )}
+                {isExpanded && comments.slice(1).map((c) => (
+                  <div key={c.id} className={styles.commentItem}>{c.content}</div>
                 ))}
+                {isExpanded && (
+                  <span
+                    className={styles.commentToggle}
+                    onClick={() => setExpandedHighlightId(null)}
+                  >
+                    收起
+                  </span>
+                )}
               </div>
             )}
           </div>
         );
       })}
+
+      {/* Notes section */}
+      {!loading && resourceNotes.length > 0 && (
+        <>
+          <hr className={styles.divider} />
+          <div className={styles.sectionLabel}>
+            笔记 ({resourceNotes.length})
+          </div>
+          {resourceNotes.map((note) => (
+            <div key={note.id} className={styles.noteItem}>
+              <div className={styles.noteContent}>{note.content}</div>
+              <div className={styles.noteMeta}>
+                {new Date(note.created_at).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
