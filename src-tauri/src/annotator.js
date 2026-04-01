@@ -286,7 +286,10 @@
      */
     function resolveByQuote(anchor) {
         const bodyText = getBodyText();
-        const { exact, prefix, suffix } = anchor.text_quote;
+        // Normalize stored anchor text to match normalized bodyText
+        const exact = normalizedText(anchor.text_quote.exact);
+        const prefix = normalizedText(anchor.text_quote.prefix);
+        const suffix = normalizedText(anchor.text_quote.suffix);
         // Step 1: Exact match with full context (prefix + exact + suffix)
         const contextStr = prefix + exact + suffix;
         const idx = bodyText.indexOf(contextStr);
@@ -295,7 +298,7 @@
             const end = start + exact.length;
             return resolveByPosition({
                 text_position: { start, end },
-                text_quote: anchor.text_quote,
+                text_quote: { exact, prefix, suffix },
             });
         }
         // Step 2: Exact match on just the quote text
@@ -303,7 +306,7 @@
         if (simpleIdx !== -1) {
             return resolveByPosition({
                 text_position: { start: simpleIdx, end: simpleIdx + exact.length },
-                text_quote: anchor.text_quote,
+                text_quote: { exact, prefix, suffix },
             });
         }
         // Step 3: Fuzzy match on exact text (tolerant of minor differences)
@@ -326,8 +329,8 @@
             text_position: { start: match.start, end: match.end },
             text_quote: {
                 exact: bodyText.slice(match.start, match.end),
-                prefix: anchor.text_quote.prefix,
-                suffix: anchor.text_quote.suffix,
+                prefix,
+                suffix,
             },
         });
     }
