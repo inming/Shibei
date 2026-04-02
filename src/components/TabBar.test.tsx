@@ -3,12 +3,12 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { TabBar, type TabItem } from "./TabBar";
 
 describe("TabBar", () => {
-  let onSelectTab: ReturnType<typeof vi.fn>;
-  let onCloseTab: ReturnType<typeof vi.fn>;
+  let onSelectTab: (id: string) => void;
+  let onCloseTab: (id: string) => void;
 
   beforeEach(() => {
-    onSelectTab = vi.fn();
-    onCloseTab = vi.fn();
+    onSelectTab = vi.fn<(id: string) => void>();
+    onCloseTab = vi.fn<(id: string) => void>();
   });
 
   afterEach(() => {

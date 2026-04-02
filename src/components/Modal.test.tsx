@@ -3,10 +3,10 @@ import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Modal } from "./Modal";
 
 describe("Modal", () => {
-  let onClose: ReturnType<typeof vi.fn>;
+  let onClose: () => void;
 
   beforeEach(() => {
-    onClose = vi.fn();
+    onClose = vi.fn<() => void>();
   });
 
   afterEach(() => {

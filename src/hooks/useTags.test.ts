@@ -25,7 +25,7 @@ describe("useTags", () => {
     const NEW_TAG: Tag = { id: "3", name: "Ideas", color: "#0000ff" };
     const store: Tag[] = [TAG_A, TAG_B];
 
-    mockInvoke((cmd, args) => {
+    mockInvoke((cmd) => {
       if (cmd === "cmd_list_tags") return [...store];
       if (cmd === "cmd_create_tag") {
         store.push(NEW_TAG);
