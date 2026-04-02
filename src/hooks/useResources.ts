@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
+import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
 
@@ -18,6 +19,7 @@ export function useResources(folderId: string | null) {
       setResources(data);
     } catch (err) {
       console.error("Failed to load resources:", err);
+      toast.error("加载资料列表失败");
     } finally {
       setLoading(false);
     }

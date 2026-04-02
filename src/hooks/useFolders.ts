@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import toast from "react-hot-toast";
 import type { Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 
@@ -13,6 +14,7 @@ export function useFolders(parentId: string, refreshKey = 0) {
       setFolders(data);
     } catch (err) {
       console.error("Failed to load folders:", err);
+      toast.error("加载文件夹失败");
     } finally {
       setLoading(false);
     }

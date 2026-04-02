@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import toast from "react-hot-toast";
 import type { Highlight, Comment } from "@/types";
 import * as cmd from "@/lib/commands";
 
@@ -18,6 +19,7 @@ export function useAnnotations(resourceId: string) {
       setComments(cm);
     } catch (err) {
       console.error("Failed to load annotations:", err);
+      toast.error("加载标注失败");
     } finally {
       setLoading(false);
     }
@@ -58,6 +60,7 @@ export function useAnnotations(resourceId: string) {
         notifyChange();
       } catch (err) {
         console.error("Failed to delete highlight:", err);
+        toast.error("删除高亮失败");
       }
     },
     [resourceId],
@@ -72,6 +75,7 @@ export function useAnnotations(resourceId: string) {
         return comment;
       } catch (err) {
         console.error("Failed to create comment:", err);
+        toast.error("创建评论失败");
         return null;
       }
     },
@@ -86,6 +90,7 @@ export function useAnnotations(resourceId: string) {
         notifyChange();
       } catch (err) {
         console.error("Failed to delete comment:", err);
+        toast.error("删除评论失败");
       }
     },
     [resourceId],
@@ -103,6 +108,7 @@ export function useAnnotations(resourceId: string) {
         notifyChange();
       } catch (err) {
         console.error("Failed to update comment:", err);
+        toast.error("编辑评论失败");
       }
     },
     [resourceId],

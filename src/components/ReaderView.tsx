@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import toast from "react-hot-toast";
 import type { Resource, Anchor } from "@/types";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { SelectionToolbar } from "@/components/SelectionToolbar";
@@ -157,6 +158,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         setSelection(null);
       } catch (err) {
         console.error("Failed to create highlight:", err);
+        toast.error("创建高亮失败");
       }
     },
     [selection, resource.id, addHighlight],

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { Toaster } from "react-hot-toast";
 import type { Resource } from "@/types";
 import { TabBar, type TabItem } from "@/components/TabBar";
 import { LibraryView } from "@/components/Layout";
@@ -50,6 +51,7 @@ function App() {
 
   return (
     <div className={styles.app}>
+      <Toaster position="bottom-right" />
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
