@@ -139,3 +139,13 @@ export function updateComment(id: string, content: string): Promise<void> {
 export function deleteComment(id: string): Promise<void> {
   return invoke("cmd_delete_comment", { id });
 }
+
+// ── Debug ──
+
+const DEBUG_ENABLED = import.meta.env.VITE_DEBUG === "1";
+
+export async function debugLog(label: string, data?: unknown): Promise<void> {
+  if (!DEBUG_ENABLED) return;
+  const msg = data !== undefined ? `[${label}] ${JSON.stringify(data)}` : `[${label}]`;
+  return invoke("cmd_debug_log", { msg });
+}

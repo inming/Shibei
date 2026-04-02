@@ -105,6 +105,7 @@ pub fn run() {
             commands::cmd_get_folder_counts,
             commands::cmd_get_non_leaf_folder_ids,
             commands::cmd_get_auth_token,
+            commands::cmd_debug_log,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

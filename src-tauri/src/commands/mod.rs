@@ -341,3 +341,23 @@ pub async fn cmd_get_auth_token(
 ) -> Result<String, CommandError> {
     Ok(state.auth_token.clone())
 }
+
+// ── Debug ──
+
+#[tauri::command]
+pub async fn cmd_debug_log(
+    state: tauri::State<'_, Arc<AppState>>,
+    msg: String,
+) -> Result<(), CommandError> {
+    use std::io::Write;
+    let log_path = state.base_dir.join("debug.log");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    let now = chrono::Local::now().format("%H:%M:%S%.3f");
+    writeln!(file, "[{now}] {msg}")
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(())
+}
