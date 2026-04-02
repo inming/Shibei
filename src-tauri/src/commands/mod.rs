@@ -146,6 +146,17 @@ pub async fn cmd_move_resource(
     resources::move_resource(&conn, &id, &new_folder_id).map_err(Into::into)
 }
 
+#[tauri::command]
+pub async fn cmd_update_resource(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+    title: String,
+    description: Option<String>,
+) -> Result<(), CommandError> {
+    let conn = state.conn.lock().await;
+    resources::update_resource(&conn, &id, &title, description.as_deref()).map_err(Into::into)
+}
+
 // ── Tags ──
 
 #[tauri::command]

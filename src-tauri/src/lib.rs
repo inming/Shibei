@@ -86,6 +86,7 @@ pub fn run() {
             commands::cmd_get_resource,
             commands::cmd_delete_resource,
             commands::cmd_move_resource,
+            commands::cmd_update_resource,
             commands::cmd_list_tags,
             commands::cmd_create_tag,
             commands::cmd_delete_tag,

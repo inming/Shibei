@@ -53,6 +53,10 @@ export function moveResource(id: string, newFolderId: string): Promise<void> {
   return invoke("cmd_move_resource", { id, newFolderId });
 }
 
+export async function updateResource(id: string, title: string, description: string | null): Promise<void> {
+  return invoke("cmd_update_resource", { id, title, description });
+}
+
 // ── Tags ──
 
 export function listTags(): Promise<Tag[]> {

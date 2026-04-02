@@ -148,6 +148,17 @@ pub fn move_resource(
     Ok(())
 }
 
+pub fn update_resource(conn: &Connection, id: &str, title: &str, description: Option<&str>) -> Result<(), DbError> {
+    let changed = conn.execute(
+        "UPDATE resources SET title = ?1, description = ?2 WHERE id = ?3",
+        params![title, description, id],
+    )?;
+    if changed == 0 {
+        return Err(DbError::NotFound(format!("resource {id}")));
+    }
+    Ok(())
+}
+
 pub fn delete_resource(conn: &Connection, id: &str) -> Result<String, DbError> {
     let changed = conn.execute("DELETE FROM resources WHERE id = ?1", params![id])?;
     if changed == 0 {
@@ -290,6 +301,39 @@ mod tests {
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
         assert_eq!(fetched.folder_id, f2.id);
+    }
+
+    #[test]
+    fn test_update_resource() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let resource = create_test_resource(&conn, &folder.id);
+
+        update_resource(&conn, &resource.id, "Updated Title", Some("A description")).unwrap();
+
+        let fetched = get_resource(&conn, &resource.id).unwrap();
+        assert_eq!(fetched.title, "Updated Title");
+        assert_eq!(fetched.description, Some("A description".to_string()));
+    }
+
+    #[test]
+    fn test_update_resource_clears_description() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let resource = create_test_resource(&conn, &folder.id);
+
+        update_resource(&conn, &resource.id, "Title", Some("desc")).unwrap();
+        update_resource(&conn, &resource.id, "Title", None).unwrap();
+
+        let fetched = get_resource(&conn, &resource.id).unwrap();
+        assert_eq!(fetched.description, None);
+    }
+
+    #[test]
+    fn test_update_resource_not_found() {
+        let conn = test_db();
+        let result = update_resource(&conn, "nonexistent", "Title", None);
+        assert!(matches!(result, Err(DbError::NotFound(_))));
     }
 
     #[test]
