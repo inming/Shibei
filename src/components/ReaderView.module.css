@@ -27,6 +27,10 @@
   -webkit-user-select: none !important;
 }
 
+.resizing iframe {
+  pointer-events: none !important;
+}
+
 .reader {
   flex: 1;
   min-width: 400px;
