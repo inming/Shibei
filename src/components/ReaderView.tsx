@@ -65,14 +65,38 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         case "shibei:selection":
           if (iframeRef.current) {
             const iframeRect = iframeRef.current.getBoundingClientRect();
+            const TOOLBAR_HEIGHT = 36;
+            const TOOLBAR_WIDTH = 180;
+            const MARGIN = 8;
+            const selRect = msg.rect;
+
+            let top = iframeRect.top + selRect.top - TOOLBAR_HEIGHT - MARGIN;
+            let left =
+              iframeRect.left +
+              selRect.left +
+              selRect.width / 2 -
+              TOOLBAR_WIDTH / 2;
+
+            // Edge detection: if toolbar would go above viewport, show below selection
+            if (top < MARGIN) {
+              top = iframeRect.top + selRect.bottom + MARGIN;
+            }
+
+            // Horizontal clamping
+            if (left < MARGIN) {
+              left = MARGIN;
+            } else if (left + TOOLBAR_WIDTH > window.innerWidth - MARGIN) {
+              left = window.innerWidth - MARGIN - TOOLBAR_WIDTH;
+            }
+
             setSelection({
               text: msg.text,
               anchor: msg.anchor,
               rect: {
-                top: iframeRect.top + msg.rect.top - 40,
-                left: iframeRect.left + msg.rect.left + msg.rect.width / 2 - 70,
-                width: msg.rect.width,
-                height: msg.rect.height,
+                top,
+                left,
+                width: selRect.width,
+                height: selRect.height,
               },
             });
           }
