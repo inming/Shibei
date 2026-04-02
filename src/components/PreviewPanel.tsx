@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Resource } from "@/types";
 import { useAnnotations } from "@/hooks/useAnnotations";
+import { PreviewPanelSkeleton } from "@/components/Skeleton";
 import styles from "./PreviewPanel.module.css";
 
 interface PreviewPanelProps {
@@ -33,11 +34,13 @@ export function PreviewPanel({ resource, onOpenInReader }: PreviewPanelProps) {
         标注 ({loading ? "..." : highlights.length})
       </div>
 
+      {loading && <PreviewPanelSkeleton />}
+
       {!loading && highlights.length === 0 && (
         <div className={styles.empty}>暂无标注</div>
       )}
 
-      {highlights.map((hl) => {
+      {!loading && highlights.map((hl) => {
         const comments = getCommentsForHighlight(hl.id);
         const isExpanded = expandedHighlightId === hl.id;
 

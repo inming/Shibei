@@ -3,7 +3,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
 import type { Resource } from "@/types";
-import { Spinner } from "@/components/Spinner";
+import { ResourceListSkeleton } from "@/components/Skeleton";
 import { Modal } from "@/components/Modal";
 import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
 import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
@@ -160,7 +160,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       {!folderId && (
         <div className={styles.empty}>选择文件夹查看资料</div>
       )}
-      {loading && <Spinner />}
+      {loading && <ResourceListSkeleton />}
       {folderId && !loading && filteredResources.length === 0 && (
         <div className={styles.empty}>该文件夹暂无资料</div>
       )}
