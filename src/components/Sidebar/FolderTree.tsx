@@ -190,9 +190,17 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
       ]
     : [];
 
+  const { setNodeRef: setRootDropRef, isOver: isRootOver } = useDroppable({
+    id: "folder-drop-__root__",
+    data: { type: "folder-target", folderId: "__root__" },
+  });
+
   return (
     <div className={styles.section}>
-      <div className={styles.header}>
+      <div
+        ref={setRootDropRef}
+        className={`${styles.header} ${isRootOver ? styles.dropTarget : ""}`}
+      >
         <span className={styles.title}>文件夹</span>
         <button
           className={styles.addButton}
