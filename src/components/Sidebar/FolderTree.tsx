@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useFolders } from "@/hooks/useFolders";
+import type { Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { FolderEditDialog } from "@/components/Sidebar/FolderEditDialog";
@@ -10,6 +15,7 @@ import styles from "./FolderTree.module.css";
 interface FolderTreeProps {
   selectedFolderId: string | null;
   onSelectFolder: (id: string) => void;
+  onRefreshRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 interface ContextMenuState {
@@ -19,7 +25,7 @@ interface ContextMenuState {
   folderName: string;
 }
 
-export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps) {
+export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: FolderTreeProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -51,6 +57,17 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     setRefreshKey((k) => k + 1);
     loadMeta();
   }
+
+  useEffect(() => {
+    if (onRefreshRef) {
+      onRefreshRef.current = refreshAll;
+    }
+    return () => {
+      if (onRefreshRef) {
+        onRefreshRef.current = null;
+      }
+    };
+  });
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
@@ -342,57 +359,134 @@ function FolderNode({
     return <div className={styles.empty}>暂无文件夹</div>;
   }
 
-  return (
-    <>
-      {folders.map((folder) => {
-        const isExpanded = expandedIds.has(folder.id);
-        const hasChildren = nonLeafIds.has(folder.id);
-        const isSelected = selectedFolderId === folder.id;
-        const count = folderCounts[folder.id];
+  const folderIds = folders.map((f) => f.id);
 
-        return (
-          <div key={folder.id}>
-            <div
-              className={`${styles.item} ${isSelected ? styles.itemSelected : ""}`}
-              style={{ paddingLeft: `${8 + depth * 16}px` }}
-              onClick={() => onSelect(folder.id)}
-              onContextMenu={(e) => onContextMenu(e, folder.id, folder.name)}
-            >
-              {hasChildren ? (
-                <span
-                  className={styles.arrow}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleExpand(folder.id);
-                  }}
-                >
-                  {isExpanded ? "▼" : "▶"}
-                </span>
-              ) : (
-                <span className={styles.arrow} />
-              )}
-              <span className={styles.folderName}>📁 {folder.name}</span>
-              {count ? <span className={styles.count}>{count}</span> : null}
-            </div>
-            {isExpanded && hasChildren && (
-              <div className={styles.children}>
-                <FolderNode
-                  parentId={folder.id}
-                  depth={depth + 1}
-                  selectedFolderId={selectedFolderId}
-                  expandedIds={expandedIds}
-                  nonLeafIds={nonLeafIds}
-                  folderCounts={folderCounts}
-                  refreshKey={refreshKey}
-                  onSelect={onSelect}
-                  onToggleExpand={onToggleExpand}
-                  onContextMenu={onContextMenu}
-                />
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </>
+  return (
+    <SortableContext items={folderIds} strategy={verticalListSortingStrategy}>
+      {folders.map((folder) => (
+        <SortableFolderItem
+          key={folder.id}
+          folder={folder}
+          depth={depth}
+          selectedFolderId={selectedFolderId}
+          expandedIds={expandedIds}
+          nonLeafIds={nonLeafIds}
+          folderCounts={folderCounts}
+          refreshKey={refreshKey}
+          onSelect={onSelect}
+          onToggleExpand={onToggleExpand}
+          onContextMenu={onContextMenu}
+        />
+      ))}
+    </SortableContext>
+  );
+}
+
+// ── Sortable + Droppable folder item ──
+
+interface SortableFolderItemProps {
+  folder: Folder;
+  depth: number;
+  selectedFolderId: string | null;
+  expandedIds: Set<string>;
+  nonLeafIds: Set<string>;
+  folderCounts: Record<string, number>;
+  refreshKey: number;
+  onSelect: (id: string) => void;
+  onToggleExpand: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent, id: string, name: string) => void;
+}
+
+function SortableFolderItem({
+  folder,
+  depth,
+  selectedFolderId,
+  expandedIds,
+  nonLeafIds,
+  folderCounts,
+  refreshKey,
+  onSelect,
+  onToggleExpand,
+  onContextMenu,
+}: SortableFolderItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setSortRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: folder.id,
+    data: { type: "folder", title: folder.name, parentId: folder.parent_id },
+  });
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `folder-drop-${folder.id}`,
+    data: { type: "folder-target", folderId: folder.id },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition ?? undefined,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  const ref = useCallback(
+    (node: HTMLDivElement | null) => {
+      setSortRef(node);
+      setDropRef(node);
+    },
+    [setSortRef, setDropRef],
+  );
+
+  const isExpanded = expandedIds.has(folder.id);
+  const hasChildren = nonLeafIds.has(folder.id);
+  const isSelected = selectedFolderId === folder.id;
+  const count = folderCounts[folder.id];
+
+  return (
+    <div ref={ref} style={style}>
+      <div
+        className={`${styles.item} ${isSelected ? styles.itemSelected : ""} ${isOver ? styles.dropTarget : ""}`}
+        style={{ paddingLeft: `${8 + depth * 16}px` }}
+        onClick={() => onSelect(folder.id)}
+        onContextMenu={(e) => onContextMenu(e, folder.id, folder.name)}
+        {...attributes}
+        {...listeners}
+      >
+        {hasChildren ? (
+          <span
+            className={styles.arrow}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(folder.id);
+            }}
+          >
+            {isExpanded ? "▼" : "▶"}
+          </span>
+        ) : (
+          <span className={styles.arrow} />
+        )}
+        <span className={styles.folderName}>📁 {folder.name}</span>
+        {count ? <span className={styles.count}>{count}</span> : null}
+      </div>
+      {isExpanded && hasChildren && (
+        <div className={styles.children}>
+          <FolderNode
+            parentId={folder.id}
+            depth={depth + 1}
+            selectedFolderId={selectedFolderId}
+            expandedIds={expandedIds}
+            nonLeafIds={nonLeafIds}
+            folderCounts={folderCounts}
+            refreshKey={refreshKey}
+            onSelect={onSelect}
+            onToggleExpand={onToggleExpand}
+            onContextMenu={onContextMenu}
+          />
+        </div>
+      )}
+    </div>
   );
 }

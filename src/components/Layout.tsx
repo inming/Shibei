@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, pointerWithin, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
+import toast from "react-hot-toast";
 import type { Resource } from "@/types";
+import * as cmd from "@/lib/commands";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
@@ -22,6 +24,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
 
   const [activeDrag, setActiveDrag] = useState<{ type: "folder" | "resource"; id: string; title: string } | null>(null);
   const [_overDropTarget, setOverDropTarget] = useState<string | null>(null);
+  const folderTreeRefreshRef = useRef<(() => void) | null>(null);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
@@ -34,10 +37,53 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
     setOverDropTarget(over ? String(over.id) : null);
   }, []);
 
-  const handleDragEnd = useCallback((_event: DragEndEvent) => {
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
     setActiveDrag(null);
     setOverDropTarget(null);
-    // Actual drag end handling will be added in Tasks 8 and 10
+    if (!over) return;
+
+    const activeData = active.data.current as { type: string; parentId?: string };
+    const overData = over.data.current as { type: string; folderId?: string; parentId?: string };
+
+    // Folder-to-folder-target: move into
+    if (activeData.type === "folder" && overData.type === "folder-target") {
+      const targetFolderId = overData.folderId!;
+      if (String(active.id) === targetFolderId) return; // can't drop on self
+      try {
+        await cmd.moveFolder(String(active.id), targetFolderId);
+        folderTreeRefreshRef.current?.();
+      } catch (err) {
+        console.error("Failed to move folder:", err);
+        toast.error("移动文件夹失败");
+      }
+      return;
+    }
+
+    // Folder sorting (same parent reorder)
+    if (activeData.type === "folder" && overData.type === "folder" && active.id !== over.id) {
+      const parentId = activeData.parentId;
+      if (!parentId || parentId !== overData.parentId) return; // only sort within same parent
+      try {
+        const siblings = await cmd.listFolders(parentId);
+        const oldIndex = siblings.findIndex((f) => f.id === String(active.id));
+        const newIndex = siblings.findIndex((f) => f.id === String(over.id));
+        if (oldIndex === -1 || newIndex === -1) return;
+        const reordered = [...siblings];
+        const [moved] = reordered.splice(oldIndex, 1);
+        reordered.splice(newIndex, 0, moved);
+        for (let i = 0; i < reordered.length; i++) {
+          if (reordered[i].sort_order !== i) {
+            await cmd.reorderFolder(reordered[i].id, i);
+          }
+        }
+        folderTreeRefreshRef.current?.();
+      } catch (err) {
+        console.error("Failed to reorder folders:", err);
+        toast.error("排序失败");
+      }
+      return;
+    }
   }, []);
 
   const handleDragCancel = useCallback(() => {
@@ -103,6 +149,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
               setSelectedFolderId(id);
               setSelectedResource(null);
             }}
+            onRefreshRef={folderTreeRefreshRef}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
         </div>

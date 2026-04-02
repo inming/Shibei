@@ -83,6 +83,12 @@
   padding-left: var(--spacing-lg);
 }
 
+.dropTarget {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  outline: 1px dashed var(--color-accent);
+  border-radius: 4px;
+}
+
 .empty {
   padding: var(--spacing-sm) var(--spacing-lg);
   color: var(--color-text-muted);
