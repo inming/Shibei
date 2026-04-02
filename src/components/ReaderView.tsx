@@ -270,7 +270,8 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   }, [failedHighlightIds]);
 
   return (
-    <div ref={containerRef} className={styles.container}>
+    <div ref={containerRef} className={styles.container} style={{ position: "relative" }}>
+      {isResizing && <div className={styles.resizeOverlay} />}
       <div className={styles.reader}>
         {/* Meta bar */}
         <div className={styles.metaBar}>
@@ -295,7 +296,6 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           src={`${PROTOCOL_BASE}/resource/${resource.id}`}
           title={resource.title}
         />
-        {isResizing && <div className={styles.iframeOverlay} />}
       </div>
 
       {/* Selection toolbar */}
