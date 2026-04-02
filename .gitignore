@@ -32,3 +32,4 @@ WixTools/
 *.db-wal
 .superpowers/
 .superpowers/
+.worktrees/
