@@ -120,7 +120,9 @@ pub async fn cmd_delete_resource(
     let rid = resources::delete_resource(&conn, &id)?;
     drop(conn);
     let dir = storage::resource_dir(&state.base_dir, &rid);
-    let _ = std::fs::remove_dir_all(dir);
+    if let Err(e) = std::fs::remove_dir_all(&dir) {
+        eprintln!("[shibei] Failed to clean up resource directory {:?}: {}", dir, e);
+    }
     Ok(())
 }
 

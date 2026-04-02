@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { Resource } from "@/types";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
@@ -21,7 +21,9 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const handleMouseDown = useCallback(() => {
     dragging.current = true;
     layoutRef.current?.classList.add(styles.resizing);
+  }, []);
 
+  useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!dragging.current) return;
       const sidebarWidth = document.querySelector(`.${styles.sidebar}`)?.getBoundingClientRect().width ?? 200;
@@ -30,14 +32,17 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
     }
 
     function onMouseUp() {
+      if (!dragging.current) return;
       dragging.current = false;
       layoutRef.current?.classList.remove(styles.resizing);
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
     }
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
   }, []);
 
   return (

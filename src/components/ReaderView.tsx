@@ -178,7 +178,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const handleResizeMouseDown = useCallback(() => {
     dragging.current = true;
     containerRef.current?.classList.add(styles.resizing);
+  }, []);
 
+  useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!dragging.current || !containerRef.current) return;
       const containerRight = containerRef.current.getBoundingClientRect().right;
@@ -187,14 +189,17 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     }
 
     function onMouseUp() {
+      if (!dragging.current) return;
       dragging.current = false;
       containerRef.current?.classList.remove(styles.resizing);
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
     }
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
   }, []);
 
   // Handle click on annotation panel → scroll iframe to highlight

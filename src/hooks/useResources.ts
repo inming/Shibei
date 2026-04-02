@@ -29,10 +29,12 @@ export function useResources(folderId: string | null) {
 
   // Auto-refresh when a new resource is saved via the extension
   useEffect(() => {
+    let isCancelled = false;
     const unlisten = listen("resource-saved", () => {
-      refresh();
+      if (!isCancelled) refresh();
     });
     return () => {
+      isCancelled = true;
       unlisten.then((fn) => fn());
     };
   }, [refresh]);
