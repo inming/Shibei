@@ -27,16 +27,13 @@
   -webkit-user-select: none !important;
 }
 
-.resizing iframe {
-  pointer-events: none !important;
-}
-
 .reader {
   flex: 1;
   min-width: 400px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .metaBar {
@@ -80,6 +77,13 @@
   flex: 1;
   border: none;
   width: 100%;
+}
+
+.iframeOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  cursor: col-resize;
 }
 
 .annotationPanel {

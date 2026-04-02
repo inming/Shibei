@@ -28,7 +28,8 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const didScrollToInitial = useRef(false);
-  const dragging = useRef(false);
+  const draggingRef = useRef(false);
+  const [isResizing, setIsResizing] = useState(false);
   const [panelWidth, setPanelWidth] = useState(280);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
@@ -229,22 +230,23 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   }, []);
 
   const handleResizeMouseDown = useCallback(() => {
-    dragging.current = true;
-    containerRef.current?.classList.add(styles.resizing);
+    draggingRef.current = true;
+    setIsResizing(true);
   }, []);
 
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
-      if (!dragging.current || !containerRef.current) return;
-      const containerRight = containerRef.current.getBoundingClientRect().right;
-      const newWidth = containerRight - e.clientX;
-      setPanelWidth(clampPanelWidth(newWidth));
+      if (!draggingRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const newWidth = rect.right - e.clientX;
+      const maxW = rect.width - READER_MIN - HANDLE_WIDTH;
+      setPanelWidth(Math.max(PANEL_MIN, Math.min(maxW, newWidth)));
     }
 
     function onMouseUp() {
-      if (!dragging.current) return;
-      dragging.current = false;
-      containerRef.current?.classList.remove(styles.resizing);
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      setIsResizing(false);
     }
 
     document.addEventListener("mousemove", onMouseMove);
@@ -293,6 +295,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           src={`${PROTOCOL_BASE}/resource/${resource.id}`}
           title={resource.title}
         />
+        {isResizing && <div className={styles.iframeOverlay} />}
       </div>
 
       {/* Selection toolbar */}
