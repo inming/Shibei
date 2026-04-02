@@ -41,7 +41,7 @@ pub fn create_comment(
 pub fn update_comment(conn: &Connection, id: &str, content: &str) -> Result<(), DbError> {
     let now = now_iso8601();
     let changed = conn.execute(
-        "UPDATE comments SET content = ?1, updated_at = ?2 WHERE id = ?3",
+        "UPDATE comments SET content = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
         params![content, now, id],
     )?;
     if changed == 0 {
@@ -51,7 +51,11 @@ pub fn update_comment(conn: &Connection, id: &str, content: &str) -> Result<(), 
 }
 
 pub fn delete_comment(conn: &Connection, id: &str) -> Result<(), DbError> {
-    let changed = conn.execute("DELETE FROM comments WHERE id = ?1", params![id])?;
+    let now = now_iso8601();
+    let changed = conn.execute(
+        "UPDATE comments SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("comment {}", id)));
     }
@@ -64,7 +68,7 @@ pub fn get_comments_for_resource(
 ) -> Result<Vec<Comment>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, highlight_id, resource_id, content, created_at, updated_at
-         FROM comments WHERE resource_id = ?1
+         FROM comments WHERE resource_id = ?1 AND deleted_at IS NULL
          ORDER BY created_at",
     )?;
     let comments = stmt
@@ -89,7 +93,7 @@ pub fn get_comments_for_highlight(
 ) -> Result<Vec<Comment>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, highlight_id, resource_id, content, created_at, updated_at
-         FROM comments WHERE highlight_id = ?1
+         FROM comments WHERE highlight_id = ?1 AND deleted_at IS NULL
          ORDER BY created_at",
     )?;
     let comments = stmt

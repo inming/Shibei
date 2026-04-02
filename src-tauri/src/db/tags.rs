@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 use super::resources::Resource;
-use super::DbError;
+use super::{now_iso8601, DbError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tag {
@@ -26,7 +26,7 @@ pub fn create_tag(conn: &Connection, name: &str, color: &str) -> Result<Tag, DbE
 
 pub fn update_tag(conn: &Connection, id: &str, name: &str, color: &str) -> Result<(), DbError> {
     let changed = conn.execute(
-        "UPDATE tags SET name = ?1, color = ?2 WHERE id = ?3",
+        "UPDATE tags SET name = ?1, color = ?2 WHERE id = ?3 AND deleted_at IS NULL",
         params![name, color, id],
     )?;
     if changed == 0 {
@@ -36,15 +36,24 @@ pub fn update_tag(conn: &Connection, id: &str, name: &str, color: &str) -> Resul
 }
 
 pub fn delete_tag(conn: &Connection, id: &str) -> Result<(), DbError> {
-    let changed = conn.execute("DELETE FROM tags WHERE id = ?1", params![id])?;
+    let now = now_iso8601();
+    let changed = conn.execute(
+        "UPDATE tags SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("tag {}", id)));
     }
+    // Cascade soft-delete to resource_tags
+    conn.execute(
+        "UPDATE resource_tags SET deleted_at = ?1 WHERE tag_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     Ok(())
 }
 
 pub fn list_tags(conn: &Connection) -> Result<Vec<Tag>, DbError> {
-    let mut stmt = conn.prepare("SELECT id, name, color FROM tags ORDER BY name")?;
+    let mut stmt = conn.prepare("SELECT id, name, color FROM tags WHERE deleted_at IS NULL ORDER BY name")?;
     let tags = stmt
         .query_map([], |row| {
             Ok(Tag {
@@ -74,9 +83,10 @@ pub fn remove_tag_from_resource(
     resource_id: &str,
     tag_id: &str,
 ) -> Result<(), DbError> {
+    let now = now_iso8601();
     conn.execute(
-        "DELETE FROM resource_tags WHERE resource_id = ?1 AND tag_id = ?2",
-        params![resource_id, tag_id],
+        "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND tag_id = ?3 AND deleted_at IS NULL",
+        params![now, resource_id, tag_id],
     )?;
     Ok(())
 }
@@ -88,7 +98,7 @@ pub fn get_tags_for_resource(
     let mut stmt = conn.prepare(
         "SELECT t.id, t.name, t.color FROM tags t
          JOIN resource_tags rt ON t.id = rt.tag_id
-         WHERE rt.resource_id = ?1
+         WHERE rt.resource_id = ?1 AND t.deleted_at IS NULL AND rt.deleted_at IS NULL
          ORDER BY t.name",
     )?;
     let tags = stmt
@@ -111,7 +121,7 @@ pub fn get_resources_by_tag(
         "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta
          FROM resources r
          JOIN resource_tags rt ON r.id = rt.resource_id
-         WHERE rt.tag_id = ?1",
+         WHERE rt.tag_id = ?1 AND r.deleted_at IS NULL AND rt.deleted_at IS NULL",
     )?;
     let resources = stmt
         .query_map(params![tag_id], |row| {

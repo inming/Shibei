@@ -78,7 +78,7 @@ pub fn create_resource(
 pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
     conn.query_row(
         "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
-         FROM resources WHERE id = ?1",
+         FROM resources WHERE id = ?1 AND deleted_at IS NULL",
         params![id],
         |row| {
             Ok(Resource {
@@ -131,7 +131,7 @@ pub fn list_resources_by_folder(
         SortBy::CreatedAt => format!(
             "SELECT id, title, url, domain, author, description, folder_id, \
              resource_type, file_path, created_at, captured_at, selection_meta \
-             FROM resources WHERE folder_id = ?1 ORDER BY created_at {}",
+             FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL ORDER BY created_at {}",
             order_dir
         ),
         SortBy::AnnotatedAt => format!(
@@ -139,12 +139,12 @@ pub fn list_resources_by_folder(
              r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
              FROM resources r LEFT JOIN (\
                SELECT resource_id, MAX(created_at) AS last_at FROM (\
-                 SELECT resource_id, created_at FROM highlights \
+                 SELECT resource_id, created_at FROM highlights WHERE deleted_at IS NULL \
                  UNION ALL \
-                 SELECT resource_id, created_at FROM comments\
+                 SELECT resource_id, created_at FROM comments WHERE deleted_at IS NULL\
                ) GROUP BY resource_id\
              ) a ON r.id = a.resource_id \
-             WHERE r.folder_id = ?1 \
+             WHERE r.folder_id = ?1 AND r.deleted_at IS NULL \
              ORDER BY COALESCE(a.last_at, r.created_at) {}",
             order_dir
         ),
@@ -177,7 +177,7 @@ pub fn move_resource(
     new_folder_id: &str,
 ) -> Result<(), DbError> {
     let changed = conn.execute(
-        "UPDATE resources SET folder_id = ?1 WHERE id = ?2",
+        "UPDATE resources SET folder_id = ?1 WHERE id = ?2 AND deleted_at IS NULL",
         params![new_folder_id, id],
     )?;
     if changed == 0 {
@@ -188,7 +188,7 @@ pub fn move_resource(
 
 pub fn update_resource(conn: &Connection, id: &str, title: &str, description: Option<&str>) -> Result<(), DbError> {
     let changed = conn.execute(
-        "UPDATE resources SET title = ?1, description = ?2 WHERE id = ?3",
+        "UPDATE resources SET title = ?1, description = ?2 WHERE id = ?3 AND deleted_at IS NULL",
         params![title, description, id],
     )?;
     if changed == 0 {
@@ -198,16 +198,33 @@ pub fn update_resource(conn: &Connection, id: &str, title: &str, description: Op
 }
 
 pub fn delete_resource(conn: &Connection, id: &str) -> Result<String, DbError> {
-    let changed = conn.execute("DELETE FROM resources WHERE id = ?1", params![id])?;
+    let now = now_iso8601();
+    let changed = conn.execute(
+        "UPDATE resources SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("resource {}", id)));
     }
+    // Cascade soft-delete to highlights, comments, resource_tags
+    conn.execute(
+        "UPDATE highlights SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    conn.execute(
+        "UPDATE comments SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    conn.execute(
+        "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     Ok(id.to_string())
 }
 
 pub fn count_by_folder(conn: &Connection) -> Result<std::collections::HashMap<String, i64>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT folder_id, COUNT(*) FROM resources GROUP BY folder_id",
+        "SELECT folder_id, COUNT(*) FROM resources WHERE deleted_at IS NULL GROUP BY folder_id",
     )?;
     let counts = stmt
         .query_map([], |row| {
@@ -249,7 +266,7 @@ pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbErro
 
     let mut stmt = conn.prepare(
         "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
-         FROM resources WHERE url LIKE ?1",
+         FROM resources WHERE url LIKE ?1 AND deleted_at IS NULL",
     )?;
     let resources = stmt
         .query_map(rusqlite::params![like_pattern], |row| {
@@ -385,6 +402,20 @@ mod tests {
 
         let result = get_resource(&conn, &resource.id);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_soft_delete_resource() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let resource = create_test_resource(&conn, &folder.id);
+        delete_resource(&conn, &resource.id).unwrap();
+        let resources = list_resources_by_folder(&conn, &folder.id, SortBy::CreatedAt, SortOrder::Desc).unwrap();
+        assert!(resources.is_empty());
+        let deleted_at: Option<String> = conn
+            .query_row("SELECT deleted_at FROM resources WHERE id = ?1", params![resource.id], |row| row.get(0))
+            .unwrap();
+        assert!(deleted_at.is_some());
     }
 
     #[test]

@@ -66,7 +66,7 @@ pub fn get_highlights_for_resource(
 ) -> Result<Vec<Highlight>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, resource_id, text_content, anchor, color, created_at
-         FROM highlights WHERE resource_id = ?1
+         FROM highlights WHERE resource_id = ?1 AND deleted_at IS NULL
          ORDER BY created_at",
     )?;
     let highlights = stmt
@@ -92,10 +92,19 @@ pub fn get_highlights_for_resource(
 }
 
 pub fn delete_highlight(conn: &Connection, id: &str) -> Result<(), DbError> {
-    let changed = conn.execute("DELETE FROM highlights WHERE id = ?1", params![id])?;
+    let now = now_iso8601();
+    let changed = conn.execute(
+        "UPDATE highlights SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("highlight {}", id)));
     }
+    // Cascade soft-delete to comments on this highlight
+    conn.execute(
+        "UPDATE comments SET deleted_at = ?1 WHERE highlight_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
     Ok(())
 }
 
