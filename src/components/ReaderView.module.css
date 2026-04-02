@@ -78,15 +78,3 @@
   width: 100%;
 }
 
-
-.annotationPanel {
-  width: var(--annotation-panel-width);
-  min-width: 220px;
-  flex-shrink: 0;
-  border-left: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: var(--spacing-md);
-}

@@ -1,6 +1,5 @@
 .panel {
   min-width: 220px;
-  max-width: 500px;
   background: var(--color-bg-secondary);
   display: flex;
   flex-direction: column;
