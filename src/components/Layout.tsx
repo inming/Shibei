@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { DndContext, DragOverlay, pointerWithin, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
 import type { Resource } from "@/types";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
@@ -18,6 +19,31 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [sortOrder, _setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const dragging = useRef(false);
+
+  const [activeDrag, setActiveDrag] = useState<{ type: "folder" | "resource"; id: string; title: string } | null>(null);
+  const [_overDropTarget, setOverDropTarget] = useState<string | null>(null);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const { active } = event;
+    const data = active.data.current as { type: "folder" | "resource"; title: string };
+    setActiveDrag({ type: data.type, id: String(active.id), title: data.title });
+  }, []);
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { over } = event;
+    setOverDropTarget(over ? String(over.id) : null);
+  }, []);
+
+  const handleDragEnd = useCallback((_event: DragEndEvent) => {
+    setActiveDrag(null);
+    setOverDropTarget(null);
+    // Actual drag end handling will be added in Tasks 8 and 10
+  }, []);
+
+  const handleDragCancel = useCallback(() => {
+    setActiveDrag(null);
+    setOverDropTarget(null);
+  }, []);
 
   const layoutRef = useRef<HTMLDivElement>(null);
 
@@ -61,49 +87,64 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   }, []);
 
   return (
-    <div ref={layoutRef} className={styles.layout}>
-      {/* Col 1: Folder tree + Tags */}
-      <div className={styles.sidebar}>
-        <FolderTree
-          selectedFolderId={selectedFolderId}
-          onSelectFolder={(id) => {
-            setSelectedFolderId(id);
-            setSelectedResource(null);
-          }}
-        />
-        <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
-      </div>
-
-      {/* Col 2: Resource list */}
-      <div className={styles.listPanel} style={{ width: listPanelWidth }}>
-        <ResourceList
-          folderId={selectedFolderId}
-          selectedResourceId={selectedResource?.id ?? null}
-          selectedTagIds={selectedTagIds}
-          sortBy={sortBy}
-          sortOrder={sortOrder}
-          onSelect={setSelectedResource}
-          onOpen={(resource) => onOpenResource(resource)}
-        />
-      </div>
-
-      {/* Resize handle */}
-      <div className={styles.resizeHandle} onMouseDown={handleMouseDown} />
-
-      {/* Col 3: Preview or placeholder */}
-      <div className={styles.main}>
-        {selectedResource ? (
-          <PreviewPanel
-            key={selectedResource.id}
-            resource={selectedResource}
-            onOpenInReader={(highlightId) => onOpenResource(selectedResource, highlightId)}
+    <DndContext
+      collisionDetection={pointerWithin}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div ref={layoutRef} className={styles.layout}>
+        {/* Col 1: Folder tree + Tags */}
+        <div className={styles.sidebar}>
+          <FolderTree
+            selectedFolderId={selectedFolderId}
+            onSelectFolder={(id) => {
+              setSelectedFolderId(id);
+              setSelectedResource(null);
+            }}
           />
-        ) : (
-          <div className={styles.mainPlaceholder}>
-            双击资料在新标签页中打开阅读
+          <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
+        </div>
+
+        {/* Col 2: Resource list */}
+        <div className={styles.listPanel} style={{ width: listPanelWidth }}>
+          <ResourceList
+            folderId={selectedFolderId}
+            selectedResourceId={selectedResource?.id ?? null}
+            selectedTagIds={selectedTagIds}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSelect={setSelectedResource}
+            onOpen={(resource) => onOpenResource(resource)}
+          />
+        </div>
+
+        {/* Resize handle */}
+        <div className={styles.resizeHandle} onMouseDown={handleMouseDown} />
+
+        {/* Col 3: Preview or placeholder */}
+        <div className={styles.main}>
+          {selectedResource ? (
+            <PreviewPanel
+              key={selectedResource.id}
+              resource={selectedResource}
+              onOpenInReader={(highlightId) => onOpenResource(selectedResource, highlightId)}
+            />
+          ) : (
+            <div className={styles.mainPlaceholder}>
+              双击资料在新标签页中打开阅读
+            </div>
+          )}
+        </div>
+      </div>
+      <DragOverlay>
+        {activeDrag && (
+          <div className={styles.dragOverlay}>
+            {activeDrag.title}
           </div>
         )}
-      </div>
-    </div>
+      </DragOverlay>
+    </DndContext>
   );
 }
