@@ -232,6 +232,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     e.preventDefault();
     draggingRef.current = true;
     containerRef.current?.classList.add(styles.resizing);
+    // Directly disable iframe pointer events to prevent event capture during drag
+    if (iframeRef.current) {
+      iframeRef.current.style.pointerEvents = "none";
+    }
   }, []);
 
   useEffect(() => {
@@ -247,6 +251,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       if (!draggingRef.current) return;
       draggingRef.current = false;
       containerRef.current?.classList.remove(styles.resizing);
+      if (iframeRef.current) {
+        iframeRef.current.style.pointerEvents = "";
+      }
     }
 
     document.addEventListener("mousemove", onMouseMove);
