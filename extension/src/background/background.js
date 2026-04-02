@@ -1,14 +1,23 @@
 const API_BASE = "http://127.0.0.1:21519";
 
 let cachedToken = null;
+let tokenPromise = null;
 
 async function getToken() {
   if (cachedToken) return cachedToken;
-  const res = await fetch(`${API_BASE}/token`, { signal: AbortSignal.timeout(2000) });
-  if (!res.ok) throw new Error(`Failed to fetch token: HTTP ${res.status}`);
-  const data = await res.json();
-  cachedToken = data.token;
-  return cachedToken;
+  if (tokenPromise) return tokenPromise;
+  tokenPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/token`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) throw new Error(`Failed to fetch token: HTTP ${res.status}`);
+      const data = await res.json();
+      cachedToken = data.token;
+      return cachedToken;
+    } finally {
+      tokenPromise = null;
+    }
+  })();
+  return tokenPromise;
 }
 
 function authHeaders(token) {
@@ -20,6 +29,10 @@ function authHeaders(token) {
 
 // Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id) {
+    sendResponse({ success: false, error: "Unauthorized sender" });
+    return false;
+  }
   if (message.type === "save-page") {
     handleSavePage(message.data)
       .then((result) => sendResponse({ success: true, data: result }))

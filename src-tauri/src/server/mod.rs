@@ -69,7 +69,16 @@ struct ErrorResponse {
 /// Start the HTTP server on 127.0.0.1:21519.
 pub async fn start_server(state: Arc<AppState>) {
     let cors = tower_http::cors::CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(
+            |origin: &axum::http::HeaderValue, _req: &axum::http::request::Parts| {
+                let Ok(s) = origin.to_str() else { return false };
+                s.starts_with("chrome-extension://")
+                    || s.starts_with("tauri://")
+                    || s.starts_with("http://tauri.localhost")
+                    || s.starts_with("http://127.0.0.1")
+                    || s.starts_with("http://localhost")
+            },
+        ))
         .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::OPTIONS])
         .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]);
 

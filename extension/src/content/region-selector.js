@@ -258,6 +258,16 @@
   // HTML Clipping
   // ═══════════════════════════════════════════
 
+  function isSafeAttr(name, value) {
+    if (name.toLowerCase().startsWith("on")) return false;
+    if (["href", "src", "action"].includes(name.toLowerCase())) {
+      if (typeof value === "string" && value.trim().toLowerCase().startsWith("javascript:")) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   function clipHtml(fullHtml, selector) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(fullHtml, "text/html");
@@ -275,7 +285,9 @@
     const origBody = doc.body;
     if (origBody) {
       for (const attr of origBody.attributes) {
-        newBody.setAttribute(attr.name, attr.value);
+        if (isSafeAttr(attr.name, attr.value)) {
+          newBody.setAttribute(attr.name, attr.value);
+        }
       }
     }
 
@@ -293,7 +305,9 @@
     for (const anc of ancestors) {
       const wrapper = doc.createElement(anc.tagName.toLowerCase());
       for (const attr of anc.attributes) {
-        wrapper.setAttribute(attr.name, attr.value);
+        if (isSafeAttr(attr.name, attr.value)) {
+          wrapper.setAttribute(attr.name, attr.value);
+        }
       }
       container.appendChild(wrapper);
       container = wrapper;

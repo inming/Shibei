@@ -1,14 +1,23 @@
 const API_BASE = "http://127.0.0.1:21519";
 
 let cachedToken = null;
+let tokenPromise = null;
 
 async function getToken() {
   if (cachedToken) return cachedToken;
-  const res = await fetch(`${API_BASE}/token`, { signal: AbortSignal.timeout(2000) });
-  if (!res.ok) throw new Error(`Failed to fetch token: HTTP ${res.status}`);
-  const data = await res.json();
-  cachedToken = data.token;
-  return cachedToken;
+  if (tokenPromise) return tokenPromise;
+  tokenPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/token`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) throw new Error(`Failed to fetch token: HTTP ${res.status}`);
+      const data = await res.json();
+      cachedToken = data.token;
+      return cachedToken;
+    } finally {
+      tokenPromise = null;
+    }
+  })();
+  return tokenPromise;
 }
 
 function authHeader(token) {
