@@ -21,6 +21,7 @@ interface ResourceListProps {
   onOpen: (resource: Resource) => void;
   onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
+  onDataChanged?: () => void;
 }
 
 function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, onContextMenu }: {
@@ -59,7 +60,7 @@ function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, o
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, refreshKey, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, refreshKey, onSelectResource, onOpen, onSortByChange, onSortOrderChange, onDataChanged }: ResourceListProps) {
   const { resources, resourceTags, loading, refresh } = useResources(folderId, sortBy, sortOrder);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -237,7 +238,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
             setDeleteConfirm(true);
           }}
           onMove={handleMove}
-          onTagsChanged={refresh}
+          onTagsChanged={() => { refresh(); onDataChanged?.(); }}
           onClose={() => setContextMenu(null)}
         />
       )}

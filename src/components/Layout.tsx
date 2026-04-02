@@ -118,36 +118,10 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       return;
     }
 
-    // Folder → folder: distinguish sort (same parent) vs move-into (different parent)
+    // Folder → folder: move into target
     if (activeData.type === "folder" && active.id !== over.id) {
       const targetFolderId = resolveTargetFolderId();
-      if (!targetFolderId) return;
-
-      // Same parent → reorder siblings
-      if (overData.type === "folder" && activeData.parentId && activeData.parentId === overData.parentId) {
-        try {
-          const siblings = await cmd.listFolders(activeData.parentId);
-          const oldIndex = siblings.findIndex((f) => f.id === String(active.id));
-          const newIndex = siblings.findIndex((f) => f.id === String(over.id));
-          if (oldIndex === -1 || newIndex === -1) return;
-          const reordered = [...siblings];
-          const [moved] = reordered.splice(oldIndex, 1);
-          reordered.splice(newIndex, 0, moved);
-          for (let i = 0; i < reordered.length; i++) {
-            if (reordered[i].sort_order !== i) {
-              await cmd.reorderFolder(reordered[i].id, i);
-            }
-          }
-          folderTreeRefreshRef.current?.();
-        } catch (err) {
-          console.error("Failed to reorder folders:", err);
-          toast.error("排序失败");
-        }
-        return;
-      }
-
-      // Different parent or folder-target → move into
-      if (String(active.id) === targetFolderId) return;
+      if (!targetFolderId || String(active.id) === targetFolderId) return;
       try {
         await cmd.moveFolder(String(active.id), targetFolderId);
         folderTreeRefreshRef.current?.();
@@ -243,6 +217,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             onOpen={(resource) => onOpenResource(resource)}
             onSortByChange={setSortBy}
             onSortOrderChange={setSortOrder}
+            onDataChanged={() => setResourceRefreshKey((k) => k + 1)}
           />
         </div>
 

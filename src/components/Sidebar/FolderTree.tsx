@@ -1,8 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSortable } from "@dnd-kit/sortable";
-import { useDroppable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useFolders } from "@/hooks/useFolders";
 import type { Folder } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -405,12 +402,10 @@ function FolderNode({
     return <div className={styles.empty}>暂无文件夹</div>;
   }
 
-  const folderIds = folders.map((f) => f.id);
-
   return (
-    <SortableContext items={folderIds} strategy={verticalListSortingStrategy}>
+    <>
       {folders.map((folder) => (
-        <SortableFolderItem
+        <DraggableFolderItem
           key={folder.id}
           folder={folder}
           depth={depth}
@@ -424,13 +419,13 @@ function FolderNode({
           onContextMenu={onContextMenu}
         />
       ))}
-    </SortableContext>
+    </>
   );
 }
 
-// ── Sortable + Droppable folder item ──
+// ── Draggable + Droppable folder item ──
 
-interface SortableFolderItemProps {
+interface DraggableFolderItemProps {
   folder: Folder;
   depth: number;
   selectedFolderId: string | null;
@@ -443,7 +438,7 @@ interface SortableFolderItemProps {
   onContextMenu: (e: React.MouseEvent, id: string, name: string) => void;
 }
 
-function SortableFolderItem({
+function DraggableFolderItem({
   folder,
   depth,
   selectedFolderId,
@@ -454,15 +449,13 @@ function SortableFolderItem({
   onSelect,
   onToggleExpand,
   onContextMenu,
-}: SortableFolderItemProps) {
+}: DraggableFolderItemProps) {
   const {
     attributes,
     listeners,
-    setNodeRef: setSortRef,
-    transform,
-    transition,
+    setNodeRef: setDragRef,
     isDragging,
-  } = useSortable({
+  } = useDraggable({
     id: folder.id,
     data: { type: "folder", title: folder.name, parentId: folder.parent_id },
   });
@@ -472,18 +465,12 @@ function SortableFolderItem({
     data: { type: "folder-target", folderId: folder.id },
   });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition ?? undefined,
-    opacity: isDragging ? 0.4 : 1,
-  };
-
   const ref = useCallback(
     (node: HTMLDivElement | null) => {
-      setSortRef(node);
+      setDragRef(node);
       setDropRef(node);
     },
-    [setSortRef, setDropRef],
+    [setDragRef, setDropRef],
   );
 
   const isExpanded = expandedIds.has(folder.id);
@@ -492,7 +479,7 @@ function SortableFolderItem({
   const count = folderCounts[folder.id];
 
   return (
-    <div ref={ref} style={style}>
+    <div ref={ref} style={{ opacity: isDragging ? 0.4 : 1 }}>
       <div
         className={`${styles.item} ${isSelected ? styles.itemSelected : ""} ${isOver ? styles.dropTarget : ""}`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
