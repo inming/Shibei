@@ -67,7 +67,9 @@ struct ErrorResponse {
 }
 
 /// Start the HTTP server on 127.0.0.1:21519.
-pub async fn start_server(state: Arc<AppState>) {
+pub async fn start_server(
+    state: Arc<AppState>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cors = tower_http::cors::CorsLayer::new()
         .allow_origin(tower_http::cors::AllowOrigin::predicate(
             |origin: &axum::http::HeaderValue, _req: &axum::http::request::Parts| {
@@ -95,8 +97,9 @@ pub async fn start_server(state: Arc<AppState>) {
         .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 21519));
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 fn verify_token(headers: &HeaderMap, expected: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -138,7 +141,7 @@ async fn handle_folders(
     verify_token(&headers, &state.token)?;
 
     let conn = state.conn.lock().await;
-    let tree = build_folder_tree(&conn, "__root__").map_err(|e| {
+    let tree = build_folder_tree(&conn, "__root__", 0).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -152,11 +155,15 @@ async fn handle_folders(
 fn build_folder_tree(
     conn: &Connection,
     parent_id: &str,
+    depth: u32,
 ) -> Result<Vec<FolderNode>, crate::db::DbError> {
+    if depth > 20 {
+        return Ok(Vec::new());
+    }
     let children = folders::list_children(conn, parent_id)?;
     let mut nodes = Vec::new();
     for folder in children {
-        let sub_children = build_folder_tree(conn, &folder.id)?;
+        let sub_children = build_folder_tree(conn, &folder.id, depth + 1)?;
         nodes.push(FolderNode {
             id: folder.id,
             name: folder.name,
@@ -275,8 +282,17 @@ async fn handle_save(
 
     let conn = state.conn.lock().await;
 
+    conn.execute_batch("BEGIN").map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("db error: {}", e),
+            }),
+        )
+    })?;
+
     // Create resource in database
-    let resource = resources::create_resource(
+    let resource = match resources::create_resource(
         &conn,
         resources::CreateResourceInput {
             id: Some(resource_id.clone()),
@@ -291,8 +307,61 @@ async fn handle_save(
             captured_at: payload.captured_at,
             selection_meta: payload.selection_meta,
         },
-    )
-    .map_err(|e| {
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            let _ = std::fs::remove_dir_all(storage::resource_dir(&state.base_dir, &resource_id));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("db error: {}", e),
+                }),
+            ));
+        }
+    };
+
+    // Associate tags (create if not exist, then link)
+    let all_tags = tags::list_tags(&conn).unwrap_or_default();
+    for tag_name in &payload.tags {
+        let tag = all_tags.iter().find(|t| t.name == *tag_name);
+
+        let tag_id = match tag {
+            Some(t) => t.id.clone(),
+            None => {
+                match tags::create_tag(&conn, tag_name, "#888888") {
+                    Ok(new_tag) => new_tag.id,
+                    Err(e) => {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        let _ = std::fs::remove_dir_all(
+                            storage::resource_dir(&state.base_dir, &resource_id),
+                        );
+                        return Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse {
+                                error: format!("tag error: {}", e),
+                            }),
+                        ));
+                    }
+                }
+            }
+        };
+
+        if let Err(e) = tags::add_tag_to_resource(&conn, &resource.id, &tag_id) {
+            let _ = conn.execute_batch("ROLLBACK");
+            let _ =
+                std::fs::remove_dir_all(storage::resource_dir(&state.base_dir, &resource_id));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("tag association error: {}", e),
+                }),
+            ));
+        }
+    }
+
+    conn.execute_batch("COMMIT").map_err(|e| {
+        let _ = std::fs::remove_dir_all(storage::resource_dir(&state.base_dir, &resource_id));
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -301,32 +370,7 @@ async fn handle_save(
         )
     })?;
 
-    // Associate tags (create if not exist, then link)
-    for tag_name in &payload.tags {
-        let tag = tags::list_tags(&conn)
-            .unwrap_or_default()
-            .into_iter()
-            .find(|t| t.name == *tag_name);
-
-        let tag_id = match tag {
-            Some(t) => t.id,
-            None => {
-                let new_tag = tags::create_tag(&conn, tag_name, "#888888").map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(ErrorResponse {
-                            error: format!("tag error: {}", e),
-                        }),
-                    )
-                })?;
-                new_tag.id
-            }
-        };
-
-        let _ = tags::add_tag_to_resource(&conn, &resource.id, &tag_id);
-    }
-
-    // Notify desktop app that a new resource was saved
+    // Notify desktop app that a new resource was saved (best-effort, outside transaction)
     let _ = state.app_handle.emit("resource-saved", serde_json::json!({
         "resource_id": resource.id,
         "folder_id": resource.folder_id,

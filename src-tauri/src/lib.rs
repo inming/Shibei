@@ -128,7 +128,11 @@ pub fn run() {
                 token: server_token_clone,
                 app_handle: app.handle().clone(),
             });
-            tauri::async_runtime::spawn(server::start_server(server_state));
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = server::start_server(server_state).await {
+                    eprintln!("[shibei] HTTP server failed: {}", e);
+                }
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
