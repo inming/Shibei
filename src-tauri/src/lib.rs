@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod server;
 mod storage;
+pub mod sync;
 
 use std::path::PathBuf;
 use std::sync::Arc;
