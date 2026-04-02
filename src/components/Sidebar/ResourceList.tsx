@@ -1,23 +1,76 @@
+import { useState, useEffect, useCallback } from "react";
+import { useDraggable } from "@dnd-kit/core";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
 import type { Resource } from "@/types";
 import { Spinner } from "@/components/Spinner";
+import { Modal } from "@/components/Modal";
+import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
+import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
+import toast from "react-hot-toast";
 import styles from "./ResourceList.module.css";
 
 interface ResourceListProps {
   folderId: string | null;
-  selectedResourceId: string | null;
+  selectedResourceIds: Set<string>;
   selectedTagIds: Set<string>;
   sortBy: "created_at" | "captured_at";
   sortOrder: "asc" | "desc";
-  onSelect: (resource: Resource) => void;
+  refreshKey: number;
+  onSelectResource: (resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => void;
   onOpen: (resource: Resource) => void;
   onSortByChange: (sortBy: "created_at" | "captured_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
 }
 
-export function ResourceList({ folderId, selectedResourceId, selectedTagIds, sortBy, sortOrder, onSelect, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
+function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, onContextMenu }: {
+  resource: Resource;
+  isSelected: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onDoubleClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: resource.id,
+    data: { type: "resource", title: resource.title },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.item} ${isSelected ? styles.itemSelected : ""}`}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
+      {...attributes}
+      {...listeners}
+    >
+      <div className={styles.itemTitle}>
+        {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
+        {resource.title}
+      </div>
+      <div className={styles.itemMeta}>
+        <span>{resource.domain ?? new URL(resource.url).hostname} · {new Date(resource.created_at).toLocaleDateString()}</span>
+      </div>
+    </div>
+  );
+}
+
+export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, refreshKey, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
   const { resources, resourceTags, loading, refresh } = useResources(folderId, sortBy, sortOrder);
+
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextResourceIds, setContextResourceIds] = useState<string[]>([]);
+  const [editingResource, setEditingResource] = useState<Resource | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+  // Refresh when refreshKey changes (e.g. after resource move)
+  useEffect(() => {
+    if (refreshKey > 0) {
+      refresh();
+    }
+  }, [refreshKey, refresh]);
 
   const filteredResources = selectedTagIds.size === 0
     ? resources
@@ -26,21 +79,66 @@ export function ResourceList({ folderId, selectedResourceId, selectedTagIds, sor
         return tags.some((t) => selectedTagIds.has(t.id));
       });
 
-  async function handleDelete(e: React.MouseEvent, resource: Resource) {
+  function handleContextMenu(e: React.MouseEvent, resource: Resource) {
+    e.preventDefault();
     e.stopPropagation();
-    if (!window.confirm(`确定删除资料「${resource.title}」吗？`)) return;
+
+    // If right-clicked item is not in selection, single-select it
+    if (!selectedResourceIds.has(resource.id)) {
+      onSelectResource(resource, filteredResources, { metaKey: false, shiftKey: false });
+      setContextResourceIds([resource.id]);
+    } else {
+      setContextResourceIds(Array.from(selectedResourceIds));
+    }
+
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }
+
+  const handleDelete = useCallback(async () => {
+    setDeleteConfirm(false);
+    setContextMenu(null);
     try {
-      await cmd.deleteResource(resource.id);
+      for (const id of contextResourceIds) {
+        await cmd.deleteResource(id);
+      }
       refresh();
     } catch (err: unknown) {
-      alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }
+  }, [contextResourceIds, refresh]);
+
+  const handleMove = useCallback(async (targetFolderId: string) => {
+    setContextMenu(null);
+    try {
+      for (const id of contextResourceIds) {
+        await cmd.moveResource(id, targetFolderId);
+      }
+      refresh();
+    } catch (err: unknown) {
+      toast.error(`移动失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [contextResourceIds, refresh]);
+
+  const handleEdit = useCallback(() => {
+    if (contextResourceIds.length !== 1) return;
+    const resource = resources.find((r) => r.id === contextResourceIds[0]);
+    if (resource) {
+      setEditingResource(resource);
+    }
+    setContextMenu(null);
+  }, [contextResourceIds, resources]);
+
+  const isSingleSelect = contextResourceIds.length === 1;
 
   return (
     <div className={styles.section}>
       <div className={styles.header}>
-        <span className={styles.title}>资料</span>
+        <span className={styles.title}>
+          资料
+          {selectedResourceIds.size > 1 && (
+            <span className={styles.selectionCount}>已选 {selectedResourceIds.size} 项</span>
+          )}
+        </span>
         <div className={styles.sortControls}>
           <select
             className={styles.sortSelect}
@@ -67,28 +165,81 @@ export function ResourceList({ folderId, selectedResourceId, selectedTagIds, sor
         <div className={styles.empty}>该文件夹暂无资料</div>
       )}
       {filteredResources.map((resource) => (
-        <div
+        <DraggableResourceItem
           key={resource.id}
-          className={`${styles.item} ${selectedResourceId === resource.id ? styles.itemSelected : ""}`}
-          onClick={() => onSelect(resource)}
+          resource={resource}
+          isSelected={selectedResourceIds.has(resource.id)}
+          onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
           onDoubleClick={() => onOpen(resource)}
-        >
-          <div className={styles.itemTitle}>
-            {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
-            {resource.title}
-          </div>
-          <div className={styles.itemMeta}>
-            <span>{resource.domain ?? new URL(resource.url).hostname} · {new Date(resource.created_at).toLocaleDateString()}</span>
+          onContextMenu={(e) => handleContextMenu(e, resource)}
+        />
+      ))}
+
+      {contextMenu && folderId && (
+        <ResourceContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          resourceIds={contextResourceIds}
+          currentFolderId={folderId}
+          isSingleSelect={isSingleSelect}
+          onEdit={handleEdit}
+          onDelete={() => {
+            setContextMenu(null);
+            setDeleteConfirm(true);
+          }}
+          onMove={handleMove}
+          onTagsChanged={refresh}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {editingResource && (
+        <ResourceEditDialog
+          resource={editingResource}
+          onSave={refresh}
+          onClose={() => setEditingResource(null)}
+        />
+      )}
+
+      {deleteConfirm && (
+        <Modal title="确认删除" onClose={() => setDeleteConfirm(false)}>
+          <p>
+            {isSingleSelect
+              ? `确定删除该资料吗？`
+              : `确定删除选中的 ${contextResourceIds.length} 项资料吗？`}
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
             <button
-              className={styles.deleteBtn}
-              onClick={(e) => handleDelete(e, resource)}
-              title="删除资料"
+              style={{
+                padding: "6px 14px",
+                border: "1px solid var(--color-border)",
+                borderRadius: 4,
+                background: "none",
+                color: "var(--color-text-primary)",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+              }}
+              onClick={() => setDeleteConfirm(false)}
             >
-              ×
+              取消
+            </button>
+            <button
+              style={{
+                padding: "6px 14px",
+                border: "none",
+                borderRadius: 4,
+                background: "var(--color-danger)",
+                color: "white",
+                fontSize: "var(--font-size-sm)",
+                cursor: "pointer",
+              }}
+              onClick={handleDelete}
+            >
+              删除
             </button>
           </div>
-        </div>
-      ))}
+        </Modal>
+      )}
     </div>
   );
 }

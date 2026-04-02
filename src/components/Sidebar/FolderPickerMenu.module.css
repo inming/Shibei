@@ -1,0 +1,31 @@
+.picker {
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 140px;
+}
+
+.item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+}
+
+.item:disabled,
+.item.current {
+  color: var(--color-text-muted);
+  cursor: default;
+  opacity: 0.5;
+}
