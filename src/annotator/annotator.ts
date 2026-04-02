@@ -685,8 +685,23 @@
   });
 
   // ── Block external navigation ──
-  // Intercept all link clicks: prevent navigation inside iframe,
-  // notify parent to open in external browser if needed.
+  // Links are not clickable by default to avoid interfering with annotation.
+  // Ctrl+Click opens the link in external browser.
+  // Default: inherit cursor (text cursor for annotation). Ctrl held: pointer cursor.
+  const linkStyle = document.createElement("style");
+  linkStyle.textContent = `a[href] { cursor: inherit !important; } body.shibei-ctrl-held a[href] { cursor: pointer !important; }`;
+  document.head.appendChild(linkStyle);
+
+  document.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Control") document.body.classList.add("shibei-ctrl-held");
+  });
+  document.addEventListener("keyup", (e: KeyboardEvent) => {
+    if (e.key === "Control") document.body.classList.remove("shibei-ctrl-held");
+  });
+  window.addEventListener("blur", () => {
+    document.body.classList.remove("shibei-ctrl-held");
+  });
+
   document.addEventListener(
     "click",
     (e: MouseEvent) => {
@@ -700,13 +715,15 @@
       e.preventDefault();
       e.stopPropagation();
 
-      // Tell parent about the link click (parent can open in external browser)
-      const msg: LinkClickedMsg = {
-        type: "shibei:link-clicked",
-        source: "shibei",
-        url: (link as HTMLAnchorElement).href,
-      };
-      window.parent.postMessage(msg, "*");
+      // Only open link if Ctrl is held
+      if (e.ctrlKey) {
+        const msg: LinkClickedMsg = {
+          type: "shibei:link-clicked",
+          source: "shibei",
+          url: (link as HTMLAnchorElement).href,
+        };
+        window.parent.postMessage(msg, "*");
+      }
     },
     true
   );

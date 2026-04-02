@@ -519,12 +519,13 @@
     linkStyle.textContent = `a[href] { cursor: inherit !important; } body.shibei-ctrl-held a[href] { cursor: pointer !important; }`;
     document.head.appendChild(linkStyle);
     document.addEventListener("keydown", (e) => {
-        if (e.key === "Control") document.body.classList.add("shibei-ctrl-held");
+        if (e.key === "Control")
+            document.body.classList.add("shibei-ctrl-held");
     });
     document.addEventListener("keyup", (e) => {
-        if (e.key === "Control") document.body.classList.remove("shibei-ctrl-held");
+        if (e.key === "Control")
+            document.body.classList.remove("shibei-ctrl-held");
     });
-    // Remove class if window loses focus while Ctrl is held
     window.addEventListener("blur", () => {
         document.body.classList.remove("shibei-ctrl-held");
     });
