@@ -37,8 +37,16 @@ export function reorderFolder(id: string, newSortOrder: number): Promise<void> {
 
 // ── Resources ──
 
-export function listResources(folderId: string): Promise<Resource[]> {
-  return invoke("cmd_list_resources", { folderId });
+export function listResources(
+  folderId: string,
+  sortBy?: "created_at" | "captured_at",
+  sortOrder?: "asc" | "desc",
+): Promise<Resource[]> {
+  return invoke("cmd_list_resources", {
+    folderId,
+    sortBy: sortBy ?? "created_at",
+    sortOrder: sortOrder ?? "desc",
+  });
 }
 
 export function getResource(id: string): Promise<Resource> {

@@ -107,9 +107,17 @@ pub async fn cmd_reorder_folder(
 pub async fn cmd_list_resources(
     state: tauri::State<'_, Arc<AppState>>,
     folder_id: String,
+    sort_by: Option<resources::SortBy>,
+    sort_order: Option<resources::SortOrder>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
     let conn = state.conn.lock().await;
-    resources::list_resources_by_folder(&conn, &folder_id).map_err(Into::into)
+    resources::list_resources_by_folder(
+        &conn,
+        &folder_id,
+        sort_by.unwrap_or(resources::SortBy::CreatedAt),
+        sort_order.unwrap_or(resources::SortOrder::Desc),
+    )
+    .map_err(Into::into)
 }
 
 #[tauri::command]

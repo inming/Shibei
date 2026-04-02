@@ -103,15 +103,41 @@ pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
     })
 }
 
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortBy {
+    CreatedAt,
+    CapturedAt,
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortOrder {
+    Asc,
+    Desc,
+}
+
 pub fn list_resources_by_folder(
     conn: &Connection,
     folder_id: &str,
+    sort_by: SortBy,
+    sort_order: SortOrder,
 ) -> Result<Vec<Resource>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
-         FROM resources WHERE folder_id = ?1
-         ORDER BY created_at DESC",
-    )?;
+    let order_column = match sort_by {
+        SortBy::CreatedAt => "created_at",
+        SortBy::CapturedAt => "captured_at",
+    };
+    let order_dir = match sort_order {
+        SortOrder::Asc => "ASC",
+        SortOrder::Desc => "DESC",
+    };
+    let sql = format!(
+        "SELECT id, title, url, domain, author, description, folder_id, \
+         resource_type, file_path, created_at, captured_at, selection_meta \
+         FROM resources WHERE folder_id = ?1 ORDER BY {} {}",
+        order_column, order_dir
+    );
+    let mut stmt = conn.prepare(&sql)?;
     let resources = stmt
         .query_map(params![folder_id], |row| {
             Ok(Resource {
@@ -286,7 +312,7 @@ mod tests {
         create_test_resource(&conn, &folder.id);
         create_test_resource(&conn, &folder.id);
 
-        let resources = list_resources_by_folder(&conn, &folder.id).unwrap();
+        let resources = list_resources_by_folder(&conn, &folder.id, SortBy::CreatedAt, SortOrder::Desc).unwrap();
         assert_eq!(resources.len(), 2);
     }
 

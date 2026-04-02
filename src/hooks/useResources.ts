@@ -4,7 +4,11 @@ import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
 
-export function useResources(folderId: string | null) {
+export function useResources(
+  folderId: string | null,
+  sortBy: "created_at" | "captured_at" = "created_at",
+  sortOrder: "asc" | "desc" = "desc",
+) {
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -15,7 +19,7 @@ export function useResources(folderId: string | null) {
     }
     setLoading(true);
     try {
-      const data = await cmd.listResources(folderId);
+      const data = await cmd.listResources(folderId, sortBy, sortOrder);
       setResources(data);
     } catch (err) {
       console.error("Failed to load resources:", err);
@@ -23,7 +27,7 @@ export function useResources(folderId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [folderId]);
+  }, [folderId, sortBy, sortOrder]);
 
   useEffect(() => {
     refresh();
