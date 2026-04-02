@@ -29,7 +29,6 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const didScrollToInitial = useRef(false);
   const draggingRef = useRef(false);
-  const [isResizing, setIsResizing] = useState(false);
   const [panelWidth, setPanelWidth] = useState(280);
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
@@ -231,7 +230,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
 
   const handleResizeMouseDown = useCallback(() => {
     draggingRef.current = true;
-    setIsResizing(true);
+    // Hide iframe entirely during drag to prevent event capture
+    if (iframeRef.current) {
+      iframeRef.current.style.visibility = "hidden";
+    }
   }, []);
 
   useEffect(() => {
@@ -246,7 +248,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     function onMouseUp() {
       if (!draggingRef.current) return;
       draggingRef.current = false;
-      setIsResizing(false);
+      // Restore iframe visibility
+      if (iframeRef.current) {
+        iframeRef.current.style.visibility = "";
+      }
     }
 
     document.addEventListener("mousemove", onMouseMove);
@@ -270,8 +275,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   }, [failedHighlightIds]);
 
   return (
-    <div ref={containerRef} className={styles.container} style={{ position: "relative" }}>
-      {isResizing && <div className={styles.resizeOverlay} />}
+    <div ref={containerRef} className={styles.container}>
       <div className={styles.reader}>
         {/* Meta bar */}
         <div className={styles.metaBar}>
