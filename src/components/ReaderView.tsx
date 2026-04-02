@@ -232,9 +232,6 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     e.preventDefault();
     draggingRef.current = true;
     containerRef.current?.classList.add(styles.resizing);
-    if (iframeRef.current) {
-      iframeRef.current.style.visibility = "hidden";
-    }
   }, []);
 
   useEffect(() => {
@@ -250,9 +247,6 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       if (!draggingRef.current) return;
       draggingRef.current = false;
       containerRef.current?.classList.remove(styles.resizing);
-      if (iframeRef.current) {
-        iframeRef.current.style.visibility = "";
-      }
     }
 
     document.addEventListener("mousemove", onMouseMove);
