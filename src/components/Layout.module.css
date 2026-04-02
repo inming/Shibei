@@ -15,7 +15,7 @@
 }
 
 .listPanel {
-  min-width: 200px;
+  min-width: 240px;
   background: var(--color-bg-primary);
   display: flex;
   flex-direction: column;
@@ -48,6 +48,7 @@
 
 .main {
   flex: 1;
+  min-width: 280px;
   display: flex;
   flex-direction: column;
   overflow: hidden;

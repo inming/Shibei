@@ -150,15 +150,34 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
     layoutRef.current?.classList.add(styles.resizing);
   }, []);
 
+  // Layout constants — see CLAUDE.md "三栏布局约束"
+  const LIST_MIN = 240;
+  const PREVIEW_MIN = 280;
+  const HANDLE_WIDTH = 4;
+
+  function getSidebarWidth() {
+    return document.querySelector(`.${styles.sidebar}`)?.getBoundingClientRect().width ?? 200;
+  }
+
+  function clampListWidth(width: number) {
+    const maxWidth = window.innerWidth - getSidebarWidth() - HANDLE_WIDTH - PREVIEW_MIN;
+    return Math.max(LIST_MIN, Math.min(maxWidth, width));
+  }
+
+  // Clamp listPanelWidth when window resizes
+  useEffect(() => {
+    function onResize() {
+      setListPanelWidth((prev) => clampListWidth(prev));
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!dragging.current) return;
-      const sidebarWidth = document.querySelector(`.${styles.sidebar}`)?.getBoundingClientRect().width ?? 200;
-      const newWidth = e.clientX - sidebarWidth;
-      // Min 200px, max 60% of remaining space (keep preview panel usable)
-      const available = window.innerWidth - sidebarWidth - 4; // 4px for handle
-      const maxWidth = Math.floor(available * 0.6);
-      setListPanelWidth(Math.max(200, Math.min(maxWidth, newWidth)));
+      const newWidth = e.clientX - getSidebarWidth();
+      setListPanelWidth(clampListWidth(newWidth));
     }
 
     function onMouseUp() {

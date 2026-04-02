@@ -108,8 +108,37 @@ docs/               # 设计文档与规范
 - **数据存储**：元信息在 SQLite，快照文件在文件系统（snapshot.html），两者通过 resource_id 关联
 - **标注数据**：独立于原始资料存储，不修改快照文件
 - **脚本注入**：标注脚本通过 `<script>` 标签直接嵌入 HTML `<head>`，不使用 initialization_script
-- **外链处理**：iframe 内链接点击被拦截，在外部浏览器打开
+- **外链处理**：iframe 内链接默认不可点击（cursor: inherit），Ctrl+Click 通过 plugin-opener 在系统浏览器打开
 - **插件 MAIN world 通信**：MAIN world 脚本通过 `window.postMessage` → ISOLATED world `relay.js` → `chrome.runtime.sendMessage` → Background Service Worker 中继，绕过页面 CSP 限制
+
+## 三栏布局约束
+
+资料库视图为三栏布局：Sidebar | ResourceList | PreviewPanel，通过分割条可调整 ResourceList 宽度。
+
+### 窗口最小尺寸
+
+- 最小宽度：**800px**，最小高度：**500px**（`tauri.conf.json` 中配置）
+
+### 各栏宽度规则
+
+| 栏 | 宽度规则 | 最小宽度 | 说明 |
+|---|---------|---------|------|
+| Sidebar | 固定 `--sidebar-width` | 160px | 不可拖拽调整 |
+| ResourceList | 可拖拽调整 | 240px | 像素值，初始 340px |
+| Handle | 固定 4px | — | 拖拽分割条 |
+| PreviewPanel | `flex: 1` 填充剩余 | 280px | 始终有可用空间 |
+
+### 拖拽约束
+
+```
+可用空间 = 窗口宽度 - Sidebar宽度 - Handle(4px)
+ResourceList 最大值 = 可用空间 - PreviewPanel最小值(280px)
+ResourceList 最小值 = 240px
+```
+
+- 拖拽时实时计算，确保两侧都不小于最小值
+- 窗口缩小时，`resize` 事件自动收缩 ResourceList 宽度
+- 常量定义在 `Layout.tsx`：`LIST_MIN=240, PREVIEW_MIN=280, HANDLE_WIDTH=4`
 
 ## 依赖管理
 
