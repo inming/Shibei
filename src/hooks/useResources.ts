@@ -6,7 +6,7 @@ import * as cmd from "@/lib/commands";
 
 export function useResources(
   folderId: string | null,
-  sortBy: "created_at" | "captured_at" = "created_at",
+  sortBy: "created_at" | "annotated_at" = "created_at",
   sortOrder: "asc" | "desc" = "desc",
 ) {
   const [resources, setResources] = useState<Resource[]>([]);

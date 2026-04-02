@@ -39,7 +39,7 @@ export function reorderFolder(id: string, newSortOrder: number): Promise<void> {
 
 export function listResources(
   folderId: string,
-  sortBy?: "created_at" | "captured_at",
+  sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
 ): Promise<Resource[]> {
   return invoke("cmd_list_resources", {

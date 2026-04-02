@@ -19,7 +19,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<"created_at" | "captured_at">("created_at");
+  const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const [resourceRefreshKey, setResourceRefreshKey] = useState(0);
@@ -88,23 +88,18 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
     const activeData = active.data.current as { type: string; parentId?: string };
     const overData = over.data.current as { type: string; folderId?: string; parentId?: string };
 
-    // Folder-to-folder-target: move into
-    if (activeData.type === "folder" && overData.type === "folder-target") {
-      const targetFolderId = overData.folderId!;
-      if (String(active.id) === targetFolderId) return; // can't drop on self
-      try {
-        await cmd.moveFolder(String(active.id), targetFolderId);
-        folderTreeRefreshRef.current?.();
-      } catch (err) {
-        console.error("Failed to move folder:", err);
-        toast.error("移动文件夹失败");
-      }
-      return;
-    }
+    // Resolve target folder ID: droppable uses "folder-target" with folderId,
+    // sortable uses "folder" with the folder id as the over.id itself.
+    const resolveTargetFolderId = (): string | null => {
+      if (overData.type === "folder-target") return overData.folderId ?? null;
+      if (overData.type === "folder") return String(over.id);
+      return null;
+    };
 
-    // Resource move to folder
-    if (activeData.type === "resource" && overData.type === "folder-target") {
-      const targetFolderId = overData.folderId!;
+    // Resource → folder: move resource(s)
+    if (activeData.type === "resource") {
+      const targetFolderId = resolveTargetFolderId();
+      if (!targetFolderId) return;
       try {
         const idsToMove = selectedResourceIds.has(String(active.id))
           ? Array.from(selectedResourceIds)
@@ -123,27 +118,42 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       return;
     }
 
-    // Folder sorting (same parent reorder)
-    if (activeData.type === "folder" && overData.type === "folder" && active.id !== over.id) {
-      const parentId = activeData.parentId;
-      if (!parentId || parentId !== overData.parentId) return; // only sort within same parent
-      try {
-        const siblings = await cmd.listFolders(parentId);
-        const oldIndex = siblings.findIndex((f) => f.id === String(active.id));
-        const newIndex = siblings.findIndex((f) => f.id === String(over.id));
-        if (oldIndex === -1 || newIndex === -1) return;
-        const reordered = [...siblings];
-        const [moved] = reordered.splice(oldIndex, 1);
-        reordered.splice(newIndex, 0, moved);
-        for (let i = 0; i < reordered.length; i++) {
-          if (reordered[i].sort_order !== i) {
-            await cmd.reorderFolder(reordered[i].id, i);
+    // Folder → folder: distinguish sort (same parent) vs move-into (different parent)
+    if (activeData.type === "folder" && active.id !== over.id) {
+      const targetFolderId = resolveTargetFolderId();
+      if (!targetFolderId) return;
+
+      // Same parent → reorder siblings
+      if (overData.type === "folder" && activeData.parentId && activeData.parentId === overData.parentId) {
+        try {
+          const siblings = await cmd.listFolders(activeData.parentId);
+          const oldIndex = siblings.findIndex((f) => f.id === String(active.id));
+          const newIndex = siblings.findIndex((f) => f.id === String(over.id));
+          if (oldIndex === -1 || newIndex === -1) return;
+          const reordered = [...siblings];
+          const [moved] = reordered.splice(oldIndex, 1);
+          reordered.splice(newIndex, 0, moved);
+          for (let i = 0; i < reordered.length; i++) {
+            if (reordered[i].sort_order !== i) {
+              await cmd.reorderFolder(reordered[i].id, i);
+            }
           }
+          folderTreeRefreshRef.current?.();
+        } catch (err) {
+          console.error("Failed to reorder folders:", err);
+          toast.error("排序失败");
         }
+        return;
+      }
+
+      // Different parent or folder-target → move into
+      if (String(active.id) === targetFolderId) return;
+      try {
+        await cmd.moveFolder(String(active.id), targetFolderId);
         folderTreeRefreshRef.current?.();
       } catch (err) {
-        console.error("Failed to reorder folders:", err);
-        toast.error("排序失败");
+        console.error("Failed to move folder:", err);
+        toast.error("移动文件夹失败");
       }
       return;
     }

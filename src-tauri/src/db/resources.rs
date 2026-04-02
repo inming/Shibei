@@ -107,7 +107,7 @@ pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
 #[serde(rename_all = "snake_case")]
 pub enum SortBy {
     CreatedAt,
-    CapturedAt,
+    AnnotatedAt,
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
@@ -123,20 +123,32 @@ pub fn list_resources_by_folder(
     sort_by: SortBy,
     sort_order: SortOrder,
 ) -> Result<Vec<Resource>, DbError> {
-    let order_column = match sort_by {
-        SortBy::CreatedAt => "created_at",
-        SortBy::CapturedAt => "captured_at",
-    };
     let order_dir = match sort_order {
         SortOrder::Asc => "ASC",
         SortOrder::Desc => "DESC",
     };
-    let sql = format!(
-        "SELECT id, title, url, domain, author, description, folder_id, \
-         resource_type, file_path, created_at, captured_at, selection_meta \
-         FROM resources WHERE folder_id = ?1 ORDER BY {} {}",
-        order_column, order_dir
-    );
+    let sql = match sort_by {
+        SortBy::CreatedAt => format!(
+            "SELECT id, title, url, domain, author, description, folder_id, \
+             resource_type, file_path, created_at, captured_at, selection_meta \
+             FROM resources WHERE folder_id = ?1 ORDER BY created_at {}",
+            order_dir
+        ),
+        SortBy::AnnotatedAt => format!(
+            "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             FROM resources r LEFT JOIN (\
+               SELECT resource_id, MAX(created_at) AS last_at FROM (\
+                 SELECT resource_id, created_at FROM highlights \
+                 UNION ALL \
+                 SELECT resource_id, created_at FROM comments\
+               ) GROUP BY resource_id\
+             ) a ON r.id = a.resource_id \
+             WHERE r.folder_id = ?1 \
+             ORDER BY COALESCE(a.last_at, r.created_at) {}",
+            order_dir
+        ),
+    };
     let mut stmt = conn.prepare(&sql)?;
     let resources = stmt
         .query_map(params![folder_id], |row| {

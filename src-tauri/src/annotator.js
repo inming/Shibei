@@ -514,6 +514,10 @@
     // ── Block external navigation ──
     // Links are not clickable by default to avoid interfering with annotation.
     // Ctrl+Click opens the link in external browser.
+    // Visually indicate links are disabled (cursor inherits from parent).
+    const linkStyle = document.createElement("style");
+    linkStyle.textContent = `a[href] { cursor: inherit !important; }`;
+    document.head.appendChild(linkStyle);
     document.addEventListener("click", (e) => {
         const link = e.target.closest("a[href]");
         if (!link)

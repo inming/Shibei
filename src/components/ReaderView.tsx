@@ -40,6 +40,11 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     didScrollToInitial.current = false;
   }, [initialHighlightId]);
 
+  // Clear selection toolbar when resource changes (e.g. switching tabs)
+  useEffect(() => {
+    setSelection(null);
+  }, [resource.id]);
+
   const {
     highlights,
     getCommentsForHighlight,

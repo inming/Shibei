@@ -116,6 +116,13 @@
   flex-shrink: 0;
 }
 
+.selectionCount {
+  font-size: 11px;
+  color: var(--color-accent);
+  white-space: nowrap;
+  margin-left: 6px;
+}
+
 .empty {
   padding: var(--spacing-sm) var(--spacing-lg);
   color: var(--color-text-muted);

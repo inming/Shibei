@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { Resource } from "@/types";
+import { useState, useEffect } from "react";
+import type { Resource, Tag } from "@/types";
+import * as cmd from "@/lib/commands";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { PreviewPanelSkeleton } from "@/components/Skeleton";
 import styles from "./PreviewPanel.module.css";
@@ -12,6 +13,11 @@ interface PreviewPanelProps {
 export function PreviewPanel({ resource, onOpenInReader }: PreviewPanelProps) {
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+
+  useEffect(() => {
+    cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
+  }, [resource.id]);
 
   const domain = resource.domain ?? (() => {
     try { return new URL(resource.url).hostname; } catch { return resource.url; }
@@ -25,6 +31,16 @@ export function PreviewPanel({ resource, onOpenInReader }: PreviewPanelProps) {
         <div className={styles.metaDomain}>
           {domain} · {new Date(resource.created_at).toLocaleDateString()}
         </div>
+        {tags.length > 0 && (
+          <div className={styles.tagRow}>
+            {tags.map((tag) => (
+              <span key={tag.id} className={styles.tagBadge}>
+                <span className={styles.tagDot} style={{ backgroundColor: tag.color }} />
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <hr className={styles.divider} />

@@ -14,12 +14,12 @@ interface ResourceListProps {
   folderId: string | null;
   selectedResourceIds: Set<string>;
   selectedTagIds: Set<string>;
-  sortBy: "created_at" | "captured_at";
+  sortBy: "created_at" | "annotated_at";
   sortOrder: "asc" | "desc";
   refreshKey: number;
   onSelectResource: (resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => void;
   onOpen: (resource: Resource) => void;
-  onSortByChange: (sortBy: "created_at" | "captured_at") => void;
+  onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
 }
 
@@ -184,10 +184,10 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           <select
             className={styles.sortSelect}
             value={sortBy}
-            onChange={(e) => onSortByChange(e.target.value as "created_at" | "captured_at")}
+            onChange={(e) => onSortByChange(e.target.value as "created_at" | "annotated_at")}
           >
             <option value="created_at">创建时间</option>
-            <option value="captured_at">抓取时间</option>
+            <option value="annotated_at">标注时间</option>
           </select>
           <button
             className={styles.sortOrderBtn}
