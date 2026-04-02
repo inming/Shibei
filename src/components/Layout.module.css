@@ -16,7 +16,6 @@
 
 .listPanel {
   min-width: 200px;
-  max-width: 600px;
   background: var(--color-bg-primary);
   display: flex;
   flex-direction: column;

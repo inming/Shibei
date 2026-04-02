@@ -155,7 +155,10 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       if (!dragging.current) return;
       const sidebarWidth = document.querySelector(`.${styles.sidebar}`)?.getBoundingClientRect().width ?? 200;
       const newWidth = e.clientX - sidebarWidth;
-      setListPanelWidth(Math.max(200, Math.min(600, newWidth)));
+      // Min 200px, max 60% of remaining space (keep preview panel usable)
+      const available = window.innerWidth - sidebarWidth - 4; // 4px for handle
+      const maxWidth = Math.floor(available * 0.6);
+      setListPanelWidth(Math.max(200, Math.min(maxWidth, newWidth)));
     }
 
     function onMouseUp() {
