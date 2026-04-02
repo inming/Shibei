@@ -13,6 +13,9 @@ interface LibraryViewProps {
 export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [sortBy, _setSortBy] = useState<"created_at" | "captured_at">("created_at");
+  const [sortOrder, _setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const dragging = useRef(false);
 
@@ -45,6 +48,18 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
     };
   }, []);
 
+  const handleToggleTag = useCallback((tagId: string) => {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tagId)) {
+        next.delete(tagId);
+      } else {
+        next.add(tagId);
+      }
+      return next;
+    });
+  }, []);
+
   return (
     <div ref={layoutRef} className={styles.layout}>
       {/* Col 1: Folder tree + Tags */}
@@ -56,7 +71,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             setSelectedResource(null);
           }}
         />
-        <TagFilter />
+        <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
       </div>
 
       {/* Col 2: Resource list */}
@@ -64,6 +79,9 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
         <ResourceList
           folderId={selectedFolderId}
           selectedResourceId={selectedResource?.id ?? null}
+          selectedTagIds={selectedTagIds}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
           onSelect={setSelectedResource}
           onOpen={(resource) => onOpenResource(resource)}
         />

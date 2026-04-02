@@ -7,12 +7,22 @@ import styles from "./ResourceList.module.css";
 interface ResourceListProps {
   folderId: string | null;
   selectedResourceId: string | null;
+  selectedTagIds: Set<string>;
+  sortBy: "created_at" | "captured_at";
+  sortOrder: "asc" | "desc";
   onSelect: (resource: Resource) => void;
   onOpen: (resource: Resource) => void;
 }
 
-export function ResourceList({ folderId, selectedResourceId, onSelect, onOpen }: ResourceListProps) {
-  const { resources, loading, refresh } = useResources(folderId);
+export function ResourceList({ folderId, selectedResourceId, selectedTagIds, sortBy, sortOrder, onSelect, onOpen }: ResourceListProps) {
+  const { resources, resourceTags, loading, refresh } = useResources(folderId, sortBy, sortOrder);
+
+  const filteredResources = selectedTagIds.size === 0
+    ? resources
+    : resources.filter((r) => {
+        const tags = resourceTags[r.id] || [];
+        return tags.some((t) => selectedTagIds.has(t.id));
+      });
 
   async function handleDelete(e: React.MouseEvent, resource: Resource) {
     e.stopPropagation();
@@ -32,10 +42,10 @@ export function ResourceList({ folderId, selectedResourceId, onSelect, onOpen }:
         <div className={styles.empty}>选择文件夹查看资料</div>
       )}
       {loading && <Spinner />}
-      {folderId && !loading && resources.length === 0 && (
+      {folderId && !loading && filteredResources.length === 0 && (
         <div className={styles.empty}>该文件夹暂无资料</div>
       )}
-      {resources.map((resource) => (
+      {filteredResources.map((resource) => (
         <div
           key={resource.id}
           className={`${styles.item} ${selectedResourceId === resource.id ? styles.itemSelected : ""}`}

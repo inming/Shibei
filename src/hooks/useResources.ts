@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
-import type { Resource } from "@/types";
+import type { Resource, Tag } from "@/types";
 import * as cmd from "@/lib/commands";
 
 export function useResources(
@@ -10,17 +10,27 @@ export function useResources(
   sortOrder: "asc" | "desc" = "desc",
 ) {
   const [resources, setResources] = useState<Resource[]>([]);
+  const [resourceTags, setResourceTags] = useState<Record<string, Tag[]>>({});
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!folderId) {
       setResources([]);
+      setResourceTags({});
       return;
     }
     setLoading(true);
     try {
-      const data = await cmd.listResources(folderId, sortBy, sortOrder);
-      setResources(data);
+      const list = await cmd.listResources(folderId, sortBy, sortOrder);
+      setResources(list);
+      // Fetch tags for all resources in parallel
+      const tagEntries = await Promise.all(
+        list.map(async (r) => {
+          const tags = await cmd.getTagsForResource(r.id);
+          return [r.id, tags] as const;
+        }),
+      );
+      setResourceTags(Object.fromEntries(tagEntries));
     } catch (err) {
       console.error("Failed to load resources:", err);
       toast.error("加载资料列表失败");
@@ -45,5 +55,5 @@ export function useResources(
     };
   }, [refresh]);
 
-  return { resources, loading, refresh };
+  return { resources, resourceTags, loading, refresh };
 }
