@@ -17,8 +17,8 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
-  const [sortBy, _setSortBy] = useState<"created_at" | "captured_at">("created_at");
-  const [sortOrder, _setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sortBy, setSortBy] = useState<"created_at" | "captured_at">("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const dragging = useRef(false);
 
@@ -164,6 +164,8 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             sortOrder={sortOrder}
             onSelect={setSelectedResource}
             onOpen={(resource) => onOpenResource(resource)}
+            onSortByChange={setSortBy}
+            onSortOrderChange={setSortOrder}
           />
         </div>
 

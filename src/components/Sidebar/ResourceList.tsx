@@ -12,9 +12,11 @@ interface ResourceListProps {
   sortOrder: "asc" | "desc";
   onSelect: (resource: Resource) => void;
   onOpen: (resource: Resource) => void;
+  onSortByChange: (sortBy: "created_at" | "captured_at") => void;
+  onSortOrderChange: (sortOrder: "asc" | "desc") => void;
 }
 
-export function ResourceList({ folderId, selectedResourceId, selectedTagIds, sortBy, sortOrder, onSelect, onOpen }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceId, selectedTagIds, sortBy, sortOrder, onSelect, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
   const { resources, resourceTags, loading, refresh } = useResources(folderId, sortBy, sortOrder);
 
   const filteredResources = selectedTagIds.size === 0
@@ -37,7 +39,26 @@ export function ResourceList({ folderId, selectedResourceId, selectedTagIds, sor
 
   return (
     <div className={styles.section}>
-      <div className={styles.title}>资料</div>
+      <div className={styles.header}>
+        <span className={styles.title}>资料</span>
+        <div className={styles.sortControls}>
+          <select
+            className={styles.sortSelect}
+            value={sortBy}
+            onChange={(e) => onSortByChange(e.target.value as "created_at" | "captured_at")}
+          >
+            <option value="created_at">创建时间</option>
+            <option value="captured_at">抓取时间</option>
+          </select>
+          <button
+            className={styles.sortOrderBtn}
+            onClick={() => onSortOrderChange(sortOrder === "desc" ? "asc" : "desc")}
+            title={sortOrder === "desc" ? "降序" : "升序"}
+          >
+            {sortOrder === "desc" ? "↓" : "↑"}
+          </button>
+        </div>
+      </div>
       {!folderId && (
         <div className={styles.empty}>选择文件夹查看资料</div>
       )}
