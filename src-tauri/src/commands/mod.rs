@@ -91,6 +91,16 @@ pub async fn cmd_move_folder(
     folders::move_folder(&conn, &id, &new_parent_id).map_err(Into::into)
 }
 
+#[tauri::command]
+pub async fn cmd_reorder_folder(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+    new_sort_order: i64,
+) -> Result<(), CommandError> {
+    let conn = state.conn.lock().await;
+    folders::reorder_folder(&conn, &id, new_sort_order).map_err(Into::into)
+}
+
 // ── Resources ──
 
 #[tauri::command]
@@ -124,6 +134,16 @@ pub async fn cmd_delete_resource(
         eprintln!("[shibei] Failed to clean up resource directory {:?}: {}", dir, e);
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_move_resource(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+    new_folder_id: String,
+) -> Result<(), CommandError> {
+    let conn = state.conn.lock().await;
+    resources::move_resource(&conn, &id, &new_folder_id).map_err(Into::into)
 }
 
 // ── Tags ──
@@ -162,6 +182,46 @@ pub async fn cmd_get_tags_for_resource(
 ) -> Result<Vec<tags::Tag>, CommandError> {
     let conn = state.conn.lock().await;
     tags::get_tags_for_resource(&conn, &resource_id).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_add_tag_to_resource(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+    tag_id: String,
+) -> Result<(), CommandError> {
+    let conn = state.conn.lock().await;
+    tags::add_tag_to_resource(&conn, &resource_id, &tag_id).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_remove_tag_from_resource(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+    tag_id: String,
+) -> Result<(), CommandError> {
+    let conn = state.conn.lock().await;
+    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_update_tag(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+    name: String,
+    color: String,
+) -> Result<(), CommandError> {
+    let conn = state.conn.lock().await;
+    tags::update_tag(&conn, &id, &name, &color).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_get_resources_by_tag(
+    state: tauri::State<'_, Arc<AppState>>,
+    tag_id: String,
+) -> Result<Vec<resources::Resource>, CommandError> {
+    let conn = state.conn.lock().await;
+    tags::get_resources_by_tag(&conn, &tag_id).map_err(Into::into)
 }
 
 // ── Highlights ──

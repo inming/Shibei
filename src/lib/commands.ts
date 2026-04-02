@@ -31,6 +31,10 @@ export function moveFolder(id: string, newParentId: string): Promise<void> {
   return invoke("cmd_move_folder", { id, newParentId });
 }
 
+export function reorderFolder(id: string, newSortOrder: number): Promise<void> {
+  return invoke("cmd_reorder_folder", { id, newSortOrder });
+}
+
 // ── Resources ──
 
 export function listResources(folderId: string): Promise<Resource[]> {
@@ -43,6 +47,10 @@ export function getResource(id: string): Promise<Resource> {
 
 export function deleteResource(id: string): Promise<void> {
   return invoke("cmd_delete_resource", { id });
+}
+
+export function moveResource(id: string, newFolderId: string): Promise<void> {
+  return invoke("cmd_move_resource", { id, newFolderId });
 }
 
 // ── Tags ──
@@ -61,6 +69,22 @@ export function deleteTag(id: string): Promise<void> {
 
 export function getTagsForResource(resourceId: string): Promise<Tag[]> {
   return invoke("cmd_get_tags_for_resource", { resourceId });
+}
+
+export function addTagToResource(resourceId: string, tagId: string): Promise<void> {
+  return invoke("cmd_add_tag_to_resource", { resourceId, tagId });
+}
+
+export function removeTagFromResource(resourceId: string, tagId: string): Promise<void> {
+  return invoke("cmd_remove_tag_from_resource", { resourceId, tagId });
+}
+
+export function updateTag(id: string, name: string, color: string): Promise<void> {
+  return invoke("cmd_update_tag", { id, name, color });
+}
+
+export function getResourcesByTag(tagId: string): Promise<Resource[]> {
+  return invoke("cmd_get_resources_by_tag", { tagId });
 }
 
 // ── Highlights ──
