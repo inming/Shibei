@@ -4,6 +4,15 @@ import App from "./App";
 import "@/styles/global.css";
 import { debugLog } from "@/lib/commands";
 
+// Flush early errors captured in index.html before React loaded
+const earlyErrors = (window as unknown as { __earlyErrors?: Array<Record<string, unknown>> }).__earlyErrors;
+if (earlyErrors) {
+  for (const err of earlyErrors) {
+    debugLog(`early-${err.type}`, err);
+  }
+  earlyErrors.length = 0;
+}
+
 // Capture console.error and uncaught exceptions to debug log
 const origError = console.error;
 console.error = (...args: unknown[]) => {
