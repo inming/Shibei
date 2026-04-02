@@ -7,6 +7,8 @@ pub mod tags;
 
 use std::path::Path;
 
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use thiserror::Error;
 
@@ -20,6 +22,21 @@ pub enum DbError {
     NotFound(String),
     #[error("invalid operation: {0}")]
     InvalidOperation(String),
+    #[error("pool error: {0}")]
+    Pool(#[from] r2d2::Error),
+}
+
+pub type DbPool = Pool<SqliteConnectionManager>;
+
+/// Customizer that enables foreign keys on every new connection.
+#[derive(Debug)]
+struct ForeignKeyCustomizer;
+
+impl r2d2::CustomizeConnection<Connection, rusqlite::Error> for ForeignKeyCustomizer {
+    fn on_acquire(&self, conn: &mut Connection) -> Result<(), rusqlite::Error> {
+        conn.execute_batch("PRAGMA foreign_keys = ON")?;
+        Ok(())
+    }
 }
 
 pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
@@ -27,6 +44,24 @@ pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
     conn.execute_batch("PRAGMA foreign_keys = ON")?;
     migration::run_migrations(&mut conn)?;
     Ok(conn)
+}
+
+/// Create a connection pool. Runs migrations on a temporary connection first,
+/// then builds a pool with the ForeignKeyCustomizer.
+pub fn init_pool(db_path: &Path) -> Result<DbPool, DbError> {
+    // Run migrations on a temporary connection
+    let mut migration_conn = Connection::open(db_path)?;
+    migration::run_migrations(&mut migration_conn)?;
+    drop(migration_conn);
+
+    // Build pool
+    let manager = SqliteConnectionManager::file(db_path);
+    let pool = Pool::builder()
+        .max_size(4)
+        .connection_customizer(Box::new(ForeignKeyCustomizer))
+        .build(manager)?;
+
+    Ok(pool)
 }
 
 pub fn now_iso8601() -> String {
@@ -77,5 +112,40 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
         assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn test_init_pool_creates_pool() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+
+        let pool = init_pool(&db_path).unwrap();
+        let conn = pool.get().unwrap();
+
+        let version: u32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
+
+        let fk_enabled: bool = conn
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap();
+        assert!(fk_enabled);
+    }
+
+    #[test]
+    fn test_pool_connections_have_foreign_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+
+        let pool = init_pool(&db_path).unwrap();
+
+        for _ in 0..3 {
+            let conn = pool.get().unwrap();
+            let fk_enabled: bool = conn
+                .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+                .unwrap();
+            assert!(fk_enabled, "foreign_keys should be enabled on every pool connection");
+        }
     }
 }
