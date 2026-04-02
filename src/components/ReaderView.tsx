@@ -228,7 +228,8 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const handleResizeMouseDown = useCallback(() => {
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
     draggingRef.current = true;
     containerRef.current?.classList.add(styles.resizing);
     if (iframeRef.current) {
