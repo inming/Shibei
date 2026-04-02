@@ -72,7 +72,8 @@ pub fn add_tag_to_resource(
     tag_id: &str,
 ) -> Result<(), DbError> {
     conn.execute(
-        "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id) VALUES (?1, ?2)",
+        "INSERT INTO resource_tags (resource_id, tag_id) VALUES (?1, ?2)
+         ON CONFLICT(resource_id, tag_id) DO UPDATE SET deleted_at = NULL",
         params![resource_id, tag_id],
     )?;
     Ok(())

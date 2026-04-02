@@ -50,7 +50,7 @@ pub fn rename_folder(conn: &Connection, id: &str, new_name: &str) -> Result<(), 
     }
     let now = now_iso8601();
     let changed = conn.execute(
-        "UPDATE folders SET name = ?1, updated_at = ?2 WHERE id = ?3",
+        "UPDATE folders SET name = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
         params![new_name, now, id],
     )?;
     if changed == 0 {
@@ -228,7 +228,7 @@ pub fn parent_ids_with_children(conn: &Connection) -> Result<std::collections::H
 pub fn reorder_folder(conn: &Connection, id: &str, new_sort_order: i64) -> Result<(), DbError> {
     let now = now_iso8601();
     let changed = conn.execute(
-        "UPDATE folders SET sort_order = ?1, updated_at = ?2 WHERE id = ?3",
+        "UPDATE folders SET sort_order = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
         params![new_sort_order, now, id],
     )?;
     if changed == 0 {
