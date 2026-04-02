@@ -31,21 +31,25 @@
 
   interface RenderHighlightsMsg {
     type: "shibei:render-highlights";
+    source: "shibei";
     highlights: HighlightData[];
   }
 
   interface AddHighlightMsg {
     type: "shibei:add-highlight";
+    source: "shibei";
     highlight: HighlightData;
   }
 
   interface RemoveHighlightMsg {
     type: "shibei:remove-highlight";
+    source: "shibei";
     id: string;
   }
 
   interface ScrollToHighlightMsg {
     type: "shibei:scroll-to-highlight";
+    source: "shibei";
     id: string;
   }
 
@@ -66,6 +70,7 @@
 
   interface SelectionMsg {
     type: "shibei:selection";
+    source: "shibei";
     text: string;
     anchor: Anchor;
     rect: SelectionRect;
@@ -73,24 +78,29 @@
 
   interface SelectionClearedMsg {
     type: "shibei:selection-cleared";
+    source: "shibei";
   }
 
   interface HighlightClickedMsg {
     type: "shibei:highlight-clicked";
+    source: "shibei";
     id: string;
   }
 
   interface LinkClickedMsg {
     type: "shibei:link-clicked";
+    source: "shibei";
     url: string;
   }
 
   interface AnnotatorReadyMsg {
     type: "shibei:annotator-ready";
+    source: "shibei";
   }
 
   interface RenderResultMsg {
     type: "shibei:render-result";
+    source: "shibei";
     failedIds: string[];
   }
 
@@ -538,6 +548,7 @@
     hl.addEventListener("click", () => {
       const msg: HighlightClickedMsg = {
         type: "shibei:highlight-clicked",
+        source: "shibei",
         id: highlightId,
       };
       window.parent.postMessage(msg, "*");
@@ -581,7 +592,7 @@
   document.addEventListener("mouseup", () => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-      const msg: SelectionClearedMsg = { type: "shibei:selection-cleared" };
+      const msg: SelectionClearedMsg = { type: "shibei:selection-cleared", source: "shibei" };
       window.parent.postMessage(msg, "*");
       return;
     }
@@ -592,6 +603,7 @@
 
     const msg: SelectionMsg = {
       type: "shibei:selection",
+      source: "shibei",
       text: selection.toString(),
       anchor,
       rect: {
@@ -608,7 +620,7 @@
 
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
     const msg = event.data as InboundMessage;
-    if (!msg || !msg.type) return;
+    if (!msg || !msg.type || msg.source !== "shibei") return;
 
     switch (msg.type) {
       case "shibei:render-highlights":
@@ -632,6 +644,7 @@
           // Report resolution results back to parent
           const renderResult: RenderResultMsg = {
             type: "shibei:render-result",
+            source: "shibei",
             failedIds,
           };
           window.parent.postMessage(renderResult, "*");
@@ -686,6 +699,7 @@
       // Tell parent about the link click (parent can open in external browser)
       const msg: LinkClickedMsg = {
         type: "shibei:link-clicked",
+        source: "shibei",
         url: (link as HTMLAnchorElement).href,
       };
       window.parent.postMessage(msg, "*");
@@ -696,7 +710,7 @@
   // Signal that annotator is ready — defer until DOM is fully parsed,
   // since this script runs from <head> and body may not exist yet.
   function signalReady(): void {
-    const readyMsg: AnnotatorReadyMsg = { type: "shibei:annotator-ready" };
+    const readyMsg: AnnotatorReadyMsg = { type: "shibei:annotator-ready", source: "shibei" };
     window.parent.postMessage(readyMsg, "*");
   }
   if (document.readyState === "loading") {

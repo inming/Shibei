@@ -54,7 +54,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       const msg = event.data;
-      if (!msg || !msg.type) return;
+      if (!msg || !msg.type || msg.source !== "shibei") return;
 
       switch (msg.type) {
         case "shibei:annotator-ready":
@@ -111,7 +111,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     if (iframeReady && highlights.length > 0 && !didSendInitialHighlights.current && iframeRef.current?.contentWindow) {
       didSendInitialHighlights.current = true;
       iframeRef.current.contentWindow.postMessage(
-        { type: "shibei:render-highlights", highlights },
+        { type: "shibei:render-highlights", source: "shibei", highlights },
         "*",
       );
     }
@@ -129,7 +129,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       didScrollToInitial.current = true;
       setActiveHighlightId(initialHighlightId);
       iframeRef.current.contentWindow.postMessage(
-        { type: "shibei:scroll-to-highlight", id: initialHighlightId },
+        { type: "shibei:scroll-to-highlight", source: "shibei", id: initialHighlightId },
         "*",
       );
     }
@@ -150,7 +150,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
 
         // Tell iframe to render the new highlight
         iframeRef.current?.contentWindow?.postMessage(
-          { type: "shibei:add-highlight", highlight: hl },
+          { type: "shibei:add-highlight", source: "shibei", highlight: hl },
           "*",
         );
 
@@ -167,7 +167,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     async (id: string) => {
       await removeHighlight(id);
       iframeRef.current?.contentWindow?.postMessage(
-        { type: "shibei:remove-highlight", id },
+        { type: "shibei:remove-highlight", source: "shibei", id },
         "*",
       );
       if (activeHighlightId === id) setActiveHighlightId(null);
@@ -203,7 +203,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     // Don't scroll to highlight if it failed to anchor in the DOM
     if (!failedHighlightIds.has(id)) {
       iframeRef.current?.contentWindow?.postMessage(
-        { type: "shibei:scroll-to-highlight", id },
+        { type: "shibei:scroll-to-highlight", source: "shibei", id },
         "*",
       );
     }
