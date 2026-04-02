@@ -20,7 +20,7 @@ pub fn create_folder(conn: &Connection, name: &str, parent_id: &str) -> Result<F
     // Get next sort_order among siblings
     let sort_order: i64 = conn
         .query_row(
-            "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM folders WHERE parent_id = ?1",
+            "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM folders WHERE parent_id = ?1 AND deleted_at IS NULL",
             params![parent_id],
             |row| row.get(0),
         )
@@ -66,10 +66,11 @@ pub fn delete_folder(conn: &Connection, id: &str) -> Result<Vec<String>, DbError
         ));
     }
 
-    // Recursively collect all resource_ids under this folder for filesystem cleanup
+    // Collect resource IDs before any soft-delete (rows still visible)
     let resource_ids = collect_resource_ids(conn, id)?;
 
-    conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?;
+    // Recursively soft-delete the folder tree and cascaded entities
+    soft_delete_folder_tree(conn, id)?;
 
     Ok(resource_ids)
 }
@@ -79,14 +80,16 @@ fn collect_resource_ids(conn: &Connection, folder_id: &str) -> Result<Vec<String
     let mut result = Vec::new();
 
     // Resources directly in this folder
-    let mut stmt = conn.prepare("SELECT id FROM resources WHERE folder_id = ?1")?;
+    let mut stmt =
+        conn.prepare("SELECT id FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL")?;
     let ids = stmt.query_map(params![folder_id], |row| row.get::<_, String>(0))?;
     for id in ids {
         result.push(id?);
     }
 
     // Recurse into child folders
-    let mut stmt = conn.prepare("SELECT id FROM folders WHERE parent_id = ?1")?;
+    let mut stmt =
+        conn.prepare("SELECT id FROM folders WHERE parent_id = ?1 AND deleted_at IS NULL")?;
     let child_ids: Vec<String> = stmt
         .query_map(params![folder_id], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
@@ -96,6 +99,60 @@ fn collect_resource_ids(conn: &Connection, folder_id: &str) -> Result<Vec<String
     }
 
     Ok(result)
+}
+
+/// Recursively soft-delete a folder, its child folders, and all cascaded entities.
+fn soft_delete_folder_tree(conn: &Connection, folder_id: &str) -> Result<(), DbError> {
+    let now = now_iso8601();
+
+    // Find child folders (before soft-deleting anything)
+    let mut stmt =
+        conn.prepare("SELECT id FROM folders WHERE parent_id = ?1 AND deleted_at IS NULL")?;
+    let child_ids: Vec<String> = stmt
+        .query_map(params![folder_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Recurse into children first
+    for child_id in child_ids {
+        soft_delete_folder_tree(conn, &child_id)?;
+    }
+
+    // Soft-delete cascaded entities for resources in this folder
+    // First get the resource IDs in this folder
+    let mut stmt =
+        conn.prepare("SELECT id FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL")?;
+    let resource_ids: Vec<String> = stmt
+        .query_map(params![folder_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for rid in &resource_ids {
+        conn.execute(
+            "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+            params![now, rid],
+        )?;
+        conn.execute(
+            "UPDATE highlights SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+            params![now, rid],
+        )?;
+        conn.execute(
+            "UPDATE comments SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+            params![now, rid],
+        )?;
+    }
+
+    // Soft-delete resources in this folder
+    conn.execute(
+        "UPDATE resources SET deleted_at = ?1 WHERE folder_id = ?2 AND deleted_at IS NULL",
+        params![now, folder_id],
+    )?;
+
+    // Soft-delete the folder itself
+    conn.execute(
+        "UPDATE folders SET deleted_at = ?1 WHERE id = ?2",
+        params![now, folder_id],
+    )?;
+
+    Ok(())
 }
 
 pub fn move_folder(
@@ -120,7 +177,7 @@ pub fn move_folder(
         }
         current = conn
             .query_row(
-                "SELECT parent_id FROM folders WHERE id = ?1",
+                "SELECT parent_id FROM folders WHERE id = ?1 AND deleted_at IS NULL",
                 params![current],
                 |row| row.get::<_, String>(0),
             )
@@ -138,7 +195,7 @@ pub fn move_folder(
 pub fn list_children(conn: &Connection, parent_id: &str) -> Result<Vec<Folder>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, name, parent_id, sort_order, created_at, updated_at
-         FROM folders WHERE parent_id = ?1 AND id != '__root__'
+         FROM folders WHERE parent_id = ?1 AND id != '__root__' AND deleted_at IS NULL
          ORDER BY sort_order",
     )?;
     let folders = stmt
@@ -159,7 +216,7 @@ pub fn list_children(conn: &Connection, parent_id: &str) -> Result<Vec<Folder>, 
 /// Returns the set of folder IDs that have at least one child folder.
 pub fn parent_ids_with_children(conn: &Connection) -> Result<std::collections::HashSet<String>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT parent_id FROM folders WHERE id != '__root__'",
+        "SELECT DISTINCT parent_id FROM folders WHERE id != '__root__' AND deleted_at IS NULL",
     )?;
     let ids = stmt
         .query_map([], |row| row.get::<_, String>(0))?
@@ -309,6 +366,27 @@ mod tests {
         // Ordered by sort_order (creation order)
         assert_eq!(children[0].name, "b");
         assert_eq!(children[1].name, "a");
+    }
+
+    #[test]
+    fn test_soft_delete_folder() {
+        let conn = test_db();
+        let folder = create_folder(&conn, "temp", "__root__").unwrap();
+        delete_folder(&conn, &folder.id).unwrap();
+
+        // Should not appear in list
+        let children = list_children(&conn, "__root__").unwrap();
+        assert!(children.is_empty());
+
+        // But should still exist in DB with deleted_at set
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM folders WHERE id = ?1",
+                params![folder.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(deleted_at.is_some());
     }
 
     #[test]
