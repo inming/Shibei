@@ -35,11 +35,12 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   }, [onClose]);
 
   return (
-    <div ref={ref} className={styles.menu} style={{ top: y, left: x }}>
+    <div ref={ref} className={styles.menu} style={{ top: y, left: x }} role="menu">
       {items.map((item) => (
         <button
           key={item.label}
           className={`${styles.menuItem} ${item.danger ? styles.danger : ""}`}
+          role="menuitem"
           onClick={() => {
             const action = item.onClick;
             onClose();

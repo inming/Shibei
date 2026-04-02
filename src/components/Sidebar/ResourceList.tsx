@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
@@ -45,6 +45,8 @@ function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, o
       onContextMenu={onContextMenu}
       {...attributes}
       {...listeners}
+      role="option"
+      aria-selected={isSelected}
     >
       <div className={styles.itemTitle}>
         {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
@@ -59,6 +61,7 @@ function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, o
 
 export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, refreshKey, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
   const { resources, resourceTags, loading, refresh } = useResources(folderId, sortBy, sortOrder);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [contextResourceIds, setContextResourceIds] = useState<string[]>([]);
@@ -130,6 +133,44 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
 
   const isSingleSelect = contextResourceIds.length === 1;
 
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (filteredResources.length === 0) return;
+
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      // Find the last selected resource index
+      let currentIndex = -1;
+      for (let i = filteredResources.length - 1; i >= 0; i--) {
+        if (selectedResourceIds.has(filteredResources[i].id)) {
+          currentIndex = i;
+          break;
+        }
+      }
+
+      let nextIndex: number;
+      if (e.key === "ArrowDown") {
+        nextIndex = currentIndex < filteredResources.length - 1 ? currentIndex + 1 : currentIndex;
+      } else {
+        nextIndex = currentIndex > 0 ? currentIndex - 1 : 0;
+      }
+
+      onSelectResource(filteredResources[nextIndex], filteredResources, { metaKey: false, shiftKey: false });
+    } else if (e.key === "Enter") {
+      // Open the last selected resource
+      for (let i = filteredResources.length - 1; i >= 0; i--) {
+        if (selectedResourceIds.has(filteredResources[i].id)) {
+          onOpen(filteredResources[i]);
+          break;
+        }
+      }
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+      if (selectedResourceIds.size > 0) {
+        setContextResourceIds(Array.from(selectedResourceIds));
+        setDeleteConfirm(true);
+      }
+    }
+  }
+
   return (
     <div className={styles.section}>
       <div className={styles.header}>
@@ -164,16 +205,24 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       {folderId && !loading && filteredResources.length === 0 && (
         <div className={styles.empty}>该文件夹暂无资料</div>
       )}
-      {filteredResources.map((resource) => (
-        <DraggableResourceItem
-          key={resource.id}
-          resource={resource}
-          isSelected={selectedResourceIds.has(resource.id)}
-          onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
-          onDoubleClick={() => onOpen(resource)}
-          onContextMenu={(e) => handleContextMenu(e, resource)}
-        />
-      ))}
+      <div
+        ref={listRef}
+        tabIndex={0}
+        role="listbox"
+        aria-label="资料列表"
+        onKeyDown={handleKeyDown}
+      >
+        {filteredResources.map((resource) => (
+          <DraggableResourceItem
+            key={resource.id}
+            resource={resource}
+            isSelected={selectedResourceIds.has(resource.id)}
+            onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
+            onDoubleClick={() => onOpen(resource)}
+            onContextMenu={(e) => handleContextMenu(e, resource)}
+          />
+        ))}
+      </div>
 
       {contextMenu && folderId && (
         <ResourceContextMenu

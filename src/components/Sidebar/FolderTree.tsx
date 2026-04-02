@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -134,6 +134,44 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
     }
   }
 
+  const treeRef = useRef<HTMLDivElement>(null);
+
+  /** Collect visible folder IDs from DOM data-folder-id attributes in tree order. */
+  function getVisibleFolderIds(): string[] {
+    if (!treeRef.current) return [];
+    const items = treeRef.current.querySelectorAll("[data-folder-id]");
+    return Array.from(items).map((el) => el.getAttribute("data-folder-id")!);
+  }
+
+  function handleTreeKeyDown(e: React.KeyboardEvent) {
+    const visibleIds = getVisibleFolderIds();
+    if (visibleIds.length === 0) return;
+
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const currentIndex = selectedFolderId ? visibleIds.indexOf(selectedFolderId) : -1;
+
+      let nextIndex: number;
+      if (e.key === "ArrowDown") {
+        nextIndex = currentIndex < visibleIds.length - 1 ? currentIndex + 1 : currentIndex;
+      } else {
+        nextIndex = currentIndex > 0 ? currentIndex - 1 : 0;
+      }
+
+      onSelectFolder(visibleIds[nextIndex]);
+    } else if (e.key === "ArrowRight") {
+      if (selectedFolderId && nonLeafIds.has(selectedFolderId) && !expandedIds.has(selectedFolderId)) {
+        e.preventDefault();
+        toggleExpand(selectedFolderId);
+      }
+    } else if (e.key === "ArrowLeft") {
+      if (selectedFolderId && expandedIds.has(selectedFolderId)) {
+        e.preventDefault();
+        toggleExpand(selectedFolderId);
+      }
+    }
+  }
+
   const menuItems: MenuItem[] = contextMenu
     ? [
         {
@@ -195,18 +233,26 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
         </form>
       )}
 
-      <FolderNode
-        parentId="__root__"
-        depth={0}
-        selectedFolderId={selectedFolderId}
-        expandedIds={expandedIds}
-        nonLeafIds={nonLeafIds}
-        folderCounts={folderCounts}
-        refreshKey={refreshKey}
-        onSelect={onSelectFolder}
-        onToggleExpand={toggleExpand}
-        onContextMenu={handleContextMenu}
-      />
+      <div
+        ref={treeRef}
+        tabIndex={0}
+        role="tree"
+        aria-label="文件夹"
+        onKeyDown={handleTreeKeyDown}
+      >
+        <FolderNode
+          parentId="__root__"
+          depth={0}
+          selectedFolderId={selectedFolderId}
+          expandedIds={expandedIds}
+          nonLeafIds={nonLeafIds}
+          folderCounts={folderCounts}
+          refreshKey={refreshKey}
+          onSelect={onSelectFolder}
+          onToggleExpand={toggleExpand}
+          onContextMenu={handleContextMenu}
+        />
+      </div>
 
       {contextMenu && (
         <ContextMenu
@@ -450,10 +496,14 @@ function SortableFolderItem({
       <div
         className={`${styles.item} ${isSelected ? styles.itemSelected : ""} ${isOver ? styles.dropTarget : ""}`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
+        data-folder-id={folder.id}
         onClick={() => onSelect(folder.id)}
         onContextMenu={(e) => onContextMenu(e, folder.id, folder.name)}
         {...attributes}
         {...listeners}
+        role="treeitem"
+        aria-selected={isSelected}
+        aria-expanded={hasChildren ? isExpanded : undefined}
       >
         {hasChildren ? (
           <span
