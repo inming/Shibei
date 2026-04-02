@@ -101,6 +101,34 @@ docs/               # 设计文档与规范
 - **浏览器插件**：需手动验证
 - **原则**：每个功能实现时同步编写测试，不要先写完所有功能再补测试
 
+### 调试协作
+
+AI 助手无法操作 GUI，但能运行 CLI 命令和读取文件。调试时按以下分工：
+
+**AI 自行完成**：
+- 编译检查（`cargo check`、`tsc --noEmit`）
+- 运行测试（`cargo test`、`vitest`）
+- 读代码分析逻辑
+- 后端问题排查（Rust 日志输出到终端，AI 可直接读）
+
+**需要用户配合**（GUI 交互、视觉效果）：
+1. AI 在关键路径插入 `debugLog("label", data)` 日志
+2. 用户以 `VITE_DEBUG=1 npm run tauri dev` 启动应用
+3. 用户操作 UI 复现问题，告知现象（"拖不动"、"没反应"等）
+4. AI 读取 `~/Library/Application Support/shibei/debug.log` 分析日志
+5. 基于日志定位根因，而非盲猜修复
+
+**调试纪律**：
+- 遇到交互类 bug，**先加日志确认是事件问题还是渲染/CSS 问题**，再提修复方案
+- 不要在没有诊断数据的情况下连续猜测修复
+- `debugLog` 在非调试模式下是空操作，可以放心插入；问题解决后清理调试日志
+
+**Debug 日志机制**：
+- 前端：`import { debugLog } from "@/lib/commands"` → `debugLog("label", data)`
+- 启用：环境变量 `VITE_DEBUG=1`（Vite 暴露为 `import.meta.env.VITE_DEBUG`）
+- 输出：`{data_dir}/debug.log`（macOS: `~/Library/Application Support/shibei/debug.log`）
+- 后端命令：`cmd_debug_log` 追加写入，带时间戳
+
 ## 架构约束
 
 - **前后端通信**：只通过 Tauri Commands（`invoke`）和 Tauri Events
