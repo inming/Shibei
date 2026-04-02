@@ -230,7 +230,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
 
   const handleResizeMouseDown = useCallback(() => {
     draggingRef.current = true;
-    // Hide iframe entirely during drag to prevent event capture
+    containerRef.current?.classList.add(styles.resizing);
     if (iframeRef.current) {
       iframeRef.current.style.visibility = "hidden";
     }
@@ -248,7 +248,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     function onMouseUp() {
       if (!draggingRef.current) return;
       draggingRef.current = false;
-      // Restore iframe visibility
+      containerRef.current?.classList.remove(styles.resizing);
       if (iframeRef.current) {
         iframeRef.current.style.visibility = "";
       }
