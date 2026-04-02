@@ -39,6 +39,7 @@ impl r2d2::CustomizeConnection<Connection, rusqlite::Error> for ForeignKeyCustom
     }
 }
 
+#[cfg(test)]
 pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
     let mut conn = Connection::open(db_path)?;
     conn.execute_batch("PRAGMA foreign_keys = ON")?;
@@ -49,12 +50,13 @@ pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
 /// Create a connection pool. Runs migrations on a temporary connection first,
 /// then builds a pool with the ForeignKeyCustomizer.
 pub fn init_pool(db_path: &Path) -> Result<DbPool, DbError> {
-    // Run migrations on a temporary connection
+    // Run migrations on a temporary connection (FK enabled for referential integrity during migration)
     let mut migration_conn = Connection::open(db_path)?;
+    migration_conn.execute_batch("PRAGMA foreign_keys = ON")?;
     migration::run_migrations(&mut migration_conn)?;
     drop(migration_conn);
 
-    // Build pool
+    // Build pool (4 connections: sufficient for single-user desktop app)
     let manager = SqliteConnectionManager::file(db_path);
     let pool = Pool::builder()
         .max_size(4)

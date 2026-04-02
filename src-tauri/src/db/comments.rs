@@ -82,6 +82,7 @@ pub fn get_comments_for_resource(
     Ok(comments)
 }
 
+#[allow(dead_code)]
 pub fn get_comments_for_highlight(
     conn: &Connection,
     highlight_id: &str,

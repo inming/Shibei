@@ -6,8 +6,6 @@ mod storage;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::Mutex as TokioMutex;
-
 fn get_app_base_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -34,7 +32,7 @@ fn inject_annotator_script(html: &str) -> String {
 }
 
 /// Load a resource's snapshot HTML.
-fn load_resource_html(base_dir: &PathBuf, resource_id: &str) -> Option<String> {
+fn load_resource_html(base_dir: &std::path::Path, resource_id: &str) -> Option<String> {
     let html_path = base_dir
         .join("storage")
         .join(resource_id)
@@ -50,25 +48,22 @@ pub fn run() {
     // Initialize storage directory
     storage::init_storage(&base_dir).expect("failed to initialize storage");
 
-    // Initialize database
+    // Initialize database connection pool
     let db_path = base_dir.join("shibei.db");
-    let conn = db::init_db(&db_path).expect("failed to initialize database");
+    let pool = db::init_pool(&db_path).expect("failed to initialize database pool");
 
     // Generate a single auth token shared between Tauri commands and HTTP server
     let auth_token = uuid::Uuid::new_v4().to_string();
 
     // Shared state for Tauri commands
     let cmd_state = Arc::new(commands::AppState {
-        conn: TokioMutex::new(conn),
+        pool: pool.clone(),
         base_dir: base_dir.clone(),
         auth_token: auth_token.clone(),
     });
 
-    // Separate connection for HTTP server (app_handle added in setup)
-    let server_conn = db::init_db(&db_path).expect("failed to open server db connection");
     let server_token = auth_token.clone();
     let server_base_dir = base_dir.clone();
-    let server_token_clone = server_token.clone();
 
     let protocol_base_dir = base_dir.clone();
 
@@ -131,9 +126,9 @@ pub fn run() {
         .setup(move |app| {
             // Create server state with app_handle for event emission
             let server_state = Arc::new(server::AppState {
-                conn: TokioMutex::new(server_conn),
+                pool,
                 base_dir: server_base_dir,
-                token: server_token_clone,
+                token: server_token,
                 app_handle: app.handle().clone(),
             });
             tauri::async_runtime::spawn(async move {

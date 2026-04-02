@@ -9,16 +9,15 @@ use axum::routing::{get, post};
 use axum::Router;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 use tauri::Emitter;
 
-use crate::db::{folders, resources, tags};
+use crate::db::{self, folders, resources, tags};
 use crate::storage;
 
 /// Shared state for the HTTP server.
 pub struct AppState {
-    pub conn: Mutex<Connection>,
+    pub pool: db::DbPool,
     pub base_dir: PathBuf,
     pub token: String,
     pub app_handle: tauri::AppHandle,
@@ -140,7 +139,14 @@ async fn handle_folders(
 ) -> Result<Json<Vec<FolderNode>>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
 
-    let conn = state.conn.lock().await;
+    let conn = state.pool.get().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
     let tree = build_folder_tree(&conn, "__root__", 0).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -179,7 +185,14 @@ async fn handle_tags(
 ) -> Result<Json<Vec<tags::Tag>>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
 
-    let conn = state.conn.lock().await;
+    let conn = state.pool.get().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
     let tag_list = tags::list_tags(&conn).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -197,7 +210,14 @@ async fn handle_folder_counts(
 ) -> Result<Json<std::collections::HashMap<String, i64>>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
 
-    let conn = state.conn.lock().await;
+    let conn = state.pool.get().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
     let counts = resources::count_by_folder(&conn).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -225,7 +245,14 @@ async fn handle_check_url(
     axum::extract::Query(query): axum::extract::Query<CheckUrlQuery>,
 ) -> Result<Json<CheckUrlResponse>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
-    let conn = state.conn.lock().await;
+    let conn = state.pool.get().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
     let matches = resources::find_by_url(&conn, &query.url).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -280,7 +307,14 @@ async fn handle_save(
             )
         })?;
 
-    let conn = state.conn.lock().await;
+    let conn = state.pool.get().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     conn.execute_batch("BEGIN").map_err(|e| {
         (
