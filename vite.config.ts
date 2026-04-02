@@ -18,13 +18,7 @@ export default defineConfig(async () => ({
     setupFiles: ["./src/test/setup.ts"],
   },
   clearScreen: false,
-  optimizeDeps: {
-    exclude: ["src-tauri"],
-  },
   server: {
-    fs: {
-      deny: ["src-tauri/target"],
-    },
     port: 1420,
     strictPort: true,
     host: host || false,
