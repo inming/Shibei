@@ -117,7 +117,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
 
         case "shibei:link-clicked":
           if (msg.url) {
-            window.open(msg.url, "_blank");
+            import("@tauri-apps/plugin-opener").then(({ openUrl }) => {
+              openUrl(msg.url);
+            });
             toast("已在浏览器中打开", { duration: 2000 });
           }
           break;

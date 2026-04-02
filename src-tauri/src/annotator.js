@@ -514,10 +514,20 @@
     // ── Block external navigation ──
     // Links are not clickable by default to avoid interfering with annotation.
     // Ctrl+Click opens the link in external browser.
-    // Visually indicate links are disabled (cursor inherits from parent).
+    // Default: inherit cursor (text cursor for annotation). Ctrl held: pointer cursor.
     const linkStyle = document.createElement("style");
-    linkStyle.textContent = `a[href] { cursor: inherit !important; }`;
+    linkStyle.textContent = `a[href] { cursor: inherit !important; } body.shibei-ctrl-held a[href] { cursor: pointer !important; }`;
     document.head.appendChild(linkStyle);
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Control") document.body.classList.add("shibei-ctrl-held");
+    });
+    document.addEventListener("keyup", (e) => {
+        if (e.key === "Control") document.body.classList.remove("shibei-ctrl-held");
+    });
+    // Remove class if window loses focus while Ctrl is held
+    window.addEventListener("blur", () => {
+        document.body.classList.remove("shibei-ctrl-held");
+    });
     document.addEventListener("click", (e) => {
         const link = e.target.closest("a[href]");
         if (!link)

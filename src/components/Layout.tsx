@@ -153,7 +153,12 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
         folderTreeRefreshRef.current?.();
       } catch (err) {
         console.error("Failed to move folder:", err);
-        toast.error("移动文件夹失败");
+        const msg = String(err);
+        if (msg.includes("own subtree")) {
+          toast.error("不能将文件夹移入自身的子文件夹中");
+        } else {
+          toast.error("移动文件夹失败");
+        }
       }
       return;
     }
@@ -250,6 +255,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             <PreviewPanel
               key={selectedResource.id}
               resource={selectedResource}
+              refreshKey={resourceRefreshKey}
               onOpenInReader={(highlightId) => onOpenResource(selectedResource, highlightId)}
             />
           ) : (

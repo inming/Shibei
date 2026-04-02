@@ -7,17 +7,18 @@ import styles from "./PreviewPanel.module.css";
 
 interface PreviewPanelProps {
   resource: Resource;
+  refreshKey?: number;
   onOpenInReader: (highlightId?: string) => void;
 }
 
-export function PreviewPanel({ resource, onOpenInReader }: PreviewPanelProps) {
+export function PreviewPanel({ resource, refreshKey, onOpenInReader }: PreviewPanelProps) {
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
 
   useEffect(() => {
     cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
-  }, [resource.id]);
+  }, [resource.id, refreshKey]);
 
   const domain = resource.domain ?? (() => {
     try { return new URL(resource.url).hostname; } catch { return resource.url; }
