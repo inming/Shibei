@@ -208,6 +208,26 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     [removeHighlight, activeHighlightId],
   );
 
+  // Layout constants — see CLAUDE.md "阅读器双栏布局约束"
+  const PANEL_MIN = 220;
+  const READER_MIN = 400;
+  const HANDLE_WIDTH = 4;
+
+  function clampPanelWidth(width: number) {
+    const containerWidth = containerRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    const maxWidth = containerWidth - READER_MIN - HANDLE_WIDTH;
+    return Math.max(PANEL_MIN, Math.min(maxWidth, width));
+  }
+
+  // Clamp panelWidth when window resizes
+  useEffect(() => {
+    function onResize() {
+      setPanelWidth((prev) => clampPanelWidth(prev));
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const handleResizeMouseDown = useCallback(() => {
     dragging.current = true;
     containerRef.current?.classList.add(styles.resizing);
@@ -218,7 +238,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       if (!dragging.current || !containerRef.current) return;
       const containerRight = containerRef.current.getBoundingClientRect().right;
       const newWidth = containerRight - e.clientX;
-      setPanelWidth(Math.max(220, Math.min(500, newWidth)));
+      setPanelWidth(clampPanelWidth(newWidth));
     }
 
     function onMouseUp() {

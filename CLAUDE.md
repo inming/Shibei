@@ -140,6 +140,18 @@ ResourceList 最小值 = 240px
 - 窗口缩小时，`resize` 事件自动收缩 ResourceList 宽度
 - 常量定义在 `Layout.tsx`：`LIST_MIN=240, PREVIEW_MIN=280, HANDLE_WIDTH=4`
 
+## 阅读器双栏布局约束
+
+阅读器视图为双栏布局：Reader（iframe）| AnnotationPanel，通过分割条可调整 AnnotationPanel 宽度。
+
+| 栏 | 宽度规则 | 最小宽度 | 说明 |
+|---|---------|---------|------|
+| Reader | `flex: 1` 填充剩余 | 400px | iframe 内容区 |
+| Handle | 固定 4px | — | 拖拽分割条 |
+| AnnotationPanel | 可拖拽调整 | 220px | 初始 280px |
+
+拖拽约束：`AnnotationPanel 最大值 = 容器宽度 - Reader最小值(400px) - Handle(4px)`。窗口缩小时 `resize` 事件自动收缩。常量定义在 `ReaderView.tsx`：`PANEL_MIN=220, READER_MIN=400, HANDLE_WIDTH=4`。
+
 ## 依赖管理
 
 - 新增 Rust crate 前先说明理由，优先使用标准库
