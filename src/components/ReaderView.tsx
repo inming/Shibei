@@ -111,9 +111,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           break;
 
         case "shibei:link-clicked":
-          // Open external links in default browser
           if (msg.url) {
             window.open(msg.url, "_blank");
+            toast("已在浏览器中打开", { duration: 2000 });
           }
           break;
 

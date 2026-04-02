@@ -512,8 +512,8 @@
         }
     });
     // ── Block external navigation ──
-    // Intercept all link clicks: prevent navigation inside iframe,
-    // notify parent to open in external browser if needed.
+    // Links are not clickable by default to avoid interfering with annotation.
+    // Ctrl+Click opens the link in external browser.
     document.addEventListener("click", (e) => {
         const link = e.target.closest("a[href]");
         if (!link)
@@ -523,13 +523,15 @@
             return;
         e.preventDefault();
         e.stopPropagation();
-        // Tell parent about the link click (parent can open in external browser)
-        const msg = {
-            type: "shibei:link-clicked",
-            source: "shibei",
-            url: link.href,
-        };
-        window.parent.postMessage(msg, "*");
+        // Only open link if Ctrl is held
+        if (e.ctrlKey) {
+            const msg = {
+                type: "shibei:link-clicked",
+                source: "shibei",
+                url: link.href,
+            };
+            window.parent.postMessage(msg, "*");
+        }
     }, true);
     // Signal that annotator is ready — defer until DOM is fully parsed,
     // since this script runs from <head> and body may not exist yet.
