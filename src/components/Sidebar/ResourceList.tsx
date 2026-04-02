@@ -106,10 +106,11 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
         await cmd.deleteResource(id);
       }
       refresh();
+      onDataChanged?.();
     } catch (err: unknown) {
       toast.error(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [contextResourceIds, refresh]);
+  }, [contextResourceIds, refresh, onDataChanged]);
 
   const handleMove = useCallback(async (targetFolderId: string) => {
     setContextMenu(null);
@@ -118,10 +119,11 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
         await cmd.moveResource(id, targetFolderId);
       }
       refresh();
+      onDataChanged?.();
     } catch (err: unknown) {
       toast.error(`移动失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [contextResourceIds, refresh]);
+  }, [contextResourceIds, refresh, onDataChanged]);
 
   const handleEdit = useCallback(() => {
     if (contextResourceIds.length !== 1) return;

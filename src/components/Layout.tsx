@@ -239,7 +239,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             onOpen={(resource) => onOpenResource(resource)}
             onSortByChange={setSortBy}
             onSortOrderChange={setSortOrder}
-            onDataChanged={() => setResourceRefreshKey((k) => k + 1)}
+            onDataChanged={() => { setResourceRefreshKey((k) => k + 1); folderTreeRefreshRef.current?.(); }}
           />
         </div>
 
