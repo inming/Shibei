@@ -497,10 +497,10 @@ function SortableFolderItem({
         className={`${styles.item} ${isSelected ? styles.itemSelected : ""} ${isOver ? styles.dropTarget : ""}`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         data-folder-id={folder.id}
-        onClick={() => onSelect(folder.id)}
-        onContextMenu={(e) => onContextMenu(e, folder.id, folder.name)}
         {...attributes}
         {...listeners}
+        onClick={() => onSelect(folder.id)}
+        onContextMenu={(e) => onContextMenu(e, folder.id, folder.name)}
         role="treeitem"
         aria-selected={isSelected}
         aria-expanded={hasChildren ? isExpanded : undefined}

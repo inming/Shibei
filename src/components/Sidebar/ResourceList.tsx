@@ -40,11 +40,11 @@ function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, o
       ref={setNodeRef}
       className={`${styles.item} ${isSelected ? styles.itemSelected : ""}`}
       style={{ opacity: isDragging ? 0.4 : 1 }}
+      {...attributes}
+      {...listeners}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      {...attributes}
-      {...listeners}
       role="option"
       aria-selected={isSelected}
     >

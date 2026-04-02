@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { DndContext, DragOverlay, pointerWithin, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
 import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -15,16 +15,58 @@ interface LibraryViewProps {
 
 export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
+  const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"created_at" | "captured_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
+  const [resourceRefreshKey, setResourceRefreshKey] = useState(0);
   const dragging = useRef(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
 
   const [activeDrag, setActiveDrag] = useState<{ type: "folder" | "resource"; id: string; title: string } | null>(null);
   const [_overDropTarget, setOverDropTarget] = useState<string | null>(null);
   const folderTreeRefreshRef = useRef<(() => void) | null>(null);
+
+  const handleResourceSelect = useCallback((resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => {
+    if (event.metaKey) {
+      // Cmd+Click: toggle individual
+      setSelectedResourceIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(resource.id)) {
+          next.delete(resource.id);
+        } else {
+          next.add(resource.id);
+        }
+        return next;
+      });
+    } else if (event.shiftKey && lastClickedResourceId) {
+      // Shift+Click: range select
+      const startIdx = resources.findIndex((r) => r.id === lastClickedResourceId);
+      const endIdx = resources.findIndex((r) => r.id === resource.id);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const [lo, hi] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+        const rangeIds = resources.slice(lo, hi + 1).map((r) => r.id);
+        setSelectedResourceIds(new Set(rangeIds));
+      }
+    } else {
+      // Plain click: single select
+      setSelectedResourceIds(new Set([resource.id]));
+      setSelectedResource(resource);
+    }
+    setLastClickedResourceId(resource.id);
+  }, [lastClickedResourceId]);
+
+  // When selectedFolderId changes, clear resource selection
+  useEffect(() => {
+    setSelectedResourceIds(new Set());
+    setSelectedResource(null);
+  }, [selectedFolderId]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
@@ -60,6 +102,27 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       return;
     }
 
+    // Resource move to folder
+    if (activeData.type === "resource" && overData.type === "folder-target") {
+      const targetFolderId = overData.folderId!;
+      try {
+        const idsToMove = selectedResourceIds.has(String(active.id))
+          ? Array.from(selectedResourceIds)
+          : [String(active.id)];
+        for (const id of idsToMove) {
+          await cmd.moveResource(id, targetFolderId);
+        }
+        setSelectedResourceIds(new Set());
+        setSelectedResource(null);
+        setResourceRefreshKey((k) => k + 1);
+        folderTreeRefreshRef.current?.();
+      } catch (err) {
+        console.error("Failed to move resource:", err);
+        toast.error("移动资料失败");
+      }
+      return;
+    }
+
     // Folder sorting (same parent reorder)
     if (activeData.type === "folder" && overData.type === "folder" && active.id !== over.id) {
       const parentId = activeData.parentId;
@@ -84,7 +147,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       }
       return;
     }
-  }, []);
+  }, [selectedResourceIds]);
 
   const handleDragCancel = useCallback(() => {
     setActiveDrag(null);
@@ -134,6 +197,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
 
   return (
     <DndContext
+      sensors={sensors}
       collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
@@ -145,10 +209,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
         <div className={styles.sidebar}>
           <FolderTree
             selectedFolderId={selectedFolderId}
-            onSelectFolder={(id) => {
-              setSelectedFolderId(id);
-              setSelectedResource(null);
-            }}
+            onSelectFolder={setSelectedFolderId}
             onRefreshRef={folderTreeRefreshRef}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
@@ -158,11 +219,12 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>
           <ResourceList
             folderId={selectedFolderId}
-            selectedResourceId={selectedResource?.id ?? null}
+            selectedResourceIds={selectedResourceIds}
             selectedTagIds={selectedTagIds}
             sortBy={sortBy}
             sortOrder={sortOrder}
-            onSelect={setSelectedResource}
+            refreshKey={resourceRefreshKey}
+            onSelectResource={handleResourceSelect}
             onOpen={(resource) => onOpenResource(resource)}
             onSortByChange={setSortBy}
             onSortOrderChange={setSortOrder}
@@ -190,7 +252,9 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
       <DragOverlay>
         {activeDrag && (
           <div className={styles.dragOverlay}>
-            {activeDrag.title}
+            {activeDrag.type === "resource" && selectedResourceIds.has(activeDrag.id) && selectedResourceIds.size > 1
+              ? `${activeDrag.title} 等 ${selectedResourceIds.size} 项`
+              : activeDrag.title}
           </div>
         )}
       </DragOverlay>
