@@ -191,13 +191,19 @@ fn normalize_url(url: &str) -> String {
 pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbError> {
     let normalized = normalize_url(url);
 
-    // We need to check against normalized versions of stored URLs
+    // Extract host+path for SQL pre-filter (strip scheme)
+    let like_pattern = if let Some(pos) = normalized.find("://") {
+        format!("%{}%", &normalized[pos + 3..])
+    } else {
+        format!("%{}%", normalized)
+    };
+
     let mut stmt = conn.prepare(
         "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
-         FROM resources",
+         FROM resources WHERE url LIKE ?1",
     )?;
     let resources = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params![like_pattern], |row| {
             Ok(Resource {
                 id: row.get(0)?,
                 title: row.get(1)?,

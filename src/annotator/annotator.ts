@@ -242,8 +242,8 @@
   /**
    * Resolve anchor to a DOM Range using textPosition (precise).
    */
-  function resolveByPosition(anchor: Anchor): Range | null {
-    const textNodes = getTextNodes(document.body);
+  function resolveByPosition(anchor: Anchor, cachedTextNodes?: Text[]): Range | null {
+    const textNodes = cachedTextNodes ?? getTextNodes(document.body);
     const { start, end } = anchor.text_position;
     let offset = 0;
     let startNode: Text | null = null;
@@ -415,8 +415,11 @@
   /**
    * Resolve anchor using textQuote (fuzzy fallback).
    */
-  function resolveByQuote(anchor: Anchor): Range | null {
-    const bodyText = getBodyText();
+  function resolveByQuote(anchor: Anchor, cachedTextNodes?: Text[]): Range | null {
+    const textNodes = cachedTextNodes ?? getTextNodes(document.body);
+    const bodyText = textNodes
+      .map((n) => normalizedText(n.textContent ?? ""))
+      .join("");
     // Normalize stored anchor text to match normalized bodyText
     const exact = normalizedText(anchor.text_quote.exact);
     const prefix = normalizedText(anchor.text_quote.prefix);
@@ -431,7 +434,7 @@
       return resolveByPosition({
         text_position: { start, end },
         text_quote: { exact, prefix, suffix },
-      });
+      }, textNodes);
     }
 
     // Step 2: Exact match on just the quote text
@@ -440,7 +443,7 @@
       return resolveByPosition({
         text_position: { start: simpleIdx, end: simpleIdx + exact.length },
         text_quote: { exact, prefix, suffix },
-      });
+      }, textNodes);
     }
 
     // Step 3: Fuzzy match on exact text (tolerant of minor differences)
@@ -473,14 +476,14 @@
         prefix,
         suffix,
       },
-    });
+    }, textNodes);
   }
 
   /**
    * Resolve anchor: try position first, then quote fallback.
    */
-  function resolveAnchor(anchor: Anchor): Range | null {
-    return resolveByPosition(anchor) ?? resolveByQuote(anchor);
+  function resolveAnchor(anchor: Anchor, cachedTextNodes?: Text[]): Range | null {
+    return resolveByPosition(anchor, cachedTextNodes) ?? resolveByQuote(anchor, cachedTextNodes);
   }
 
   // ── Highlight rendering ──
@@ -626,10 +629,11 @@
       case "shibei:render-highlights":
         // Batch render highlights on page load
         if (Array.isArray(msg.highlights)) {
+          const cachedNodes = getTextNodes(document.body);
           const failedIds: string[] = [];
           for (const hl of msg.highlights) {
             try {
-              const range = resolveAnchor(hl.anchor);
+              const range = resolveAnchor(hl.anchor, cachedNodes);
               if (range) {
                 wrapRange(range, hl.id, hl.color);
               } else {
