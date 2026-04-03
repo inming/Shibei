@@ -1,5 +1,6 @@
 pub mod backend;
 pub mod credentials;
+pub mod crypto;
 pub mod device;
 pub mod engine;
 pub mod export;
