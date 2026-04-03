@@ -374,11 +374,45 @@ pub async fn cmd_get_auth_token(
 
 #[tauri::command]
 pub async fn cmd_sync_now(state: tauri::State<'_, Arc<AppState>>) -> Result<String, CommandError> {
-    let engine = state.sync_engine.as_ref()
-        .ok_or_else(|| CommandError { message: "Sync not configured".to_string() })?;
+    let engine = build_sync_engine(&state)?;
     let result = engine.sync().await
         .map_err(|e| CommandError { message: e.to_string() })?;
     Ok(format!("{:?}", result))
+}
+
+/// Build a SyncEngine from current config. Called on each sync to pick up latest settings.
+fn build_sync_engine(state: &AppState) -> Result<crate::sync::engine::SyncEngine, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（Region 未设置）".to_string() })?;
+    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（Bucket 未设置）".to_string() })?;
+    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
+    let (access_key, secret_key) = crate::sync::credentials::load_credentials()
+        .map_err(|e| CommandError { message: e.to_string() })?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（凭据未设置）".to_string() })?;
+
+    let s3_config = crate::sync::backend::S3Config {
+        endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
+        region,
+        bucket,
+        access_key,
+        secret_key,
+    };
+    let backend = crate::sync::backend::S3Backend::new(s3_config)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+
+    let device_id = state.device_id.as_ref()
+        .ok_or_else(|| CommandError { message: "Device ID not initialized".to_string() })?;
+    let clock = Arc::new(crate::sync::hlc::HlcClock::new(device_id.clone()));
+
+    Ok(crate::sync::engine::SyncEngine::new(
+        state.pool.clone(),
+        Arc::new(backend),
+        device_id.clone(),
+        clock,
+        state.base_dir.clone(),
+    ))
 }
 
 #[tauri::command]
@@ -463,8 +497,7 @@ pub async fn cmd_download_snapshot(
     state: tauri::State<'_, Arc<AppState>>,
     resource_id: String,
 ) -> Result<bool, CommandError> {
-    let engine = state.sync_engine.as_ref()
-        .ok_or_else(|| CommandError { message: "Sync not configured".to_string() })?;
+    let engine = build_sync_engine(&state)?;
     engine.download_snapshot(&resource_id).await
         .map_err(|e| CommandError { message: e.to_string() })?;
     Ok(true)

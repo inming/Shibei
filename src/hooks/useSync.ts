@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import * as cmd from "@/lib/commands";
+import toast from "react-hot-toast";
 
 export type SyncStatusType = "idle" | "syncing" | "success" | "error";
 
@@ -43,7 +44,11 @@ export function useSync() {
       setError("");
     } catch (err: unknown) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err && typeof err === "object" && "message" in err
+        ? String((err as { message: string }).message)
+        : String(err);
+      setError(msg);
+      toast.error(`同步失败: ${msg}`);
     }
   }, []);
 
