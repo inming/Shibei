@@ -376,9 +376,10 @@ pub async fn cmd_get_auth_token(
 #[tauri::command]
 pub async fn cmd_sync_now(
     state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
     app: tauri::AppHandle,
 ) -> Result<String, CommandError> {
-    let engine = build_sync_engine(&state)?;
+    let engine = build_sync_engine(&state, &encryption_state).await?;
     let result = engine.sync().await
         .map_err(|e| CommandError { message: e.to_string() })?;
     // Notify frontend to refresh data
@@ -387,8 +388,18 @@ pub async fn cmd_sync_now(
 }
 
 /// Build a SyncEngine from current config. Called on each sync to pick up latest settings.
-fn build_sync_engine(state: &AppState) -> Result<crate::sync::engine::SyncEngine, CommandError> {
+/// If encryption is enabled, wraps the backend with EncryptedBackend.
+/// Multi-device detection: if local doesn't know about encryption, check remote keyring.json.
+async fn build_sync_engine(
+    state: &AppState,
+    encryption_state: &crate::sync::EncryptionState,
+) -> Result<crate::sync::engine::SyncEngine, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+
+    let local_encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
     let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
         .ok_or_else(|| CommandError { message: "请先配置同步设置（Region 未设置）".to_string() })?;
     let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
@@ -404,8 +415,39 @@ fn build_sync_engine(state: &AppState) -> Result<crate::sync::engine::SyncEngine
         access_key,
         secret_key,
     };
-    let backend = crate::sync::backend::S3Backend::new(s3_config)
+    let s3_backend = crate::sync::backend::S3Backend::new(s3_config)
         .map_err(|e| CommandError { message: e.to_string() })?;
+
+    // Determine if encryption is needed.
+    // Check local flag first to avoid network round-trip on every sync.
+    // Fall back to remote check only when local doesn't know.
+    let encryption_enabled = if local_encryption_enabled {
+        true
+    } else {
+        use crate::sync::backend::SyncBackend;
+        let remote_has_keyring = s3_backend.head("meta/keyring.json").await
+            .map(|meta| meta.is_some())
+            .unwrap_or(false);
+        if remote_has_keyring {
+            // Another device enabled encryption — mark locally
+            crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
+            true
+        } else {
+            false
+        }
+    };
+
+    let backend: Arc<dyn crate::sync::backend::SyncBackend> = if encryption_enabled {
+        let mk = encryption_state.get_key().ok_or_else(|| CommandError {
+            message: "加密已启用但未解锁，请先输入加密密码".to_string(),
+        })?;
+        Arc::new(crate::sync::encrypted_backend::EncryptedBackend::new(
+            Arc::new(s3_backend),
+            mk,
+        ))
+    } else {
+        Arc::new(s3_backend)
+    };
 
     let device_id = state.device_id.as_ref()
         .ok_or_else(|| CommandError { message: "Device ID not initialized".to_string() })?;
@@ -413,11 +455,164 @@ fn build_sync_engine(state: &AppState) -> Result<crate::sync::engine::SyncEngine
 
     Ok(crate::sync::engine::SyncEngine::new(
         state.pool.clone(),
-        Arc::new(backend),
+        backend,
         device_id.clone(),
         clock,
         state.base_dir.clone(),
     ))
+}
+
+/// Build a raw S3Backend (no encryption) for keyring operations.
+fn build_raw_s3_backend(state: &AppState) -> Result<crate::sync::backend::S3Backend, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（Region 未设置）".to_string() })?;
+    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（Bucket 未设置）".to_string() })?;
+    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
+    let (access_key, secret_key) = crate::sync::credentials::load_credentials(&conn)?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（凭据未设置）".to_string() })?;
+
+    let config = crate::sync::backend::S3Config {
+        endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
+        region,
+        bucket,
+        access_key,
+        secret_key,
+    };
+    crate::sync::backend::S3Backend::new(config)
+        .map_err(|e| CommandError { message: e.to_string() })
+}
+
+#[tauri::command]
+pub async fn cmd_setup_encryption(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+    password: String,
+) -> Result<(), CommandError> {
+    use crate::sync::backend::SyncBackend;
+    use crate::sync::keyring::Keyring;
+
+    // 1. Generate keyring
+    let keyring = Keyring::generate(&password)
+        .map_err(|e| CommandError { message: format!("密钥生成失败: {}", e) })?;
+    let mk = keyring.unlock(&password)
+        .map_err(|e| CommandError { message: format!("密钥验证失败: {}", e) })?;
+
+    // 2. Upload keyring.json via raw backend
+    let backend = build_raw_s3_backend(&state)?;
+    let keyring_json = keyring.to_json()
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    backend.upload("meta/keyring.json", keyring_json.as_bytes()).await
+        .map_err(|e| CommandError { message: format!("上传密钥文件失败: {}", e) })?;
+
+    // 3. Clear all existing S3 data
+    for prefix in &["sync/", "state/", "snapshots/"] {
+        let objects = backend.list(prefix).await
+            .map_err(|e| CommandError { message: e.to_string() })?;
+        for obj in objects {
+            let _ = backend.delete(&obj.key).await;
+        }
+    }
+
+    // 4. Reset local sync progress
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    conn.execute("UPDATE sync_log SET uploaded = 0", [])
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    let remote_keys = crate::sync::sync_state::list_by_prefix(&conn, "remote:")?;
+    for (key, _) in &remote_keys {
+        crate::sync::sync_state::delete(&conn, key)?;
+    }
+    crate::sync::sync_state::delete(&conn, "last_sync_at")?;
+
+    // 5. Store MK and mark encryption enabled
+    encryption_state.set_key(mk);
+    crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_unlock_encryption(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+    password: String,
+) -> Result<(), CommandError> {
+    use crate::sync::backend::SyncBackend;
+    use crate::sync::keyring::Keyring;
+
+    let backend = build_raw_s3_backend(&state)?;
+    let data = backend.download("meta/keyring.json").await
+        .map_err(|e| CommandError { message: format!("下载密钥文件失败: {}", e) })?;
+    let json = String::from_utf8(data)
+        .map_err(|e| CommandError { message: format!("密钥文件格式错误: {}", e) })?;
+    let keyring = Keyring::from_json(&json)
+        .map_err(|e| CommandError { message: format!("密钥文件解析失败: {}", e) })?;
+
+    let mk = keyring.unlock(&password).map_err(|e| match e {
+        crate::sync::keyring::KeyringError::WrongPassword => {
+            CommandError { message: "密码错误".to_string() }
+        }
+        crate::sync::keyring::KeyringError::Tampered => {
+            CommandError { message: "密钥文件可能被篡改，请检查".to_string() }
+        }
+        other => CommandError { message: format!("解锁失败: {}", other) },
+    })?;
+
+    encryption_state.set_key(mk);
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_change_encryption_password(
+    state: tauri::State<'_, Arc<AppState>>,
+    old_password: String,
+    new_password: String,
+) -> Result<(), CommandError> {
+    use crate::sync::backend::SyncBackend;
+    use crate::sync::keyring::Keyring;
+
+    let backend = build_raw_s3_backend(&state)?;
+    let data = backend.download("meta/keyring.json").await
+        .map_err(|e| CommandError { message: format!("下载密钥文件失败: {}", e) })?;
+    let json = String::from_utf8(data)
+        .map_err(|e| CommandError { message: format!("密钥文件格式错误: {}", e) })?;
+    let keyring = Keyring::from_json(&json)
+        .map_err(|e| CommandError { message: format!("密钥文件解析失败: {}", e) })?;
+
+    let new_keyring = keyring.change_password(&old_password, &new_password).map_err(|e| match e {
+        crate::sync::keyring::KeyringError::WrongPassword => {
+            CommandError { message: "旧密码错误".to_string() }
+        }
+        other => CommandError { message: format!("修改密码失败: {}", other) },
+    })?;
+
+    let new_json = new_keyring.to_json()
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    backend.upload("meta/keyring.json", new_json.as_bytes()).await
+        .map_err(|e| CommandError { message: format!("上传密钥文件失败: {}", e) })?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_get_encryption_status(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+) -> Result<serde_json::Value, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let unlocked = encryption_state.is_unlocked();
+
+    Ok(serde_json::json!({
+        "enabled": enabled,
+        "unlocked": unlocked,
+    }))
 }
 
 #[tauri::command]
@@ -504,9 +699,10 @@ pub async fn cmd_test_s3_connection(
 #[tauri::command]
 pub async fn cmd_download_snapshot(
     state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
     resource_id: String,
 ) -> Result<bool, CommandError> {
-    let engine = build_sync_engine(&state)?;
+    let engine = build_sync_engine(&state, &encryption_state).await?;
     engine.download_snapshot(&resource_id).await
         .map_err(|e| CommandError { message: e.to_string() })?;
     Ok(true)

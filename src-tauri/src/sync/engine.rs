@@ -24,6 +24,16 @@ pub enum SyncError {
     AlreadyRunning,
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("encryption required: remote has encryption enabled")]
+    EncryptionRequired,
+    #[error("wrong password")]
+    WrongPassword,
+    #[error("keyring tampered")]
+    KeyringTampered,
+    #[error("keyring not found on remote")]
+    KeyringNotFound,
+    #[error("decryption failed: {0}")]
+    DecryptionFailed(String),
 }
 
 #[derive(Debug)]

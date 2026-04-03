@@ -80,6 +80,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(cmd_state)
+        .manage(Arc::new(sync::EncryptionState::new()))
         .invoke_handler(tauri::generate_handler![
             commands::cmd_list_folders,
             commands::cmd_create_folder,
@@ -118,6 +119,10 @@ pub fn run() {
             commands::cmd_download_snapshot,
             commands::cmd_get_snapshot_status,
             commands::cmd_set_sync_interval,
+            commands::cmd_setup_encryption,
+            commands::cmd_unlock_encryption,
+            commands::cmd_change_encryption_password,
+            commands::cmd_get_encryption_status,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();
