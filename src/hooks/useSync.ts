@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import * as cmd from "@/lib/commands";
 import toast from "react-hot-toast";
+import { DataEvents, SyncEvents } from "@/lib/events";
+import type { ConfigChangedPayload, SyncFailedPayload } from "@/lib/events";
 
 export type SyncStatusType = "idle" | "syncing" | "success" | "error";
 
@@ -26,45 +28,49 @@ export function useSync() {
     }).catch(() => {});
   }, []);
 
-  // Listen for sync events
+  // Listen for sync and config events
   useEffect(() => {
-    const unlistenCompleted = listen("sync-completed", () => {
+    const u1 = listen(DataEvents.SYNC_COMPLETED, () => {
       setStatus("success");
       setLastSyncAt(new Date().toISOString());
       setError("");
+      syncingRef.current = false;
     });
-    const unlistenFailed = listen<string>("sync-failed", (event) => {
+    const u2 = listen<SyncFailedPayload>(SyncEvents.FAILED, (event) => {
       setStatus("error");
-      setError(event.payload);
+      setError(event.payload.message);
+      syncingRef.current = false;
     });
-    const unlistenStarted = listen("sync-started", () => {
+    const u3 = listen(SyncEvents.STARTED, () => {
       setStatus("syncing");
+    });
+    const u4 = listen<ConfigChangedPayload>(DataEvents.CONFIG_CHANGED, (event) => {
+      if (event.payload.scope === "encryption") {
+        cmd.getEncryptionStatus().then((es) => {
+          setEncryptionEnabled(es.enabled);
+          setEncryptionUnlocked(es.unlocked);
+        }).catch(() => {});
+      }
     });
 
     return () => {
-      unlistenCompleted.then((f) => f());
-      unlistenFailed.then((f) => f());
-      unlistenStarted.then((f) => f());
+      u1.then((f) => f());
+      u2.then((f) => f());
+      u3.then((f) => f());
+      u4.then((f) => f());
     };
   }, []);
 
   const doSync = useCallback(async () => {
     if (syncingRef.current) return;
     syncingRef.current = true;
-    setStatus("syncing");
     try {
       await cmd.syncNow();
-      setStatus("success");
-      setLastSyncAt(new Date().toISOString());
-      setError("");
     } catch (err: unknown) {
-      setStatus("error");
       const msg = err && typeof err === "object" && "message" in err
         ? String((err as { message: string }).message)
         : String(err);
-      setError(msg);
       toast.error(`同步失败: ${msg}`);
-    } finally {
       syncingRef.current = false;
     }
   }, []);
