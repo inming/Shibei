@@ -4,6 +4,13 @@ import type { SyncConfig } from "@/types";
 import toast from "react-hot-toast";
 import styles from "./SyncSettings.module.css";
 
+function formatError(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message: string }).message);
+  }
+  return String(err);
+}
+
 interface SyncSettingsProps {
   onClose: () => void;
 }
@@ -45,29 +52,45 @@ export function SyncSettings({ onClose }: SyncSettingsProps) {
   async function handleTest() {
     setTesting(true);
     try {
-      const ok = await cmd.testS3Connection();
+      const ok = await cmd.testS3Connection(
+        endpoint, region, bucket,
+        accessKey || "__keep__",
+        secretKey || "__keep__",
+      );
       if (ok) {
         toast.success("连接成功");
       } else {
         toast.error("连接失败");
       }
     } catch (err) {
-      toast.error(`连接失败：${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`连接失败：${formatError(err)}`);
     } finally {
       setTesting(false);
     }
   }
 
   async function handleSave() {
+    if (!region || !bucket) {
+      toast.error("Region 和 Bucket 为必填项");
+      return;
+    }
+    if (!hasCredentials && (!accessKey || !secretKey)) {
+      toast.error("首次配置需填写 Access Key 和 Secret Key");
+      return;
+    }
     setSaving(true);
     try {
-      await cmd.saveSyncConfig(endpoint, region, bucket, accessKey, secretKey);
+      await cmd.saveSyncConfig(
+        endpoint, region, bucket,
+        accessKey || "__keep__",
+        secretKey || "__keep__",
+      );
       toast.success("配置已保存");
       setAccessKey("");
       setSecretKey("");
       await loadConfig();
     } catch (err) {
-      toast.error(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`保存失败：${formatError(err)}`);
     } finally {
       setSaving(false);
     }

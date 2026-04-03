@@ -394,8 +394,11 @@ pub async fn cmd_save_sync_config(
     crate::sync::sync_state::set(&conn, "config:s3_endpoint", &endpoint)?;
     crate::sync::sync_state::set(&conn, "config:s3_region", &region)?;
     crate::sync::sync_state::set(&conn, "config:s3_bucket", &bucket)?;
-    crate::sync::credentials::store_credentials(&access_key, &secret_key)
-        .map_err(|e| CommandError { message: e.to_string() })?;
+    // Only update credentials if not placeholder
+    if access_key != "__keep__" && secret_key != "__keep__" {
+        crate::sync::credentials::store_credentials(&access_key, &secret_key)
+            .map_err(|e| CommandError { message: e.to_string() })?;
+    }
     Ok(())
 }
 
@@ -422,22 +425,31 @@ pub async fn cmd_get_sync_config(
 #[tauri::command]
 pub async fn cmd_test_s3_connection(
     state: tauri::State<'_, Arc<AppState>>,
+    endpoint: String,
+    region: String,
+    bucket: String,
+    access_key: String,
+    secret_key: String,
 ) -> Result<bool, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
-    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
-        .ok_or_else(|| CommandError { message: "Region not configured".to_string() })?;
-    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
-        .ok_or_else(|| CommandError { message: "Bucket not configured".to_string() })?;
-    let (access_key, secret_key) = crate::sync::credentials::load_credentials()
-        .map_err(|e| CommandError { message: e.to_string() })?
-        .ok_or_else(|| CommandError { message: "Credentials not configured".to_string() })?;
+    if region.is_empty() || bucket.is_empty() {
+        return Err(CommandError { message: "Region and Bucket are required".to_string() });
+    }
+    // If credentials are placeholder, load from keyring
+    let (ak, sk) = if access_key == "__keep__" || secret_key == "__keep__" {
+        crate::sync::credentials::load_credentials()
+            .map_err(|e| CommandError { message: e.to_string() })?
+            .ok_or_else(|| CommandError { message: "Credentials not configured".to_string() })?
+    } else if access_key.is_empty() || secret_key.is_empty() {
+        return Err(CommandError { message: "Access Key and Secret Key are required".to_string() });
+    } else {
+        (access_key, secret_key)
+    };
     let config = crate::sync::backend::S3Config {
         endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
         region,
         bucket,
-        access_key,
-        secret_key,
+        access_key: ak,
+        secret_key: sk,
     };
     use crate::sync::backend::SyncBackend as _;
     let backend = crate::sync::backend::S3Backend::new(config)

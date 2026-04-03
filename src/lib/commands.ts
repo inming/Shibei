@@ -157,8 +157,11 @@ export function getSyncConfig(): Promise<SyncConfig> {
   return invoke("cmd_get_sync_config");
 }
 
-export function testS3Connection(): Promise<boolean> {
-  return invoke("cmd_test_s3_connection");
+export function testS3Connection(
+  endpoint: string, region: string, bucket: string,
+  accessKey: string, secretKey: string,
+): Promise<boolean> {
+  return invoke("cmd_test_s3_connection", { endpoint, region, bucket, accessKey, secretKey });
 }
 
 export function downloadSnapshot(resourceId: string): Promise<boolean> {
