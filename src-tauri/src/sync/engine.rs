@@ -483,6 +483,7 @@ impl SyncEngine {
         entries.sort_by_key(|e| topo_order(&e.operation, &e.entity_type));
 
         let conn = self.pool.get().map_err(DbError::Pool)?;
+        conn.execute_batch("PRAGMA foreign_keys = OFF")?;
         let mut applied = 0usize;
 
         for entry in &entries {
@@ -526,6 +527,7 @@ impl SyncEngine {
             }
         }
 
+        conn.execute_batch("PRAGMA foreign_keys = ON")?;
         Ok(applied)
     }
 
