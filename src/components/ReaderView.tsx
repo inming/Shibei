@@ -34,6 +34,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
   const [failedHighlightIds, setFailedHighlightIds] = useState<Set<string>>(new Set());
+  const [snapshotStatus, setSnapshotStatus] = useState<string>("synced");
+  const [downloading, setDownloading] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -44,6 +47,29 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   useEffect(() => {
     setSelection(null);
   }, [resource.id]);
+
+  // Check snapshot status when resource changes
+  useEffect(() => {
+    cmd.getSnapshotStatus(resource.id).then(setSnapshotStatus).catch(() => {});
+  }, [resource.id]);
+
+  const handleDownloadSnapshot = async () => {
+    setDownloading(true);
+    try {
+      const success = await cmd.downloadSnapshot(resource.id);
+      if (success) {
+        setSnapshotStatus("synced");
+        // Reload the iframe by bumping its key
+        setIframeKey((k) => k + 1);
+      } else {
+        toast.error("快照不存在");
+      }
+    } catch (err: unknown) {
+      toast.error(`下载失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const {
     highlights,
@@ -295,13 +321,23 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           </span>
         </div>
 
-        {/* MHTML content */}
-        <iframe
-          ref={iframeRef}
-          className={styles.iframe}
-          src={`${PROTOCOL_BASE}/resource/${resource.id}`}
-          title={resource.title}
-        />
+        {/* Snapshot content or download prompt */}
+        {snapshotStatus === "pending" ? (
+          <div className={styles.downloadPrompt}>
+            <p>快照尚未下载到本机</p>
+            <button onClick={handleDownloadSnapshot} disabled={downloading}>
+              {downloading ? "下载中..." : "下载快照"}
+            </button>
+          </div>
+        ) : (
+          <iframe
+            key={iframeKey}
+            ref={iframeRef}
+            className={styles.iframe}
+            src={`${PROTOCOL_BASE}/resource/${resource.id}`}
+            title={resource.title}
+          />
+        )}
       </div>
 
       {/* Selection toolbar */}
