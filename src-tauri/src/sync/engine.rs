@@ -77,6 +77,9 @@ impl SyncEngine {
         // Phase 1: Upload local changes
         let uploaded = self.upload_local_changes().await?;
 
+        // Phase 1.5: Import full snapshot if this is a new device
+        let snapshot_imported = self.maybe_import_snapshot().await?;
+
         // Phase 2+3: Download and apply remote changes
         let (downloaded, applied) = self.download_and_apply().await?;
 
@@ -95,7 +98,7 @@ impl SyncEngine {
         Ok(SyncResult::Success {
             uploaded,
             downloaded,
-            applied,
+            applied: applied + snapshot_imported,
         })
     }
 
@@ -268,6 +271,108 @@ impl SyncEngine {
         }
 
         Ok(count)
+    }
+
+    /// Phase 1.5: On first sync for a new device, download and import the latest full snapshot.
+    async fn maybe_import_snapshot(&self) -> Result<usize, SyncError> {
+        // Only run if we've never synced before
+        {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            if sync_state::get(&conn, "last_sync_at")?.is_some() {
+                return Ok(0);
+            }
+        }
+
+        // Find the latest snapshot on S3
+        let snapshots = self.backend.list("state/snapshot-").await?;
+        if snapshots.is_empty() {
+            return Ok(0);
+        }
+
+        // Pick the latest by key (lexicographic = chronological due to timestamp format)
+        let latest_key = snapshots.iter()
+            .map(|o| &o.key)
+            .max()
+            .unwrap()
+            .clone();
+
+        eprintln!("[sync] Importing full snapshot: {}", latest_key);
+
+        let data = self.backend.download(&latest_key).await?;
+        let snapshot: super::export::FullSnapshot = serde_json::from_slice(&data)?;
+
+        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let mut imported = 0usize;
+
+        // Import in topo order: folders → tags → resources (with tags) → highlights → comments
+        for folder in &snapshot.folders {
+            let hlc = folder["hlc"].as_str().unwrap_or("");
+            if let Some(deleted_at) = folder["deleted_at"].as_str() {
+                let id = folder["id"].as_str().unwrap_or_default();
+                self.soft_delete_entity(&conn, "folder", id, deleted_at, hlc)?;
+            } else {
+                self.upsert_entity(&conn, "folder", folder["id"].as_str().unwrap_or_default(), folder, hlc)?;
+            }
+            imported += 1;
+        }
+
+        for tag in &snapshot.tags {
+            let hlc = tag["hlc"].as_str().unwrap_or("");
+            if let Some(deleted_at) = tag["deleted_at"].as_str() {
+                self.soft_delete_entity(&conn, "tag", tag["id"].as_str().unwrap_or_default(), deleted_at, hlc)?;
+            } else {
+                self.upsert_entity(&conn, "tag", tag["id"].as_str().unwrap_or_default(), tag, hlc)?;
+            }
+            imported += 1;
+        }
+
+        for resource in &snapshot.resources {
+            let hlc = resource["hlc"].as_str().unwrap_or("");
+            let id = resource["id"].as_str().unwrap_or_default();
+            if let Some(deleted_at) = resource["deleted_at"].as_str() {
+                self.soft_delete_entity(&conn, "resource", id, deleted_at, hlc)?;
+            } else {
+                self.upsert_entity(&conn, "resource", id, resource, hlc)?;
+            }
+            imported += 1;
+        }
+
+        // Import resource_tags
+        for rt in &snapshot.resource_tags {
+            let rid = rt["resource_id"].as_str().unwrap_or_default();
+            let tid = rt["tag_id"].as_str().unwrap_or_default();
+            if rt["deleted_at"].is_null() && !rid.is_empty() && !tid.is_empty() {
+                conn.execute(
+                    "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id) VALUES (?1, ?2)",
+                    params![rid, tid],
+                )?;
+            }
+        }
+
+        for highlight in &snapshot.highlights {
+            let hlc = highlight["hlc"].as_str().unwrap_or("");
+            let id = highlight["id"].as_str().unwrap_or_default();
+            if let Some(deleted_at) = highlight["deleted_at"].as_str() {
+                self.soft_delete_entity(&conn, "highlight", id, deleted_at, hlc)?;
+            } else {
+                self.upsert_entity(&conn, "highlight", id, highlight, hlc)?;
+            }
+            imported += 1;
+        }
+
+        for comment in &snapshot.comments {
+            let hlc = comment["hlc"].as_str().unwrap_or("");
+            let id = comment["id"].as_str().unwrap_or_default();
+            if let Some(deleted_at) = comment["deleted_at"].as_str() {
+                self.soft_delete_entity(&conn, "comment", id, deleted_at, hlc)?;
+            } else {
+                self.upsert_entity(&conn, "comment", id, comment, hlc)?;
+            }
+            imported += 1;
+        }
+
+        eprintln!("[sync] Snapshot imported: {} entities", imported);
+        Ok(imported)
     }
 
     /// Phase 2+3: Download remote changes and apply with LWW.
