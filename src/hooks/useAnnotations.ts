@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Highlight, Comment } from "@/types";
 import * as cmd from "@/lib/commands";
+import { DataEvents } from "@/lib/events";
 
 export function useAnnotations(resourceId: string) {
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -30,41 +31,29 @@ export function useAnnotations(resourceId: string) {
     refresh();
   }, [refresh]);
 
-  // Auto-refresh when annotations change in another component (e.g. ReaderView)
+  // Auto-refresh on domain events
   useEffect(() => {
-    function handleChange(e: Event) {
-      const detail = (e as CustomEvent<string>).detail;
-      if (detail === resourceId) refresh();
-    }
-    window.addEventListener("shibei:annotations-changed", handleChange);
-    return () => window.removeEventListener("shibei:annotations-changed", handleChange);
-  }, [resourceId, refresh]);
-
-  // Auto-refresh when sync completes (annotations may have changed on another device)
-  useEffect(() => {
-    const unlisten = listen("sync-completed", () => { refresh(); });
-    return () => { unlisten.then((f) => f()); };
+    const u1 = listen(DataEvents.ANNOTATION_CHANGED, () => { refresh(); });
+    const u2 = listen(DataEvents.SYNC_COMPLETED, () => { refresh(); });
+    return () => {
+      u1.then((f) => f());
+      u2.then((f) => f());
+    };
   }, [refresh]);
 
-  function notifyChange(): void {
-    window.dispatchEvent(new CustomEvent("shibei:annotations-changed", { detail: resourceId }));
-  }
-
+  // Keep immediate optimistic update for addHighlight — ReaderView needs the
+  // highlight object right away to postMessage back to the iframe.
   const addHighlight = useCallback(
     (highlight: Highlight) => {
       setHighlights((prev) => [...prev, highlight]);
-      notifyChange();
     },
-    [resourceId],
+    [],
   );
 
   const removeHighlight = useCallback(
     async (id: string) => {
       try {
-        await cmd.deleteHighlight(id);
-        setHighlights((prev) => prev.filter((h) => h.id !== id));
-        setComments((prev) => prev.filter((c) => c.highlight_id !== id));
-        notifyChange();
+        await cmd.deleteHighlight(id, resourceId);
       } catch (err) {
         console.error("Failed to delete highlight:", err);
         toast.error("删除高亮失败");
@@ -78,7 +67,6 @@ export function useAnnotations(resourceId: string) {
       try {
         const comment = await cmd.createComment(resourceId, highlightId, content);
         setComments((prev) => [...prev, comment]);
-        notifyChange();
         return comment;
       } catch (err) {
         console.error("Failed to create comment:", err);
@@ -92,9 +80,7 @@ export function useAnnotations(resourceId: string) {
   const removeComment = useCallback(
     async (id: string) => {
       try {
-        await cmd.deleteComment(id);
-        setComments((prev) => prev.filter((c) => c.id !== id));
-        notifyChange();
+        await cmd.deleteComment(id, resourceId);
       } catch (err) {
         console.error("Failed to delete comment:", err);
         toast.error("删除评论失败");
@@ -106,13 +92,7 @@ export function useAnnotations(resourceId: string) {
   const editComment = useCallback(
     async (id: string, content: string) => {
       try {
-        await cmd.updateComment(id, content);
-        setComments((prev) =>
-          prev.map((c) =>
-            c.id === id ? { ...c, content, updated_at: new Date().toISOString() } : c,
-          ),
-        );
-        notifyChange();
+        await cmd.updateComment(id, content, resourceId);
       } catch (err) {
         console.error("Failed to update comment:", err);
         toast.error("编辑评论失败");
