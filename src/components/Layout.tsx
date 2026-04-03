@@ -7,6 +7,8 @@ import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
 import { PreviewPanel } from "@/components/PreviewPanel";
+import { SyncStatus } from "@/components/SyncStatus";
+import { SyncSettings } from "@/components/SyncSettings";
 import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
@@ -23,6 +25,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const [resourceRefreshKey, setResourceRefreshKey] = useState(0);
+  const [showSyncSettings, setShowSyncSettings] = useState(false);
   const dragging = useRef(false);
 
   const sensors = useSensors(
@@ -224,7 +227,9 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             onRefreshRef={folderTreeRefreshRef}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
+          <SyncStatus onOpenSettings={() => setShowSyncSettings(true)} />
         </div>
+        {showSyncSettings && <SyncSettings onClose={() => setShowSyncSettings(false)} />}
 
         {/* Col 2: Resource list */}
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>
