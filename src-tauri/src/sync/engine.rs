@@ -71,6 +71,9 @@ impl SyncEngine {
             Err(_) => return Err(SyncError::AlreadyRunning),
         };
 
+        // Phase 0: First-time sync — upload full state snapshot if never synced before
+        self.ensure_initial_snapshot().await?;
+
         // Phase 1: Upload local changes
         let uploaded = self.upload_local_changes().await?;
 
@@ -155,6 +158,66 @@ impl SyncEngine {
         super::sync_log::delete_uploaded(&conn)?;
 
         Ok(true)
+    }
+
+    /// Phase 0: On first sync, upload a full state snapshot + all existing snapshots.
+    /// This ensures pre-existing data (created before sync was enabled) gets uploaded.
+    async fn ensure_initial_snapshot(&self) -> Result<(), SyncError> {
+        // Check if we've ever synced
+        {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            if sync_state::get(&conn, "last_sync_at")?.is_some() {
+                return Ok(());
+            }
+        }
+
+        // Check if snapshot already exists on S3
+        let existing = self.backend.list("state/snapshot-").await?;
+        if !existing.is_empty() {
+            return Ok(());
+        }
+
+        eprintln!("[sync] First-time sync: uploading full state snapshot");
+
+        // Export full state (scoped to drop conn before await)
+        let (snapshot_json, resource_ids, max_id) = {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let snapshot = super::export::export_full_state(&conn, &self.device_id)?;
+            let json = serde_json::to_vec_pretty(&snapshot)?;
+
+            let mut stmt = conn.prepare("SELECT id FROM resources WHERE deleted_at IS NULL")?;
+            let ids: Vec<String> = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            drop(stmt);
+
+            let max: i64 = conn.query_row(
+                "SELECT COALESCE(MAX(id), 0) FROM sync_log", [], |row| row.get(0),
+            )?;
+            (json, ids, max)
+        };
+
+        // Upload snapshot
+        let ts = crate::db::now_iso8601().replace(':', "-");
+        let key = format!("state/snapshot-{}.json", ts);
+        self.backend.upload(&key, &snapshot_json).await?;
+
+        // Upload all existing resource snapshots
+        for resource_id in &resource_ids {
+            if let Err(e) = self.upload_snapshot(resource_id).await {
+                eprintln!("[sync] Warning: failed to upload snapshot for {}: {}", resource_id, e);
+            }
+        }
+
+        // Mark existing sync_log as uploaded
+        if max_id > 0 {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            sync_log::mark_uploaded(&conn, max_id)?;
+        }
+
+        eprintln!("[sync] Initial snapshot uploaded ({} resources)", resource_ids.len());
+        Ok(())
     }
 
     /// Phase 1: Upload pending sync_log entries and associated snapshots.
@@ -676,6 +739,12 @@ mod tests {
         SyncEngine::new(pool, backend, device_id.to_string(), clock, base_dir)
     }
 
+    /// Mark a pool as "already synced" so ensure_initial_snapshot is skipped.
+    fn mark_synced(pool: &DbPool) {
+        let conn = pool.get().unwrap();
+        sync_state::set(&conn, "last_sync_at", "2026-01-01T00:00:00Z").unwrap();
+    }
+
     #[tokio::test]
     async fn test_sync_no_changes() {
         let (_dir, pool) = test_pool();
@@ -700,6 +769,7 @@ mod tests {
     #[tokio::test]
     async fn test_upload_local_changes() {
         let (_dir, pool) = test_pool();
+        mark_synced(&pool);
         let backend = Arc::new(MockBackend::new());
         let engine = make_engine(pool.clone(), backend.clone(), "dev-a", _dir.path().to_path_buf());
 
@@ -753,6 +823,7 @@ mod tests {
 
         // Device A: create folder and sync (upload)
         let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
         let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
 
         {
@@ -881,6 +952,7 @@ mod tests {
 
         // Device A: create folder, sync, then delete it and sync again
         let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
         let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
 
         // Create and upload
