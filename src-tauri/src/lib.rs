@@ -69,6 +69,7 @@ pub fn run() {
         auth_token: auth_token.clone(),
         sync_clock,
         device_id: device_id.clone(),
+        sync_engine: None, // Engine initialized on first sync or after config
     });
 
     let server_token = auth_token.clone();
@@ -110,6 +111,12 @@ pub fn run() {
             commands::cmd_get_non_leaf_folder_ids,
             commands::cmd_get_auth_token,
             commands::cmd_debug_log,
+            commands::cmd_sync_now,
+            commands::cmd_save_sync_config,
+            commands::cmd_get_sync_config,
+            commands::cmd_test_s3_connection,
+            commands::cmd_download_snapshot,
+            commands::cmd_get_snapshot_status,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

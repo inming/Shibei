@@ -12,6 +12,7 @@ pub struct AppState {
     pub auth_token: String,
     pub sync_clock: Option<crate::sync::hlc::HlcClock>,
     pub device_id: Option<String>,
+    pub sync_engine: Option<Arc<crate::sync::engine::SyncEngine>>,
 }
 
 impl AppState {
@@ -367,6 +368,105 @@ pub async fn cmd_get_auth_token(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<String, CommandError> {
     Ok(state.auth_token.clone())
+}
+
+// ── Sync ──
+
+#[tauri::command]
+pub async fn cmd_sync_now(state: tauri::State<'_, Arc<AppState>>) -> Result<String, CommandError> {
+    let engine = state.sync_engine.as_ref()
+        .ok_or_else(|| CommandError { message: "Sync not configured".to_string() })?;
+    let result = engine.sync().await
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(format!("{:?}", result))
+}
+
+#[tauri::command]
+pub async fn cmd_save_sync_config(
+    state: tauri::State<'_, Arc<AppState>>,
+    endpoint: String,
+    region: String,
+    bucket: String,
+    access_key: String,
+    secret_key: String,
+) -> Result<(), CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    crate::sync::sync_state::set(&conn, "config:s3_endpoint", &endpoint)?;
+    crate::sync::sync_state::set(&conn, "config:s3_region", &region)?;
+    crate::sync::sync_state::set(&conn, "config:s3_bucket", &bucket)?;
+    crate::sync::credentials::store_credentials(&access_key, &secret_key)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_get_sync_config(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
+    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?.unwrap_or_default();
+    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?.unwrap_or_default();
+    let has_credentials = crate::sync::credentials::load_credentials()
+        .map(|c| c.is_some()).unwrap_or(false);
+    let last_sync = crate::sync::sync_state::get(&conn, "last_sync_at")?.unwrap_or_default();
+    Ok(serde_json::json!({
+        "endpoint": endpoint,
+        "region": region,
+        "bucket": bucket,
+        "has_credentials": has_credentials,
+        "last_sync_at": last_sync,
+    }))
+}
+
+#[tauri::command]
+pub async fn cmd_test_s3_connection(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<bool, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
+    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
+        .ok_or_else(|| CommandError { message: "Region not configured".to_string() })?;
+    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
+        .ok_or_else(|| CommandError { message: "Bucket not configured".to_string() })?;
+    let (access_key, secret_key) = crate::sync::credentials::load_credentials()
+        .map_err(|e| CommandError { message: e.to_string() })?
+        .ok_or_else(|| CommandError { message: "Credentials not configured".to_string() })?;
+    let config = crate::sync::backend::S3Config {
+        endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
+        region,
+        bucket,
+        access_key,
+        secret_key,
+    };
+    use crate::sync::backend::SyncBackend as _;
+    let backend = crate::sync::backend::S3Backend::new(config)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    backend.list("").await.map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn cmd_download_snapshot(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+) -> Result<bool, CommandError> {
+    let engine = state.sync_engine.as_ref()
+        .ok_or_else(|| CommandError { message: "Sync not configured".to_string() })?;
+    engine.download_snapshot(&resource_id).await
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn cmd_get_snapshot_status(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+) -> Result<String, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let status = crate::sync::sync_state::get(&conn, &format!("snapshot:{}", resource_id))?
+        .unwrap_or_else(|| "synced".to_string());
+    Ok(status)
 }
 
 // ── Debug ──
