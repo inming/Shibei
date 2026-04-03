@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE 推迟到 v1.3.1）。**
 
 ---
 
@@ -106,40 +106,40 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 
 
 ## v1.3 — S3 云同步
 
-**目标**：实现多设备数据同步，让资料库不再局限于单机。先基于 S3 实现，存储后端可扩展。
+**目标**：实现多设备数据同步，让资料库不再局限于单机。基于 S3 兼容存储，支持 AWS S3、MinIO、Cloudflare R2、阿里云 OSS 等。
+
+- 设计文档：`docs/superpowers/specs/2026-04-02-v1.3-s3-sync-design.md`
+- 实现计划：`docs/superpowers/plans/2026-04-02-v1.3-s3-sync.md`
 
 ### 基础设施
-- [ ] **变更追踪** — 新增 `sync_log` 表，记录本地所有数据变更（INSERT/UPDATE/DELETE），含实体类型、实体 ID、操作类型、时间戳
-- [ ] **软删除改造** — 现有实体增加 `deleted_at` 字段，删除操作改为标记而非物理删除，同步完成后再清理
-- [ ] **设备标识** — 生成并持久化本机 device_id（UUID），同步记录中标记来源设备
-
-### 端到端加密（E2EE）
-- [ ] **主密钥管理** — 首次设置时随机生成 MEK（主加密密钥），用户设置同步密码 → Argon2 派生 KEK → 加密 MEK → 密文存 S3（`meta/master.key.enc`）
-- [ ] **数据加解密** — AES-256-GCM，上传前用 MEK 加密（元数据 + snapshot），下载后解密；每个文件独立 nonce
-- [ ] **多设备解锁** — 新设备输入同步密码 → 派生 KEK → 从 S3 下载并解密 MEK → 正常同步
-- [ ] **密码修改** — 用新密码重新派生 KEK，重新加密 MEK 上传，已有数据无需重新加密
+- [x] **变更追踪** — `sync_log` 表记录所有 CRUD 变更，含 entity_type/entity_id/operation/payload/HLC/device_id
+- [x] **软删除改造** — 6 张业务表增加 `deleted_at` + `hlc` 字段，删除改为标记，90 天后物理清理
+- [x] **设备标识** — 完整 UUID v4 持久化到 `device_id` 文件
+- [x] **HLC 时钟** — Hybrid Logical Clock 保证多设备全序，容忍时钟偏差
 
 ### S3 存储层
-- [ ] **存储后端抽象** — 定义 `SyncBackend` trait（upload / download / list / delete），首个实现为 S3
-- [ ] **S3 客户端集成** — 引入 `aws-sdk-s3` 或轻量替代（`rust-s3`），支持配置 endpoint/bucket/credentials（兼容 MinIO 等 S3 兼容服务）
-- [ ] **数据布局约定** — S3 bucket 内目录结构：`meta/master.key.enc` 存加密主密钥，`meta/sync/` 存加密变更日志，`snapshots/{resource_id}/snapshot.html.enc` 存加密快照
+- [x] **存储后端抽象** — `SyncBackend` trait（upload/download/list/delete/head），MockBackend 用于测试
+- [x] **S3 客户端** — `rust-s3` crate，支持自定义 endpoint（兼容阿里云 OSS 等 S3 兼容服务）
+- [x] **凭据存储** — S3 凭据存 sync_state 表（DB 内），非敏感配置同表 `config:` 前缀
 
 ### 同步协议
-- [ ] **元数据同步** — 基于 sync_log 的增量同步：本地变更上传 → 拉取远端变更 → 按时间戳合并（last-write-wins）
-- [ ] **文件同步** — snapshot.html 按 resource_id 上传/下载，通过 ETag 或 hash 判断是否需要更新
-- [ ] **首次全量同步** — 新设备加入时全量拉取远端数据
-- [ ] **删除同步** — 软删除标记同步到远端，各设备确认后物理清理
+- [x] **增量同步** — sync_log → JSONL 上传到 `sync/<device_id>/`，拉取远端 JSONL → 拓扑排序 → LWW apply
+- [x] **首次全量同步** — 首次上传全量快照到 `state/snapshot-*.json`，新设备导入快照后回放增量
+- [x] **快照按需下载** — 元数据全量同步，snapshot.html 打开阅读器时自动下载
+- [x] **Compaction** — JSONL 文件超限时生成全量快照，两阶段清理旧文件 + 90 天物理清除软删除记录
 
 ### 前端
-- [ ] **同步设置页** — S3 配置表单（endpoint、bucket、access key、secret key）+ 同步密码设置 + 连接测试
-- [ ] **同步状态指示** — 状态栏显示同步状态（已同步 / 同步中 / 同步失败）
-- [ ] **手动同步触发** — 提供手动同步按钮，后续可加自动定时同步
+- [x] **同步设置页** — S3 配置表单 + 连接测试 + 明文存储警告 + 自动同步间隔设置
+- [x] **同步状态指示** — sidebar 底部状态按钮（已同步/同步中/同步失败）+ 手动触发
+- [x] **定时自动同步** — 可配置间隔（默认 5 分钟），设置页可调整或关闭
+- [x] **同步后自动刷新** — 文件夹树、资料列表、标签列表同步完成后自动刷新
+- [x] **快照自动下载** — 阅读器打开未下载资料时自动下载并显示加载动画
 
-### 未来扩展（不在本期）
-- WebDAV / 其他存储协议支持
-- 细粒度冲突合并（字段级 merge）
-- 自动定时同步 + 实时推送
-- 密钥轮换（重新加密全部数据）
+### 不在 v1.3 范围（→ v1.3.1 或后续）
+- 端到端加密 E2EE
+- WebDAV 等其他存储协议
+- 字段级冲突合并
+- 密钥轮换
 
 ---
 
