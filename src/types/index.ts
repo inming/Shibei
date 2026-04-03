@@ -61,3 +61,11 @@ export interface Comment {
   created_at: string;
   updated_at: string;
 }
+
+export interface SyncConfig {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  has_credentials: boolean;
+  last_sync_at: string;
+}
