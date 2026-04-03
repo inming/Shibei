@@ -70,3 +70,8 @@ export interface SyncConfig {
   last_sync_at: string;
   sync_interval: number; // minutes, 0 = disabled
 }
+
+export interface EncryptionStatus {
+  enabled: boolean;
+  unlocked: boolean;
+}

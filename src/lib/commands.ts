@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig } from "@/types";
+import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus } from "@/types";
 
 // ── Folders ──
 
@@ -174,6 +174,24 @@ export function getSnapshotStatus(resourceId: string): Promise<string> {
 
 export function setSyncInterval(minutes: number): Promise<void> {
   return invoke("cmd_set_sync_interval", { minutes });
+}
+
+// ── Encryption ──
+
+export function setupEncryption(password: string): Promise<void> {
+  return invoke("cmd_setup_encryption", { password });
+}
+
+export function unlockEncryption(password: string): Promise<void> {
+  return invoke("cmd_unlock_encryption", { password });
+}
+
+export function changeEncryptionPassword(oldPassword: string, newPassword: string): Promise<void> {
+  return invoke("cmd_change_encryption_password", { oldPassword, newPassword });
+}
+
+export function getEncryptionStatus(): Promise<EncryptionStatus> {
+  return invoke("cmd_get_encryption_status");
 }
 
 // ── Debug ──

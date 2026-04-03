@@ -146,3 +146,37 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.encryptionSection {
+  margin-bottom: 12px;
+}
+
+.info {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  padding: 8px 12px;
+  background: var(--color-bg-secondary);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.success {
+  font-size: 13px;
+  color: var(--color-success, #34a853);
+  padding: 8px 12px;
+  background: var(--color-bg-secondary);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.passwordDialog {
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.passwordHeader {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}

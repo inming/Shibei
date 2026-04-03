@@ -11,12 +11,18 @@ export function useSync() {
   const [error, setError] = useState<string>("");
   const [intervalMinutes, setIntervalMinutes] = useState(0);
   const syncingRef = useRef(false);
+  const [encryptionEnabled, setEncryptionEnabled] = useState(false);
+  const [encryptionUnlocked, setEncryptionUnlocked] = useState(false);
 
   // Load config on mount
   useEffect(() => {
     cmd.getSyncConfig().then((c) => {
       if (c.last_sync_at) setLastSyncAt(c.last_sync_at);
       setIntervalMinutes(c.sync_interval ?? 5);
+    }).catch(() => {});
+    cmd.getEncryptionStatus().then((es) => {
+      setEncryptionEnabled(es.enabled);
+      setEncryptionUnlocked(es.unlocked);
     }).catch(() => {});
   }, []);
 
@@ -73,5 +79,5 @@ export function useSync() {
     return () => clearInterval(timer);
   }, [intervalMinutes, doSync]);
 
-  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync };
+  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync, encryptionEnabled, encryptionUnlocked };
 }

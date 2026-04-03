@@ -27,6 +27,13 @@ export function SyncSettings({ onClose, intervalMinutes, onIntervalChange }: Syn
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [interval, setInterval_] = useState(intervalMinutes);
+  const [encryptionEnabled, setEncryptionEnabled] = useState(false);
+  const [encryptionUnlocked, setEncryptionUnlocked] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState<"setup" | "unlock" | "change" | null>(null);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [oldPassword, setOldPassword] = useState("");
+  const [encryptionLoading, setEncryptionLoading] = useState(false);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -38,6 +45,13 @@ export function SyncSettings({ onClose, intervalMinutes, onIntervalChange }: Syn
       setInterval_(cfg.sync_interval ?? 5);
     } catch {
       // config may not exist yet; leave fields empty
+    }
+    try {
+      const es = await cmd.getEncryptionStatus();
+      setEncryptionEnabled(es.enabled);
+      setEncryptionUnlocked(es.unlocked);
+    } catch {
+      // encryption status not available
     }
   }, []);
 
@@ -100,6 +114,71 @@ export function SyncSettings({ onClose, intervalMinutes, onIntervalChange }: Syn
     }
   }
 
+  function resetPasswordFields() {
+    setPassword("");
+    setConfirmPassword("");
+    setOldPassword("");
+    setShowPasswordDialog(null);
+  }
+
+  async function handleSetupEncryption() {
+    if (password.length < 8) {
+      toast.error("密码至少 8 个字符");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("两次输入的密码不一致");
+      return;
+    }
+    setEncryptionLoading(true);
+    try {
+      await cmd.setupEncryption(password);
+      toast.success("端到端加密已启用，正在重新同步...");
+      setEncryptionEnabled(true);
+      setEncryptionUnlocked(true);
+      resetPasswordFields();
+    } catch (err) {
+      toast.error(`启用加密失败：${formatError(err)}`);
+    } finally {
+      setEncryptionLoading(false);
+    }
+  }
+
+  async function handleUnlockEncryption() {
+    setEncryptionLoading(true);
+    try {
+      await cmd.unlockEncryption(password);
+      toast.success("加密已解锁");
+      setEncryptionUnlocked(true);
+      resetPasswordFields();
+    } catch (err) {
+      toast.error(`解锁失败：${formatError(err)}`);
+    } finally {
+      setEncryptionLoading(false);
+    }
+  }
+
+  async function handleChangePassword() {
+    if (password.length < 8) {
+      toast.error("新密码至少 8 个字符");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("两次输入的新密码不一致");
+      return;
+    }
+    setEncryptionLoading(true);
+    try {
+      await cmd.changeEncryptionPassword(oldPassword, password);
+      toast.success("加密密码已修改");
+      resetPasswordFields();
+    } catch (err) {
+      toast.error(`修改密码失败：${formatError(err)}`);
+    } finally {
+      setEncryptionLoading(false);
+    }
+  }
+
   const hasCredentials = config?.has_credentials ?? false;
   const credentialPlaceholder = hasCredentials ? "(已保存，留空保持不变)" : "";
 
@@ -114,8 +193,44 @@ export function SyncSettings({ onClose, intervalMinutes, onIntervalChange }: Syn
         </div>
 
         <div className={styles.body}>
-          <div className={styles.warning}>
-            当前版本数据以明文存储在 S3。请确保 bucket 访问权限设置正确。端到端加密将在后续版本中支持。
+          <div className={styles.encryptionSection}>
+            {!encryptionEnabled ? (
+              <>
+                <div className={styles.warning}>
+                  数据以明文存储在 S3。建议启用端到端加密以保护数据安全。
+                </div>
+                <button
+                  className={styles.secondary}
+                  onClick={() => setShowPasswordDialog("setup")}
+                >
+                  启用端到端加密
+                </button>
+              </>
+            ) : !encryptionUnlocked ? (
+              <>
+                <div className={styles.info}>
+                  端到端加密已启用，需要输入密码后才能同步。
+                </div>
+                <button
+                  className={styles.primary}
+                  onClick={() => setShowPasswordDialog("unlock")}
+                >
+                  输入加密密码
+                </button>
+              </>
+            ) : (
+              <>
+                <div className={styles.success}>
+                  端到端加密已启用且已解锁
+                </div>
+                <button
+                  className={styles.secondary}
+                  onClick={() => setShowPasswordDialog("change")}
+                >
+                  修改加密密码
+                </button>
+              </>
+            )}
           </div>
 
           <div className={styles.form}>
@@ -200,6 +315,68 @@ export function SyncSettings({ onClose, intervalMinutes, onIntervalChange }: Syn
             <p className={styles.lastSync}>
               上次同步：{new Date(config.last_sync_at).toLocaleString("zh-CN")}
             </p>
+          )}
+
+          {showPasswordDialog && (
+            <div className={styles.passwordDialog}>
+              <div className={styles.passwordHeader}>
+                {showPasswordDialog === "setup" && "设置加密密码"}
+                {showPasswordDialog === "unlock" && "输入加密密码"}
+                {showPasswordDialog === "change" && "修改加密密码"}
+              </div>
+              {showPasswordDialog === "change" && (
+                <label className={styles.label}>
+                  <span>旧密码</span>
+                  <input
+                    type="password"
+                    className={styles.input}
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                  />
+                </label>
+              )}
+              <label className={styles.label}>
+                <span>{showPasswordDialog === "change" ? "新密码" : "密码"}</span>
+                <input
+                  type="password"
+                  className={styles.input}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="至少 8 个字符"
+                />
+              </label>
+              {showPasswordDialog !== "unlock" && (
+                <label className={styles.label}>
+                  <span>确认密码</span>
+                  <input
+                    type="password"
+                    className={styles.input}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </label>
+              )}
+              <div className={styles.actions}>
+                <button
+                  className={styles.secondary}
+                  onClick={resetPasswordFields}
+                  disabled={encryptionLoading}
+                >
+                  取消
+                </button>
+                <button
+                  className={styles.primary}
+                  onClick={() => {
+                    if (showPasswordDialog === "setup") handleSetupEncryption();
+                    else if (showPasswordDialog === "unlock") handleUnlockEncryption();
+                    else handleChangePassword();
+                  }}
+                  disabled={encryptionLoading}
+                >
+                  {encryptionLoading ? "处理中…" : "确认"}
+                </button>
+              </div>
+            </div>
           )}
 
           <div className={styles.actions}>

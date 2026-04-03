@@ -244,6 +244,8 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             lastSyncAt={sync.lastSyncAt}
             onSync={sync.triggerSync}
             onOpenSettings={() => setShowSyncSettings(true)}
+            encryptionEnabled={sync.encryptionEnabled}
+            encryptionUnlocked={sync.encryptionUnlocked}
           />
         </div>
         {showSyncSettings && (

@@ -10,3 +10,4 @@
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .gear { font-size: var(--font-size-sm); color: var(--color-text-muted); cursor: pointer; padding: 2px; }
 .gear:hover { color: var(--color-text-primary); }
+.lock { font-size: 12px; margin-right: 2px; }
