@@ -1,33 +1,44 @@
 import { useState, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { Resource, Tag } from "@/types";
 import * as cmd from "@/lib/commands";
+import { DataEvents } from "@/lib/events";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { PreviewPanelSkeleton } from "@/components/Skeleton";
 import styles from "./PreviewPanel.module.css";
 
 interface PreviewPanelProps {
   resource: Resource;
-  refreshKey?: number;
   onOpenInReader: (highlightId?: string) => void;
 }
 
-export function PreviewPanel({ resource: initialResource, refreshKey, onOpenInReader }: PreviewPanelProps) {
+export function PreviewPanel({ resource: initialResource, onOpenInReader }: PreviewPanelProps) {
   const [resource, setResource] = useState<Resource>(initialResource);
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
 
-  // Re-fetch resource data when refreshKey changes (e.g. after edit or sync)
   useEffect(() => {
     setResource(initialResource);
-    if (refreshKey) {
-      cmd.getResource(initialResource.id).then(setResource).catch(() => {});
-    }
-  }, [initialResource, refreshKey]);
+  }, [initialResource]);
 
   useEffect(() => {
     cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
-  }, [resource.id, refreshKey]);
+  }, [resource.id]);
+
+  useEffect(() => {
+    const u1 = listen(DataEvents.RESOURCE_CHANGED, () => {
+      cmd.getResource(resource.id).then(setResource).catch(() => {});
+      cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
+    });
+    const u2 = listen(DataEvents.TAG_CHANGED, () => {
+      cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
+    });
+    return () => {
+      u1.then((f) => f());
+      u2.then((f) => f());
+    };
+  }, [resource.id]);
 
   const domain = resource.domain ?? (() => {
     try { return new URL(resource.url).hostname; } catch { return resource.url; }

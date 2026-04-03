@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
@@ -16,12 +16,10 @@ interface ResourceListProps {
   selectedTagIds: Set<string>;
   sortBy: "created_at" | "annotated_at";
   sortOrder: "asc" | "desc";
-  refreshKey: number;
   onSelectResource: (resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => void;
   onOpen: (resource: Resource) => void;
   onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
-  onDataChanged?: () => void;
 }
 
 function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, onContextMenu }: {
@@ -60,21 +58,14 @@ function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, o
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, refreshKey, onSelectResource, onOpen, onSortByChange, onSortOrderChange, onDataChanged }: ResourceListProps) {
-  const { resources, resourceTags, loading, refresh } = useResources(folderId, sortBy, sortOrder);
+export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
+  const { resources, resourceTags, loading } = useResources(folderId, sortBy, sortOrder);
   const listRef = useRef<HTMLDivElement>(null);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [contextResourceIds, setContextResourceIds] = useState<string[]>([]);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-
-  // Refresh when refreshKey changes (e.g. after resource move)
-  useEffect(() => {
-    if (refreshKey > 0) {
-      refresh();
-    }
-  }, [refreshKey, refresh]);
 
   const filteredResources = selectedTagIds.size === 0
     ? resources
@@ -105,12 +96,10 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       for (const id of contextResourceIds) {
         await cmd.deleteResource(id);
       }
-      refresh();
-      onDataChanged?.();
     } catch (err: unknown) {
       toast.error(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [contextResourceIds, refresh, onDataChanged]);
+  }, [contextResourceIds]);
 
   const handleMove = useCallback(async (targetFolderId: string) => {
     setContextMenu(null);
@@ -118,12 +107,10 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       for (const id of contextResourceIds) {
         await cmd.moveResource(id, targetFolderId);
       }
-      refresh();
-      onDataChanged?.();
     } catch (err: unknown) {
       toast.error(`移动失败: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [contextResourceIds, refresh, onDataChanged]);
+  }, [contextResourceIds]);
 
   const handleEdit = useCallback(() => {
     if (contextResourceIds.length !== 1) return;
@@ -240,7 +227,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
             setDeleteConfirm(true);
           }}
           onMove={handleMove}
-          onTagsChanged={() => { refresh(); onDataChanged?.(); }}
+          onTagsChanged={() => {}}
           onClose={() => setContextMenu(null)}
         />
       )}
@@ -248,7 +235,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       {editingResource && (
         <ResourceEditDialog
           resource={editingResource}
-          onSave={() => { refresh(); onDataChanged?.(); }}
+          onSave={() => {}}
           onClose={() => setEditingResource(null)}
         />
       )}

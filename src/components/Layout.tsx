@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
-import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -26,7 +25,6 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
-  const [resourceRefreshKey, setResourceRefreshKey] = useState(0);
   const sync = useSync();
   const dragging = useRef(false);
 
@@ -36,16 +34,6 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
 
   const [activeDrag, setActiveDrag] = useState<{ type: "folder" | "resource"; id: string; title: string } | null>(null);
   const [_overDropTarget, setOverDropTarget] = useState<string | null>(null);
-  const folderTreeRefreshRef = useRef<(() => void) | null>(null);
-
-  // Refresh all data when sync completes
-  useEffect(() => {
-    const unlisten = listen("sync-completed", () => {
-      setResourceRefreshKey((k) => k + 1);
-      folderTreeRefreshRef.current?.();
-    });
-    return () => { unlisten.then((f) => f()); };
-  }, []);
 
   const handleResourceSelect = useCallback((resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => {
     if (event.metaKey) {
@@ -123,8 +111,6 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
         }
         setSelectedResourceIds(new Set());
         setSelectedResource(null);
-        setResourceRefreshKey((k) => k + 1);
-        folderTreeRefreshRef.current?.();
       } catch (err) {
         console.error("Failed to move resource:", err);
         toast.error("移动资料失败");
@@ -138,7 +124,6 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
       if (!targetFolderId || String(active.id) === targetFolderId) return;
       try {
         await cmd.moveFolder(String(active.id), targetFolderId);
-        folderTreeRefreshRef.current?.();
       } catch (err) {
         console.error("Failed to move folder:", err);
         const msg = String(err);
@@ -235,7 +220,6 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
           <FolderTree
             selectedFolderId={selectedFolderId}
             onSelectFolder={setSelectedFolderId}
-            onRefreshRef={folderTreeRefreshRef}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
           <SyncStatus
@@ -256,12 +240,10 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
             selectedTagIds={selectedTagIds}
             sortBy={sortBy}
             sortOrder={sortOrder}
-            refreshKey={resourceRefreshKey}
             onSelectResource={handleResourceSelect}
             onOpen={(resource) => onOpenResource(resource)}
             onSortByChange={setSortBy}
             onSortOrderChange={setSortOrder}
-            onDataChanged={() => { setResourceRefreshKey((k) => k + 1); folderTreeRefreshRef.current?.(); }}
           />
         </div>
 
@@ -274,7 +256,6 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
             <PreviewPanel
               key={selectedResource.id}
               resource={selectedResource}
-              refreshKey={resourceRefreshKey}
               onOpenInReader={(highlightId) => onOpenResource(selectedResource, highlightId)}
             />
           ) : (

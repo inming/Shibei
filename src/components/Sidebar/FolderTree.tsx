@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { listen } from "@tauri-apps/api/event";
 import { useFolders } from "@/hooks/useFolders";
+import { DataEvents } from "@/lib/events";
 import type { Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
@@ -13,7 +14,6 @@ import styles from "./FolderTree.module.css";
 interface FolderTreeProps {
   selectedFolderId: string | null;
   onSelectFolder: (id: string) => void;
-  onRefreshRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 interface ContextMenuState {
@@ -23,7 +23,7 @@ interface ContextMenuState {
   folderName: string;
 }
 
-export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: FolderTreeProps) {
+export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -32,7 +32,6 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
   const [deleteFolder, setDeleteFolder] = useState<{ id: string; name: string } | null>(null);
   const [folderCounts, setFolderCounts] = useState<Record<string, number>>({});
   const [nonLeafIds, setNonLeafIds] = useState<Set<string>>(new Set());
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -51,29 +50,17 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
     loadMeta();
   }, [loadMeta]);
 
-  // Refresh folder counts when a new resource is saved via the extension
+  // Refresh folder metadata when data changes
   useEffect(() => {
-    const unlisten = listen("resource-saved", () => {
-      loadMeta();
-    });
-    return () => { unlisten.then((f) => f()); };
-  }, [loadMeta]);
-
-  function refreshAll() {
-    setRefreshKey((k) => k + 1);
-    loadMeta();
-  }
-
-  useEffect(() => {
-    if (onRefreshRef) {
-      onRefreshRef.current = refreshAll;
-    }
+    const u1 = listen(DataEvents.RESOURCE_CHANGED, () => { loadMeta(); });
+    const u2 = listen(DataEvents.FOLDER_CHANGED, () => { loadMeta(); });
+    const u3 = listen(DataEvents.SYNC_COMPLETED, () => { loadMeta(); });
     return () => {
-      if (onRefreshRef) {
-        onRefreshRef.current = null;
-      }
+      u1.then((f) => f());
+      u2.then((f) => f());
+      u3.then((f) => f());
     };
-  });
+  }, [loadMeta]);
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
@@ -93,7 +80,6 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
       await cmd.createFolder(newName.trim(), "__root__");
       setNewName("");
       setIsCreating(false);
-      refreshAll();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("UNIQUE constraint")) {
@@ -108,7 +94,6 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
     try {
       await cmd.deleteFolder(id);
       setDeleteFolder(null);
-      refreshAll();
     } catch (err: unknown) {
       alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -129,7 +114,6 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
       setSubfolderName("");
       setSubfolderTarget(null);
       setExpandedIds((prev) => new Set(prev).add(subfolderTarget));
-      refreshAll();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("UNIQUE constraint")) {
@@ -261,7 +245,6 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
           expandedIds={expandedIds}
           nonLeafIds={nonLeafIds}
           folderCounts={folderCounts}
-          refreshKey={refreshKey}
           onSelect={onSelectFolder}
           onToggleExpand={toggleExpand}
           onContextMenu={handleContextMenu}
@@ -338,7 +321,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
           folderId={editFolder.id}
           currentName={editFolder.name}
           onClose={() => setEditFolder(null)}
-          onSaved={refreshAll}
+          onSaved={() => {}}
         />
       )}
 
@@ -391,7 +374,6 @@ interface FolderNodeProps {
   expandedIds: Set<string>;
   nonLeafIds: Set<string>;
   folderCounts: Record<string, number>;
-  refreshKey: number;
   onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string, name: string) => void;
@@ -404,12 +386,11 @@ function FolderNode({
   expandedIds,
   nonLeafIds,
   folderCounts,
-  refreshKey,
   onSelect,
   onToggleExpand,
   onContextMenu,
 }: FolderNodeProps) {
-  const { folders, loading } = useFolders(parentId, refreshKey);
+  const { folders, loading } = useFolders(parentId);
 
   if (loading && depth === 0) {
     return <Spinner />;
@@ -430,7 +411,6 @@ function FolderNode({
           expandedIds={expandedIds}
           nonLeafIds={nonLeafIds}
           folderCounts={folderCounts}
-          refreshKey={refreshKey}
           onSelect={onSelect}
           onToggleExpand={onToggleExpand}
           onContextMenu={onContextMenu}
@@ -449,7 +429,6 @@ interface DraggableFolderItemProps {
   expandedIds: Set<string>;
   nonLeafIds: Set<string>;
   folderCounts: Record<string, number>;
-  refreshKey: number;
   onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, id: string, name: string) => void;
@@ -462,7 +441,6 @@ function DraggableFolderItem({
   expandedIds,
   nonLeafIds,
   folderCounts,
-  refreshKey,
   onSelect,
   onToggleExpand,
   onContextMenu,
@@ -534,7 +512,6 @@ function DraggableFolderItem({
             expandedIds={expandedIds}
             nonLeafIds={nonLeafIds}
             folderCounts={folderCounts}
-            refreshKey={refreshKey}
             onSelect={onSelect}
             onToggleExpand={onToggleExpand}
             onContextMenu={onContextMenu}
