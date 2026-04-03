@@ -68,4 +68,5 @@ export interface SyncConfig {
   bucket: string;
   has_credentials: boolean;
   last_sync_at: string;
+  sync_interval: number; // minutes, 0 = disabled
 }

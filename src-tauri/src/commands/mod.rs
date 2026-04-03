@@ -437,6 +437,7 @@ pub async fn cmd_save_sync_config(
     if access_key != "__keep__" && secret_key != "__keep__" {
         crate::sync::credentials::store_credentials(&conn, &access_key, &secret_key)?;
     }
+    // sync_interval is stored separately via cmd_set_sync_interval
     Ok(())
 }
 
@@ -451,12 +452,16 @@ pub async fn cmd_get_sync_config(
     let has_credentials = crate::sync::credentials::load_credentials(&conn)
         .map(|c| c.is_some()).unwrap_or(false);
     let last_sync = crate::sync::sync_state::get(&conn, "last_sync_at")?.unwrap_or_default();
+    let sync_interval: i64 = crate::sync::sync_state::get(&conn, "config:sync_interval")?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
     Ok(serde_json::json!({
         "endpoint": endpoint,
         "region": region,
         "bucket": bucket,
         "has_credentials": has_credentials,
         "last_sync_at": last_sync,
+        "sync_interval": sync_interval,
     }))
 }
 
@@ -516,6 +521,16 @@ pub async fn cmd_get_snapshot_status(
     let status = crate::sync::sync_state::get(&conn, &format!("snapshot:{}", resource_id))?
         .unwrap_or_else(|| "synced".to_string());
     Ok(status)
+}
+
+#[tauri::command]
+pub async fn cmd_set_sync_interval(
+    state: tauri::State<'_, Arc<AppState>>,
+    minutes: i64,
+) -> Result<(), CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    crate::sync::sync_state::set(&conn, "config:sync_interval", &minutes.to_string())?;
+    Ok(())
 }
 
 // ── Debug ──

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import * as cmd from "@/lib/commands";
 import toast from "react-hot-toast";
@@ -9,12 +9,19 @@ export function useSync() {
   const [status, setStatus] = useState<SyncStatusType>("idle");
   const [lastSyncAt, setLastSyncAt] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [intervalMinutes, setIntervalMinutes] = useState(0);
+  const syncingRef = useRef(false);
 
+  // Load config on mount
   useEffect(() => {
     cmd.getSyncConfig().then((c) => {
       if (c.last_sync_at) setLastSyncAt(c.last_sync_at);
+      setIntervalMinutes(c.sync_interval ?? 5);
     }).catch(() => {});
+  }, []);
 
+  // Listen for sync events
+  useEffect(() => {
     const unlistenCompleted = listen("sync-completed", () => {
       setStatus("success");
       setLastSyncAt(new Date().toISOString());
@@ -35,7 +42,9 @@ export function useSync() {
     };
   }, []);
 
-  const triggerSync = useCallback(async () => {
+  const doSync = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setStatus("syncing");
     try {
       await cmd.syncNow();
@@ -49,8 +58,20 @@ export function useSync() {
         : String(err);
       setError(msg);
       toast.error(`同步失败: ${msg}`);
+    } finally {
+      syncingRef.current = false;
     }
   }, []);
 
-  return { status, lastSyncAt, error, triggerSync };
+  // Auto-sync timer
+  useEffect(() => {
+    if (intervalMinutes <= 0) return;
+    const ms = intervalMinutes * 60 * 1000;
+    const timer = setInterval(() => {
+      doSync();
+    }, ms);
+    return () => clearInterval(timer);
+  }, [intervalMinutes, doSync]);
+
+  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync };
 }

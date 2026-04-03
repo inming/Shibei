@@ -13,9 +13,11 @@ function formatError(err: unknown): string {
 
 interface SyncSettingsProps {
   onClose: () => void;
+  intervalMinutes: number;
+  onIntervalChange: (minutes: number) => void;
 }
 
-export function SyncSettings({ onClose }: SyncSettingsProps) {
+export function SyncSettings({ onClose, intervalMinutes, onIntervalChange }: SyncSettingsProps) {
   const [config, setConfig] = useState<SyncConfig | null>(null);
   const [endpoint, setEndpoint] = useState("");
   const [region, setRegion] = useState("");
@@ -24,6 +26,7 @@ export function SyncSettings({ onClose }: SyncSettingsProps) {
   const [secretKey, setSecretKey] = useState("");
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [interval, setInterval_] = useState(intervalMinutes);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -32,6 +35,7 @@ export function SyncSettings({ onClose }: SyncSettingsProps) {
       setEndpoint(cfg.endpoint ?? "");
       setRegion(cfg.region ?? "");
       setBucket(cfg.bucket ?? "");
+      setInterval_(cfg.sync_interval ?? 5);
     } catch {
       // config may not exist yet; leave fields empty
     }
@@ -168,6 +172,27 @@ export function SyncSettings({ onClose }: SyncSettingsProps) {
                 onChange={(e) => setSecretKey(e.target.value)}
                 placeholder={credentialPlaceholder}
               />
+            </label>
+
+            <label className={styles.label}>
+              <span>自动同步间隔</span>
+              <select
+                className={styles.input}
+                value={interval}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setInterval_(v);
+                  cmd.setSyncInterval(v);
+                  onIntervalChange(v);
+                }}
+              >
+                <option value={0}>关闭</option>
+                <option value={1}>1 分钟</option>
+                <option value={3}>3 分钟</option>
+                <option value={5}>5 分钟</option>
+                <option value={10}>10 分钟</option>
+                <option value={30}>30 分钟</option>
+              </select>
             </label>
           </div>
 

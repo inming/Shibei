@@ -117,6 +117,7 @@ pub fn run() {
             commands::cmd_test_s3_connection,
             commands::cmd_download_snapshot,
             commands::cmd_get_snapshot_status,
+            commands::cmd_set_sync_interval,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

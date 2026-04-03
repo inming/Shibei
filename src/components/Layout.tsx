@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
+import { useSync } from "@/hooks/useSync";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
@@ -27,6 +28,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const [resourceRefreshKey, setResourceRefreshKey] = useState(0);
   const [showSyncSettings, setShowSyncSettings] = useState(false);
+  const sync = useSync();
   const dragging = useRef(false);
 
   const sensors = useSensors(
@@ -237,9 +239,20 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             onRefreshRef={folderTreeRefreshRef}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
-          <SyncStatus onOpenSettings={() => setShowSyncSettings(true)} />
+          <SyncStatus
+            status={sync.status}
+            lastSyncAt={sync.lastSyncAt}
+            onSync={sync.triggerSync}
+            onOpenSettings={() => setShowSyncSettings(true)}
+          />
         </div>
-        {showSyncSettings && <SyncSettings onClose={() => setShowSyncSettings(false)} />}
+        {showSyncSettings && (
+          <SyncSettings
+            onClose={() => setShowSyncSettings(false)}
+            intervalMinutes={sync.intervalMinutes}
+            onIntervalChange={sync.setIntervalMinutes}
+          />
+        )}
 
         {/* Col 2: Resource list */}
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>

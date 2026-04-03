@@ -172,6 +172,10 @@ export function getSnapshotStatus(resourceId: string): Promise<string> {
   return invoke("cmd_get_snapshot_status", { resourceId });
 }
 
+export function setSyncInterval(minutes: number): Promise<void> {
+  return invoke("cmd_set_sync_interval", { minutes });
+}
+
 // ── Debug ──
 
 const DEBUG_ENABLED = import.meta.env.VITE_DEBUG === "1";
