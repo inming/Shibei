@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Highlight, Comment } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -38,6 +39,12 @@ export function useAnnotations(resourceId: string) {
     window.addEventListener("shibei:annotations-changed", handleChange);
     return () => window.removeEventListener("shibei:annotations-changed", handleChange);
   }, [resourceId, refresh]);
+
+  // Auto-refresh when sync completes (annotations may have changed on another device)
+  useEffect(() => {
+    const unlisten = listen("sync-completed", () => { refresh(); });
+    return () => { unlisten.then((f) => f()); };
+  }, [refresh]);
 
   function notifyChange(): void {
     window.dispatchEvent(new CustomEvent("shibei:annotations-changed", { detail: resourceId }));

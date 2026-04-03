@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { listen } from "@tauri-apps/api/event";
 import { useFolders } from "@/hooks/useFolders";
 import type { Folder } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -48,6 +49,14 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRefreshRef }: F
 
   useEffect(() => {
     loadMeta();
+  }, [loadMeta]);
+
+  // Refresh folder counts when a new resource is saved via the extension
+  useEffect(() => {
+    const unlisten = listen("resource-saved", () => {
+      loadMeta();
+    });
+    return () => { unlisten.then((f) => f()); };
   }, [loadMeta]);
 
   function refreshAll() {
