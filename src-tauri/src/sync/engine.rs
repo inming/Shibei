@@ -1,0 +1,949 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use rusqlite::params;
+use thiserror::Error;
+
+use crate::db::{DbError, DbPool};
+use crate::sync::backend::{BackendError, SyncBackend};
+use crate::sync::hlc::HlcClock;
+use crate::sync::sync_log::{self, SyncLogEntry};
+use crate::sync::sync_state;
+
+#[derive(Error, Debug)]
+pub enum SyncError {
+    #[error("database error: {0}")]
+    Db(#[from] DbError),
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+    #[error("backend error: {0}")]
+    Backend(#[from] BackendError),
+    #[error("json error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("sync already running")]
+    AlreadyRunning,
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+#[derive(Debug)]
+pub enum SyncResult {
+    Success {
+        uploaded: usize,
+        downloaded: usize,
+        applied: usize,
+    },
+    Skipped,
+}
+
+pub struct SyncEngine {
+    pool: DbPool,
+    backend: Arc<dyn SyncBackend>,
+    device_id: String,
+    clock: Arc<HlcClock>,
+    lock: tokio::sync::Mutex<()>,
+    base_dir: PathBuf,
+}
+
+impl SyncEngine {
+    pub fn new(
+        pool: DbPool,
+        backend: Arc<dyn SyncBackend>,
+        device_id: String,
+        clock: Arc<HlcClock>,
+        base_dir: PathBuf,
+    ) -> Self {
+        Self {
+            pool,
+            backend,
+            device_id,
+            clock,
+            lock: tokio::sync::Mutex::new(()),
+            base_dir,
+        }
+    }
+
+    /// Run the full sync cycle: upload local changes, download and apply remote changes.
+    pub async fn sync(&self) -> Result<SyncResult, SyncError> {
+        // Try lock — skip if already syncing
+        let _guard = match self.lock.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => return Err(SyncError::AlreadyRunning),
+        };
+
+        // Phase 1: Upload local changes
+        let uploaded = self.upload_local_changes().await?;
+
+        // Phase 2+3: Download and apply remote changes
+        let (downloaded, applied) = self.download_and_apply().await?;
+
+        // Update last_sync_at
+        {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            sync_state::set(&conn, "last_sync_at", &crate::db::now_iso8601())?;
+        }
+
+        Ok(SyncResult::Success {
+            uploaded,
+            downloaded,
+            applied,
+        })
+    }
+
+    /// Phase 1: Upload pending sync_log entries and associated snapshots.
+    async fn upload_local_changes(&self) -> Result<usize, SyncError> {
+        let pending = {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            sync_log::get_pending(&conn)?
+        };
+
+        if pending.is_empty() {
+            return Ok(0);
+        }
+
+        let count = pending.len();
+
+        // Serialize to JSONL
+        let mut jsonl = String::new();
+        for entry in &pending {
+            let line = serde_json::to_string(entry)?;
+            jsonl.push_str(&line);
+            jsonl.push('\n');
+        }
+
+        // Upload JSONL to sync/<device_id>/<timestamp>.jsonl
+        let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ").to_string();
+        let key = format!("sync/{}/{}.jsonl", self.device_id, timestamp);
+        self.backend.upload(&key, jsonl.as_bytes()).await?;
+
+        // Mark entries as uploaded
+        let max_id = pending.last().map(|e| e.id).unwrap_or(0);
+        {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            sync_log::mark_uploaded(&conn, max_id)?;
+            sync_state::set(&conn, "last_uploaded_log_id", &max_id.to_string())?;
+        }
+
+        // Upload snapshots for new resources
+        for entry in &pending {
+            if entry.entity_type == "resource" && entry.operation == "INSERT" {
+                if let Err(e) = self.upload_snapshot(&entry.entity_id).await {
+                    // Log but don't fail the whole sync for snapshot upload issues
+                    eprintln!(
+                        "warning: failed to upload snapshot for {}: {}",
+                        entry.entity_id, e
+                    );
+                }
+            }
+        }
+
+        Ok(count)
+    }
+
+    /// Phase 2+3: Download remote changes and apply with LWW.
+    async fn download_and_apply(&self) -> Result<(usize, usize), SyncError> {
+        // List all device directories under sync/
+        let objects = self.backend.list("sync/").await?;
+
+        // Extract unique device IDs from keys like "sync/<device_id>/..."
+        let mut remote_devices: Vec<String> = objects
+            .iter()
+            .filter_map(|obj| {
+                let parts: Vec<&str> = obj.key.split('/').collect();
+                if parts.len() >= 3 {
+                    Some(parts[1].to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        remote_devices.sort();
+        remote_devices.dedup();
+
+        // Skip self
+        remote_devices.retain(|d| d != &self.device_id);
+
+        let mut total_downloaded = 0usize;
+        let mut all_entries: Vec<SyncLogEntry> = Vec::new();
+
+        for device in &remote_devices {
+            // Get the last processed seq for this device
+            let last_seq_key = format!("remote:{}:last_seq", device);
+            let last_seq = {
+                let conn = self.pool.get().map_err(DbError::Pool)?;
+                sync_state::get(&conn, &last_seq_key)?
+            };
+
+            // List JSONL files for this device
+            let prefix = format!("sync/{}/", device);
+            let mut files: Vec<_> = self
+                .backend
+                .list(&prefix)
+                .await?
+                .into_iter()
+                .filter(|obj| obj.key.ends_with(".jsonl"))
+                .collect();
+            files.sort_by(|a, b| a.key.cmp(&b.key));
+
+            // Filter to only files after last_seq
+            if let Some(ref seq) = last_seq {
+                files.retain(|f| {
+                    // Extract filename from key for comparison
+                    if let Some(fname) = f.key.rsplit('/').next() {
+                        fname > seq.as_str()
+                    } else {
+                        false
+                    }
+                });
+            }
+
+            let mut latest_seq: Option<String> = None;
+
+            for file_obj in &files {
+                let data = self.backend.download(&file_obj.key).await?;
+                let content = String::from_utf8_lossy(&data);
+                total_downloaded += 1;
+
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    let entry: SyncLogEntry = serde_json::from_str(line)?;
+                    all_entries.push(entry);
+                }
+
+                // Track latest file as seq
+                if let Some(fname) = file_obj.key.rsplit('/').next() {
+                    latest_seq = Some(fname.to_string());
+                }
+            }
+
+            // Update last_seq for this device
+            if let Some(seq) = latest_seq {
+                let conn = self.pool.get().map_err(DbError::Pool)?;
+                sync_state::set(&conn, &last_seq_key, &seq)?;
+            }
+        }
+
+        // Phase 3: Apply with topo-sort
+        let applied = self.apply_entries(all_entries)?;
+
+        Ok((total_downloaded, applied))
+    }
+
+    /// Apply remote entries with LWW conflict resolution and topo-sort ordering.
+    fn apply_entries(&self, mut entries: Vec<SyncLogEntry>) -> Result<usize, SyncError> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+
+        // Topo-sort: assign order based on (operation, entity_type)
+        entries.sort_by_key(|e| topo_order(&e.operation, &e.entity_type));
+
+        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let mut applied = 0usize;
+
+        for entry in &entries {
+            // Skip entries from self
+            if entry.device_id == self.device_id {
+                continue;
+            }
+
+            // LWW check: get local entity's hlc
+            let local_hlc = get_entity_hlc(&conn, &entry.entity_type, &entry.entity_id)?;
+            if let Some(ref local) = local_hlc {
+                // If local hlc >= remote hlc, skip (local wins)
+                if local.as_str() >= entry.hlc.as_str() {
+                    continue;
+                }
+            }
+
+            // Advance local clock with remote HLC
+            if let Ok(remote_hlc) = entry.hlc.parse::<crate::sync::hlc::Hlc>() {
+                self.clock.receive(&remote_hlc);
+            }
+
+            let payload: serde_json::Value = serde_json::from_str(&entry.payload)?;
+
+            match entry.operation.as_str() {
+                "INSERT" | "UPDATE" => {
+                    self.upsert_entity(&conn, &entry.entity_type, &entry.entity_id, &payload, &entry.hlc)?;
+                    applied += 1;
+                }
+                "DELETE" => {
+                    let now = crate::db::now_iso8601();
+                    let deleted_at = payload["deleted_at"]
+                        .as_str()
+                        .unwrap_or(&now);
+                    self.soft_delete_entity(&conn, &entry.entity_type, &entry.entity_id, deleted_at, &entry.hlc)?;
+                    applied += 1;
+                }
+                _ => {
+                    // Unknown operation, skip
+                }
+            }
+        }
+
+        Ok(applied)
+    }
+
+    /// Upsert an entity from a remote sync entry.
+    fn upsert_entity(
+        &self,
+        conn: &rusqlite::Connection,
+        entity_type: &str,
+        entity_id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        match entity_type {
+            "folder" => self.upsert_folder(conn, entity_id, payload, hlc),
+            "tag" => self.upsert_tag(conn, entity_id, payload, hlc),
+            "resource" => self.upsert_resource(conn, entity_id, payload, hlc),
+            "highlight" => self.upsert_highlight(conn, entity_id, payload, hlc),
+            "comment" => self.upsert_comment(conn, entity_id, payload, hlc),
+            _ => Ok(()), // Unknown entity type, skip
+        }
+    }
+
+    fn upsert_folder(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let name = payload["name"].as_str().unwrap_or("");
+        let parent_id = payload["parent_id"].as_str().unwrap_or("__root__");
+        let sort_order = payload["sort_order"].as_i64().unwrap_or(0);
+        let created_at = payload["created_at"].as_str().unwrap_or("");
+        let updated_at = payload["updated_at"].as_str().unwrap_or("");
+
+        conn.execute(
+            "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               name = excluded.name,
+               parent_id = excluded.parent_id,
+               sort_order = excluded.sort_order,
+               updated_at = excluded.updated_at,
+               hlc = excluded.hlc,
+               deleted_at = NULL",
+            params![id, name, parent_id, sort_order, created_at, updated_at, hlc],
+        )?;
+        Ok(())
+    }
+
+    fn upsert_tag(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let name = payload["name"].as_str().unwrap_or("");
+        let color = payload["color"].as_str().unwrap_or("#808080");
+
+        conn.execute(
+            "INSERT INTO tags (id, name, color, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               name = excluded.name,
+               color = excluded.color,
+               hlc = excluded.hlc,
+               deleted_at = NULL",
+            params![id, name, color, hlc],
+        )?;
+        Ok(())
+    }
+
+    fn upsert_resource(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let title = payload["title"].as_str().unwrap_or("");
+        let url = payload["url"].as_str().unwrap_or("");
+        let domain = payload["domain"].as_str();
+        let author = payload["author"].as_str();
+        let description = payload["description"].as_str();
+        let folder_id = payload["folder_id"].as_str().unwrap_or("__root__");
+        let resource_type = payload["resource_type"].as_str().unwrap_or("webpage");
+        let file_path = payload["file_path"].as_str().unwrap_or("");
+        let created_at = payload["created_at"].as_str().unwrap_or("");
+        let captured_at = payload["captured_at"].as_str().unwrap_or("");
+        let selection_meta = payload["selection_meta"].as_str();
+
+        conn.execute(
+            "INSERT INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               title = excluded.title,
+               url = excluded.url,
+               domain = excluded.domain,
+               author = excluded.author,
+               description = excluded.description,
+               folder_id = excluded.folder_id,
+               resource_type = excluded.resource_type,
+               file_path = excluded.file_path,
+               selection_meta = excluded.selection_meta,
+               hlc = excluded.hlc,
+               deleted_at = NULL",
+            params![id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, hlc],
+        )?;
+
+        // Handle tag_ids if present
+        if let Some(tag_ids) = payload["tag_ids"].as_array() {
+            // Delete existing resource_tags for this resource
+            conn.execute(
+                "DELETE FROM resource_tags WHERE resource_id = ?1",
+                params![id],
+            )?;
+
+            // Re-insert all tag associations
+            for tag_val in tag_ids {
+                if let Some(tag_id) = tag_val.as_str() {
+                    conn.execute(
+                        "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc)
+                         VALUES (?1, ?2, ?3)",
+                        params![id, tag_id, hlc],
+                    )?;
+                }
+            }
+        }
+
+        // Mark snapshot as pending download
+        let snapshot_key = format!("snapshot:{}", id);
+        sync_state::set(conn, &snapshot_key, "pending")?;
+
+        Ok(())
+    }
+
+    fn upsert_highlight(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let resource_id = payload["resource_id"].as_str().unwrap_or("");
+        let text_content = payload["text_content"].as_str().unwrap_or("");
+        let anchor = payload["anchor"].as_str().unwrap_or("");
+        let color = payload["color"].as_str().unwrap_or("#FFEB3B");
+        let created_at = payload["created_at"].as_str().unwrap_or("");
+
+        conn.execute(
+            "INSERT INTO highlights (id, resource_id, text_content, anchor, color, created_at, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               resource_id = excluded.resource_id,
+               text_content = excluded.text_content,
+               anchor = excluded.anchor,
+               color = excluded.color,
+               hlc = excluded.hlc,
+               deleted_at = NULL",
+            params![id, resource_id, text_content, anchor, color, created_at, hlc],
+        )?;
+        Ok(())
+    }
+
+    fn upsert_comment(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let highlight_id = payload["highlight_id"].as_str();
+        let resource_id = payload["resource_id"].as_str().unwrap_or("");
+        let content = payload["content"].as_str().unwrap_or("");
+        let created_at = payload["created_at"].as_str().unwrap_or("");
+        let updated_at = payload["updated_at"].as_str().unwrap_or("");
+
+        conn.execute(
+            "INSERT INTO comments (id, highlight_id, resource_id, content, created_at, updated_at, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               highlight_id = excluded.highlight_id,
+               resource_id = excluded.resource_id,
+               content = excluded.content,
+               updated_at = excluded.updated_at,
+               hlc = excluded.hlc,
+               deleted_at = NULL",
+            params![id, highlight_id, resource_id, content, created_at, updated_at, hlc],
+        )?;
+        Ok(())
+    }
+
+    /// Soft-delete an entity if it hasn't been deleted yet.
+    fn soft_delete_entity(
+        &self,
+        conn: &rusqlite::Connection,
+        entity_type: &str,
+        entity_id: &str,
+        deleted_at: &str,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let table = match entity_type {
+            "folder" => "folders",
+            "resource" => "resources",
+            "tag" => "tags",
+            "highlight" => "highlights",
+            "comment" => "comments",
+            _ => return Ok(()),
+        };
+
+        let sql = format!(
+            "UPDATE {} SET deleted_at = ?1, hlc = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+            table
+        );
+        conn.execute(&sql, params![deleted_at, hlc, entity_id])?;
+        Ok(())
+    }
+
+    /// Upload a local snapshot.html to the backend.
+    pub async fn upload_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
+        let snapshot_path = self.base_dir.join(resource_id).join("snapshot.html");
+        if !snapshot_path.exists() {
+            return Ok(()); // No snapshot to upload
+        }
+
+        let data = std::fs::read(&snapshot_path)?;
+        let key = format!("snapshots/{}/snapshot.html", resource_id);
+        self.backend.upload(&key, &data).await?;
+        Ok(())
+    }
+
+    /// Download a snapshot from the backend and save locally.
+    pub async fn download_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
+        let key = format!("snapshots/{}/snapshot.html", resource_id);
+        let data = self.backend.download(&key).await?;
+
+        let local_dir = self.base_dir.join(resource_id);
+        std::fs::create_dir_all(&local_dir)?;
+
+        let local_path = local_dir.join("snapshot.html");
+        std::fs::write(&local_path, &data)?;
+
+        // Update sync_state to "synced"
+        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let state_key = format!("snapshot:{}", resource_id);
+        sync_state::set(&conn, &state_key, "synced")?;
+
+        Ok(())
+    }
+}
+
+/// Topo-sort order for sync entries.
+/// INSERT/UPDATE: folder(0) → tag(1) → resource(2) → highlight(3) → comment(4)
+/// DELETE: comment(5) → highlight(6) → resource(7) → tag(8) → folder(9)
+fn topo_order(operation: &str, entity_type: &str) -> u8 {
+    match operation {
+        "INSERT" | "UPDATE" => match entity_type {
+            "folder" => 0,
+            "tag" => 1,
+            "resource" => 2,
+            "highlight" => 3,
+            "comment" => 4,
+            _ => 5,
+        },
+        "DELETE" => match entity_type {
+            "comment" => 6,
+            "highlight" => 7,
+            "resource" => 8,
+            "tag" => 9,
+            "folder" => 10,
+            _ => 11,
+        },
+        _ => 12,
+    }
+}
+
+/// Get the HLC of an entity, including soft-deleted entities.
+fn get_entity_hlc(
+    conn: &rusqlite::Connection,
+    entity_type: &str,
+    entity_id: &str,
+) -> Result<Option<String>, SyncError> {
+    let table = match entity_type {
+        "folder" => "folders",
+        "resource" => "resources",
+        "tag" => "tags",
+        "highlight" => "highlights",
+        "comment" => "comments",
+        _ => return Ok(None),
+    };
+
+    let sql = format!("SELECT hlc FROM {} WHERE id = ?1", table);
+    let result = conn.query_row(&sql, params![entity_id], |row| row.get::<_, Option<String>>(0));
+
+    match result {
+        Ok(hlc) => Ok(hlc),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(SyncError::Sqlite(e)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sync::backend::mock::MockBackend;
+
+    fn test_pool() -> (tempfile::TempDir, DbPool) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let pool = crate::db::init_pool(&db_path).unwrap();
+        (dir, pool)
+    }
+
+    fn make_engine(
+        pool: DbPool,
+        backend: Arc<dyn SyncBackend>,
+        device_id: &str,
+        base_dir: PathBuf,
+    ) -> SyncEngine {
+        let clock = Arc::new(HlcClock::new(device_id.to_string()));
+        SyncEngine::new(pool, backend, device_id.to_string(), clock, base_dir)
+    }
+
+    #[tokio::test]
+    async fn test_sync_no_changes() {
+        let (_dir, pool) = test_pool();
+        let backend = Arc::new(MockBackend::new());
+        let engine = make_engine(pool, backend, "dev-a", _dir.path().to_path_buf());
+
+        let result = engine.sync().await.unwrap();
+        match result {
+            SyncResult::Success {
+                uploaded,
+                downloaded,
+                applied,
+            } => {
+                assert_eq!(uploaded, 0);
+                assert_eq!(downloaded, 0);
+                assert_eq!(applied, 0);
+            }
+            SyncResult::Skipped => panic!("expected Success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_local_changes() {
+        let (_dir, pool) = test_pool();
+        let backend = Arc::new(MockBackend::new());
+        let engine = make_engine(pool.clone(), backend.clone(), "dev-a", _dir.path().to_path_buf());
+
+        // Insert a sync_log entry
+        {
+            let conn = pool.get().unwrap();
+            let payload = serde_json::json!({
+                "id": "f1",
+                "name": "Test Folder",
+                "parent_id": "__root__",
+                "sort_order": 1,
+                "created_at": "2026-04-01T00:00:00Z",
+                "updated_at": "2026-04-01T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "folder",
+                "f1",
+                "INSERT",
+                &payload.to_string(),
+                "1711987200000-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+
+        let result = engine.sync().await.unwrap();
+        match result {
+            SyncResult::Success { uploaded, .. } => {
+                assert_eq!(uploaded, 1);
+            }
+            SyncResult::Skipped => panic!("expected Success"),
+        }
+
+        // Verify JSONL was uploaded to backend
+        let objects = backend.list("sync/dev-a/").await.unwrap();
+        assert_eq!(objects.len(), 1);
+        assert!(objects[0].key.ends_with(".jsonl"));
+
+        // Verify entry is marked as uploaded
+        {
+            let conn = pool.get().unwrap();
+            let pending = sync_log::get_pending(&conn).unwrap();
+            assert!(pending.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_two_device_sync() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create folder and sync (upload)
+        let (_dir_a, pool_a) = test_pool();
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+
+        {
+            let conn = pool_a.get().unwrap();
+            let payload = serde_json::json!({
+                "id": "f1",
+                "name": "Shared Folder",
+                "parent_id": "__root__",
+                "sort_order": 1,
+                "created_at": "2026-04-01T00:00:00Z",
+                "updated_at": "2026-04-01T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "folder",
+                "f1",
+                "INSERT",
+                &payload.to_string(),
+                "1711987200000-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+
+        let result_a = engine_a.sync().await.unwrap();
+        match result_a {
+            SyncResult::Success { uploaded, .. } => assert_eq!(uploaded, 1),
+            _ => panic!("expected Success"),
+        }
+
+        // Device B: sync (download + apply)
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+
+        let result_b = engine_b.sync().await.unwrap();
+        match result_b {
+            SyncResult::Success {
+                downloaded,
+                applied,
+                ..
+            } => {
+                assert_eq!(downloaded, 1);
+                assert_eq!(applied, 1);
+            }
+            _ => panic!("expected Success"),
+        }
+
+        // Verify folder exists on Device B
+        {
+            let conn = pool_b.get().unwrap();
+            let name: String = conn
+                .query_row(
+                    "SELECT name FROM folders WHERE id = 'f1'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(name, "Shared Folder");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_lww_local_wins() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create a folder with an older HLC
+        let (_dir_a, pool_a) = test_pool();
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+
+        {
+            let conn = pool_a.get().unwrap();
+            let payload = serde_json::json!({
+                "id": "f1",
+                "name": "Old Name",
+                "parent_id": "__root__",
+                "sort_order": 1,
+                "created_at": "2026-04-01T00:00:00Z",
+                "updated_at": "2026-04-01T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "folder",
+                "f1",
+                "INSERT",
+                &payload.to_string(),
+                "1000000000000-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+
+        engine_a.sync().await.unwrap();
+
+        // Device B: create same folder locally with a NEWER HLC, then sync
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+
+        {
+            let conn = pool_b.get().unwrap();
+            // Insert the folder locally with a newer HLC
+            conn.execute(
+                "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at, hlc)
+                 VALUES ('f1', 'New Name', '__root__', 1, '2026-04-02T00:00:00Z', '2026-04-02T00:00:00Z', '9999999999999-0000-dev-b')",
+                [],
+            )
+            .unwrap();
+        }
+
+        engine_b.sync().await.unwrap();
+
+        // Verify that Device B's local (newer) name is preserved
+        {
+            let conn = pool_b.get().unwrap();
+            let name: String = conn
+                .query_row("SELECT name FROM folders WHERE id = 'f1'", [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(name, "New Name");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sync_delete() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create folder, sync, then delete it and sync again
+        let (_dir_a, pool_a) = test_pool();
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+
+        // Create and upload
+        {
+            let conn = pool_a.get().unwrap();
+            let payload = serde_json::json!({
+                "id": "f1",
+                "name": "To Delete",
+                "parent_id": "__root__",
+                "sort_order": 1,
+                "created_at": "2026-04-01T00:00:00Z",
+                "updated_at": "2026-04-01T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "folder",
+                "f1",
+                "INSERT",
+                &payload.to_string(),
+                "1711987200000-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+        engine_a.sync().await.unwrap();
+
+        // Delete and upload
+        {
+            let conn = pool_a.get().unwrap();
+            let payload = serde_json::json!({
+                "id": "f1",
+                "deleted_at": "2026-04-02T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "folder",
+                "f1",
+                "DELETE",
+                &payload.to_string(),
+                "1711987200001-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+        engine_a.sync().await.unwrap();
+
+        // Device B: sync both changes
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+
+        engine_b.sync().await.unwrap();
+
+        // Verify folder is soft-deleted on Device B
+        {
+            let conn = pool_b.get().unwrap();
+            let deleted_at: Option<String> = conn
+                .query_row(
+                    "SELECT deleted_at FROM folders WHERE id = 'f1'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(deleted_at.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_snapshot_upload_download() {
+        let backend = Arc::new(MockBackend::new());
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create a snapshot file locally
+        let resource_dir = dir.path().join("res-1");
+        std::fs::create_dir_all(&resource_dir).unwrap();
+        std::fs::write(resource_dir.join("snapshot.html"), b"<html>test</html>").unwrap();
+
+        let (_db_dir, pool) = test_pool();
+        let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
+
+        // Upload
+        engine.upload_snapshot("res-1").await.unwrap();
+
+        // Download to a different location
+        let dir2 = tempfile::tempdir().unwrap();
+        let (_db_dir2, pool2) = test_pool();
+        let engine2 = make_engine(pool2.clone(), backend.clone(), "dev-b", dir2.path().to_path_buf());
+
+        engine2.download_snapshot("res-1").await.unwrap();
+
+        // Verify file exists
+        let downloaded = std::fs::read_to_string(dir2.path().join("res-1/snapshot.html")).unwrap();
+        assert_eq!(downloaded, "<html>test</html>");
+
+        // Verify sync_state updated
+        {
+            let conn = pool2.get().unwrap();
+            let state = sync_state::get(&conn, "snapshot:res-1").unwrap();
+            assert_eq!(state, Some("synced".to_string()));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_topo_order() {
+        // INSERT/UPDATE: folder < tag < resource < highlight < comment
+        assert!(topo_order("INSERT", "folder") < topo_order("INSERT", "tag"));
+        assert!(topo_order("INSERT", "tag") < topo_order("INSERT", "resource"));
+        assert!(topo_order("INSERT", "resource") < topo_order("INSERT", "highlight"));
+        assert!(topo_order("INSERT", "highlight") < topo_order("INSERT", "comment"));
+
+        // DELETE: comment < highlight < resource < tag < folder
+        assert!(topo_order("DELETE", "comment") < topo_order("DELETE", "highlight"));
+        assert!(topo_order("DELETE", "highlight") < topo_order("DELETE", "resource"));
+        assert!(topo_order("DELETE", "resource") < topo_order("DELETE", "tag"));
+        assert!(topo_order("DELETE", "tag") < topo_order("DELETE", "folder"));
+
+        // All INSERT/UPDATE before DELETE
+        assert!(topo_order("INSERT", "comment") < topo_order("DELETE", "comment"));
+    }
+
+    #[tokio::test]
+    async fn test_already_running() {
+        let (_dir, pool) = test_pool();
+        let backend = Arc::new(MockBackend::new());
+        let engine = Arc::new(make_engine(pool, backend, "dev-a", _dir.path().to_path_buf()));
+
+        // Acquire the lock manually
+        let _guard = engine.lock.lock().await;
+
+        // Trying to sync should return AlreadyRunning
+        let result = engine.sync().await;
+        assert!(matches!(result, Err(SyncError::AlreadyRunning)));
+    }
+}
