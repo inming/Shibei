@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod credentials;
 pub mod device;
+pub mod export;
 pub mod hlc;
 pub mod sync_log;
 pub mod sync_state;
