@@ -573,6 +573,13 @@ impl SyncEngine {
         let created_at = payload["created_at"].as_str().unwrap_or("");
         let updated_at = payload["updated_at"].as_str().unwrap_or("");
 
+        // Remove any local folder with the same (parent_id, name) but different id,
+        // to avoid UNIQUE constraint violation during cross-device sync.
+        conn.execute(
+            "DELETE FROM folders WHERE parent_id = ?1 AND name = ?2 AND id != ?3",
+            params![parent_id, name, id],
+        )?;
+
         conn.execute(
             "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at, hlc, deleted_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)
