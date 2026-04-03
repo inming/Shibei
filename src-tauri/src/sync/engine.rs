@@ -83,11 +83,78 @@ impl SyncEngine {
             sync_state::set(&conn, "last_sync_at", &crate::db::now_iso8601())?;
         }
 
+        // Phase 5: Compaction check
+        if let Err(e) = self.maybe_compact().await {
+            eprintln!("[sync] Compaction failed: {}", e);
+            // Don't fail the sync for compaction errors
+        }
+
         Ok(SyncResult::Success {
             uploaded,
             downloaded,
             applied,
         })
+    }
+
+    /// Run compaction if the device's sync directory has grown too large.
+    ///
+    /// Compaction:
+    /// 1. Export full DB state and upload as a snapshot JSON.
+    /// 2. Delete files that were marked pending-deletion from the previous compaction (two-phase).
+    /// 3. Mark current sync files as pending deletion for the next compaction.
+    /// 4. Hard-delete soft-deleted rows older than 90 days.
+    /// 5. Remove uploaded sync_log entries.
+    ///
+    /// Returns `true` if compaction ran, `false` if it was not needed.
+    pub async fn maybe_compact(&self) -> Result<bool, SyncError> {
+        let prefix = format!("sync/{}/", self.device_id);
+        let files = self.backend.list(&prefix).await?;
+        let total_size: u64 = files.iter().map(|f| f.size).sum();
+
+        if files.len() < 100 && total_size < 10 * 1024 * 1024 {
+            return Ok(false); // No compaction needed
+        }
+
+        let conn = self.pool.get().map_err(|e| SyncError::Db(DbError::Pool(e)))?;
+
+        // 1. Export full state and upload as snapshot
+        let snapshot = super::export::export_full_state(&conn, &self.device_id)?;
+        let snapshot_json = serde_json::to_vec_pretty(&snapshot)?;
+        let ts = crate::db::now_iso8601().replace(':', "-");
+        let snapshot_key = format!("state/snapshot-{}.json", ts);
+        self.backend.upload(&snapshot_key, &snapshot_json).await?;
+
+        // 2. Delete previously-pending files (two-phase cleanup)
+        let pending_key = "state/compaction-pending.json";
+        if let Ok(pending_data) = self.backend.download(pending_key).await {
+            if let Ok(pending_files) = serde_json::from_slice::<Vec<String>>(&pending_data) {
+                for file_key in &pending_files {
+                    let _ = self.backend.delete(file_key).await;
+                }
+            }
+        }
+
+        // 3. Mark current files as pending deletion for next compaction
+        let file_keys: Vec<String> = files.iter().map(|f| f.key.clone()).collect();
+        let pending_json = serde_json::to_vec(&file_keys)?;
+        self.backend.upload(pending_key, &pending_json).await?;
+
+        // 4. Physical cleanup: hard-delete soft-deleted rows older than 90 days
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(90)).to_rfc3339();
+        for table in &["folders", "resources", "tags", "highlights", "comments", "resource_tags"] {
+            conn.execute(
+                &format!(
+                    "DELETE FROM {} WHERE deleted_at IS NOT NULL AND deleted_at < ?1",
+                    table
+                ),
+                rusqlite::params![cutoff],
+            )?;
+        }
+
+        // 5. Clean up uploaded sync_log entries
+        super::sync_log::delete_uploaded(&conn)?;
+
+        Ok(true)
     }
 
     /// Phase 1: Upload pending sync_log entries and associated snapshots.
