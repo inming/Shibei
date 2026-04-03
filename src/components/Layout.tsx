@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
+import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -35,6 +36,15 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [activeDrag, setActiveDrag] = useState<{ type: "folder" | "resource"; id: string; title: string } | null>(null);
   const [_overDropTarget, setOverDropTarget] = useState<string | null>(null);
   const folderTreeRefreshRef = useRef<(() => void) | null>(null);
+
+  // Refresh all data when sync completes
+  useEffect(() => {
+    const unlisten = listen("sync-completed", () => {
+      setResourceRefreshKey((k) => k + 1);
+      folderTreeRefreshRef.current?.();
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
 
   const handleResourceSelect = useCallback((resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => {
     if (event.metaKey) {

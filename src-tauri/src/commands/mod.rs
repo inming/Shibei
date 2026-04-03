@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use tauri::Emitter;
 
 use crate::db::{self, comments, folders, highlights, resources, tags, DbError};
 use crate::storage;
@@ -373,10 +374,15 @@ pub async fn cmd_get_auth_token(
 // ── Sync ──
 
 #[tauri::command]
-pub async fn cmd_sync_now(state: tauri::State<'_, Arc<AppState>>) -> Result<String, CommandError> {
+pub async fn cmd_sync_now(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<String, CommandError> {
     let engine = build_sync_engine(&state)?;
     let result = engine.sync().await
         .map_err(|e| CommandError { message: e.to_string() })?;
+    // Notify frontend to refresh data
+    let _ = app.emit("sync-completed", ());
     Ok(format!("{:?}", result))
 }
 
