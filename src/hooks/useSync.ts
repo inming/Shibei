@@ -79,5 +79,12 @@ export function useSync() {
     return () => clearInterval(timer);
   }, [intervalMinutes, doSync]);
 
-  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync, encryptionEnabled, encryptionUnlocked };
+  const refreshEncryptionStatus = useCallback(() => {
+    cmd.getEncryptionStatus().then((es) => {
+      setEncryptionEnabled(es.enabled);
+      setEncryptionUnlocked(es.unlocked);
+    }).catch(() => {});
+  }, []);
+
+  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync, encryptionEnabled, encryptionUnlocked, refreshEncryptionStatus };
 }

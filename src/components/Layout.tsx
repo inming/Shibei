@@ -250,7 +250,7 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
         </div>
         {showSyncSettings && (
           <SyncSettings
-            onClose={() => setShowSyncSettings(false)}
+            onClose={() => { setShowSyncSettings(false); sync.refreshEncryptionStatus(); }}
             intervalMinutes={sync.intervalMinutes}
             onIntervalChange={sync.setIntervalMinutes}
           />
