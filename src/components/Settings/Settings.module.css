@@ -1,68 +1,8 @@
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dialog {
-  background: var(--color-bg-primary);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  width: 480px;
-  max-width: calc(100vw - var(--spacing-xl) * 2);
-  display: flex;
-  flex-direction: column;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.title {
+.heading {
   font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--color-text-primary);
-}
-
-.closeBtn {
-  font-size: 18px;
-  color: var(--color-text-muted);
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  line-height: 1;
-}
-
-.closeBtn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.body {
-  padding: var(--spacing-lg);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.warning {
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
-  border-radius: 6px;
-  padding: var(--spacing-md);
-  font-size: var(--font-size-sm);
-  color: #92400e;
-  line-height: 1.5;
+  margin: 0 0 var(--spacing-lg);
 }
 
 .form {
@@ -95,18 +35,12 @@
   border-color: var(--color-accent);
 }
 
-.lastSync {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  margin: 0;
-}
-
 .actions {
   display: flex;
   flex-direction: row;
   justify-content: flex-end;
   gap: var(--spacing-sm);
-  padding-top: var(--spacing-xs);
+  padding-top: var(--spacing-md);
 }
 
 .secondary {
@@ -147,8 +81,20 @@
   cursor: not-allowed;
 }
 
-.encryptionSection {
-  margin-bottom: 12px;
+.lastSync {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: var(--spacing-md) 0 0;
+}
+
+.warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: #92400e;
+  line-height: 1.5;
 }
 
 .info {
@@ -169,10 +115,10 @@
   margin-bottom: 8px;
 }
 
-.passwordDialog {
+.passwordSection {
   border-top: 1px solid var(--color-border);
-  padding-top: 12px;
-  margin-top: 12px;
+  padding-top: var(--spacing-md);
+  margin-top: var(--spacing-md);
 }
 
 .passwordHeader {

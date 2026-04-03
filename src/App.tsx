@@ -4,9 +4,11 @@ import type { Resource } from "@/types";
 import { TabBar, type TabItem } from "@/components/TabBar";
 import { LibraryView } from "@/components/Layout";
 import { ReaderView } from "@/components/ReaderView";
+import { SettingsView } from "@/components/SettingsView";
 import styles from "./App.module.css";
 
 const LIBRARY_TAB_ID = "__library__";
+const SETTINGS_TAB_ID = "__settings__";
 
 interface ReaderTab {
   resource: Resource;
@@ -16,6 +18,7 @@ interface ReaderTab {
 function App() {
   const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const openResource = useCallback((resource: Resource, highlightId?: string) => {
     setReaderTabs((prev) => {
@@ -31,7 +34,17 @@ function App() {
     setActiveTabId(resource.id);
   }, []);
 
+  const openSettings = useCallback(() => {
+    setSettingsOpen(true);
+    setActiveTabId(SETTINGS_TAB_ID);
+  }, []);
+
   const closeTab = useCallback((id: string) => {
+    if (id === SETTINGS_TAB_ID) {
+      setSettingsOpen(false);
+      setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+      return;
+    }
     setReaderTabs((prev) => {
       const next = new Map(prev);
       next.delete(id);
@@ -47,6 +60,7 @@ function App() {
       label: tab.resource.title,
       closable: true,
     })),
+    ...(settingsOpen ? [{ id: SETTINGS_TAB_ID, label: "设置", closable: true }] : []),
   ];
 
   return (
@@ -60,7 +74,7 @@ function App() {
       />
       <div className={styles.content}>
         <div className={`${styles.tabPane} ${activeTabId !== LIBRARY_TAB_ID ? styles.tabPaneHidden : ""}`}>
-          <LibraryView onOpenResource={openResource} />
+          <LibraryView onOpenResource={openResource} onOpenSettings={openSettings} />
         </div>
         {Array.from(readerTabs.entries()).map(([id, tab]) => (
           <div key={id} className={`${styles.tabPane} ${activeTabId !== id ? styles.tabPaneHidden : ""}`}>
@@ -70,6 +84,11 @@ function App() {
             />
           </div>
         ))}
+        {settingsOpen && (
+          <div className={`${styles.tabPane} ${activeTabId !== SETTINGS_TAB_ID ? styles.tabPaneHidden : ""}`}>
+            <SettingsView />
+          </div>
+        )}
       </div>
     </div>
   );

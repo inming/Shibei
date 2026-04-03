@@ -10,14 +10,14 @@ import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { SyncStatus } from "@/components/SyncStatus";
-import { SyncSettings } from "@/components/SyncSettings";
 import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
   onOpenResource: (resource: Resource, highlightId?: string) => void;
+  onOpenSettings: () => void;
 }
 
-export function LibraryView({ onOpenResource }: LibraryViewProps) {
+export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
   const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
@@ -27,7 +27,6 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const [resourceRefreshKey, setResourceRefreshKey] = useState(0);
-  const [showSyncSettings, setShowSyncSettings] = useState(false);
   const sync = useSync();
   const dragging = useRef(false);
 
@@ -243,18 +242,11 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             status={sync.status}
             lastSyncAt={sync.lastSyncAt}
             onSync={sync.triggerSync}
-            onOpenSettings={() => setShowSyncSettings(true)}
+            onOpenSettings={onOpenSettings}
             encryptionEnabled={sync.encryptionEnabled}
             encryptionUnlocked={sync.encryptionUnlocked}
           />
         </div>
-        {showSyncSettings && (
-          <SyncSettings
-            onClose={() => { setShowSyncSettings(false); sync.refreshEncryptionStatus(); }}
-            intervalMinutes={sync.intervalMinutes}
-            onIntervalChange={sync.setIntervalMinutes}
-          />
-        )}
 
         {/* Col 2: Resource list */}
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>
