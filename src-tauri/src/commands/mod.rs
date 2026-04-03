@@ -388,8 +388,7 @@ fn build_sync_engine(state: &AppState) -> Result<crate::sync::engine::SyncEngine
     let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
         .ok_or_else(|| CommandError { message: "请先配置同步设置（Bucket 未设置）".to_string() })?;
     let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
-    let (access_key, secret_key) = crate::sync::credentials::load_credentials()
-        .map_err(|e| CommandError { message: e.to_string() })?
+    let (access_key, secret_key) = crate::sync::credentials::load_credentials(&conn)?
         .ok_or_else(|| CommandError { message: "请先配置同步设置（凭据未设置）".to_string() })?;
 
     let s3_config = crate::sync::backend::S3Config {
@@ -430,8 +429,7 @@ pub async fn cmd_save_sync_config(
     crate::sync::sync_state::set(&conn, "config:s3_bucket", &bucket)?;
     // Only update credentials if not placeholder
     if access_key != "__keep__" && secret_key != "__keep__" {
-        crate::sync::credentials::store_credentials(&access_key, &secret_key)
-            .map_err(|e| CommandError { message: e.to_string() })?;
+        crate::sync::credentials::store_credentials(&conn, &access_key, &secret_key)?;
     }
     Ok(())
 }
@@ -444,7 +442,7 @@ pub async fn cmd_get_sync_config(
     let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
     let region = crate::sync::sync_state::get(&conn, "config:s3_region")?.unwrap_or_default();
     let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?.unwrap_or_default();
-    let has_credentials = crate::sync::credentials::load_credentials()
+    let has_credentials = crate::sync::credentials::load_credentials(&conn)
         .map(|c| c.is_some()).unwrap_or(false);
     let last_sync = crate::sync::sync_state::get(&conn, "last_sync_at")?.unwrap_or_default();
     Ok(serde_json::json!({
@@ -468,10 +466,10 @@ pub async fn cmd_test_s3_connection(
     if region.is_empty() || bucket.is_empty() {
         return Err(CommandError { message: "Region and Bucket are required".to_string() });
     }
-    // If credentials are placeholder, load from keyring
+    // If credentials are placeholder, load from DB
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let (ak, sk) = if access_key == "__keep__" || secret_key == "__keep__" {
-        crate::sync::credentials::load_credentials()
-            .map_err(|e| CommandError { message: e.to_string() })?
+        crate::sync::credentials::load_credentials(&conn)?
             .ok_or_else(|| CommandError { message: "Credentials not configured".to_string() })?
     } else if access_key.is_empty() || secret_key.is_empty() {
         return Err(CommandError { message: "Access Key and Secret Key are required".to_string() });
