@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import * as cmd from "@/lib/commands";
 import type { Tag } from "@/types";
+import { DataEvents } from "@/lib/events";
 
 export function useTags() {
   const [tags, setTags] = useState<Tag[]>([]);
@@ -23,36 +24,27 @@ export function useTags() {
     refresh();
   }, [refresh]);
 
-  // Auto-refresh when sync completes
+  // Auto-refresh on domain events
   useEffect(() => {
-    const unlisten = listen("sync-completed", () => { refresh(); });
-    return () => { unlisten.then((f) => f()); };
+    const u1 = listen(DataEvents.TAG_CHANGED, () => { refresh(); });
+    const u2 = listen(DataEvents.SYNC_COMPLETED, () => { refresh(); });
+    return () => {
+      u1.then((f) => f());
+      u2.then((f) => f());
+    };
   }, [refresh]);
 
-  const createTag = useCallback(
-    async (name: string, color: string) => {
-      const tag = await cmd.createTag(name, color);
-      await refresh();
-      return tag;
-    },
-    [refresh],
-  );
+  const createTag = useCallback(async (name: string, color: string) => {
+    return cmd.createTag(name, color);
+  }, []);
 
-  const updateTag = useCallback(
-    async (id: string, name: string, color: string) => {
-      await cmd.updateTag(id, name, color);
-      await refresh();
-    },
-    [refresh],
-  );
+  const updateTag = useCallback(async (id: string, name: string, color: string) => {
+    await cmd.updateTag(id, name, color);
+  }, []);
 
-  const deleteTag = useCallback(
-    async (id: string) => {
-      await cmd.deleteTag(id);
-      await refresh();
-    },
-    [refresh],
-  );
+  const deleteTag = useCallback(async (id: string) => {
+    await cmd.deleteTag(id);
+  }, []);
 
   return { tags, loading, refresh, createTag, updateTag, deleteTag };
 }
