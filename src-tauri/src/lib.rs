@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod events;
 mod server;
 mod storage;
 pub mod sync;
