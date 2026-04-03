@@ -636,7 +636,7 @@ impl SyncEngine {
 
     /// Upload a local snapshot.html to the backend.
     pub async fn upload_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
-        let snapshot_path = self.base_dir.join(resource_id).join("snapshot.html");
+        let snapshot_path = self.base_dir.join("storage").join(resource_id).join("snapshot.html");
         if !snapshot_path.exists() {
             return Ok(()); // No snapshot to upload
         }
@@ -652,7 +652,7 @@ impl SyncEngine {
         let key = format!("snapshots/{}/snapshot.html", resource_id);
         let data = self.backend.download(&key).await?;
 
-        let local_dir = self.base_dir.join(resource_id);
+        let local_dir = self.base_dir.join("storage").join(resource_id);
         std::fs::create_dir_all(&local_dir)?;
 
         let local_path = local_dir.join("snapshot.html");
@@ -1024,8 +1024,8 @@ mod tests {
         let backend = Arc::new(MockBackend::new());
         let dir = tempfile::tempdir().unwrap();
 
-        // Create a snapshot file locally
-        let resource_dir = dir.path().join("res-1");
+        // Create a snapshot file locally (under storage/<id>/)
+        let resource_dir = dir.path().join("storage").join("res-1");
         std::fs::create_dir_all(&resource_dir).unwrap();
         std::fs::write(resource_dir.join("snapshot.html"), b"<html>test</html>").unwrap();
 
@@ -1043,7 +1043,7 @@ mod tests {
         engine2.download_snapshot("res-1").await.unwrap();
 
         // Verify file exists
-        let downloaded = std::fs::read_to_string(dir2.path().join("res-1/snapshot.html")).unwrap();
+        let downloaded = std::fs::read_to_string(dir2.path().join("storage/res-1/snapshot.html")).unwrap();
         assert_eq!(downloaded, "<html>test</html>");
 
         // Verify sync_state updated
