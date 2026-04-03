@@ -563,6 +563,16 @@ pub async fn cmd_unlock_encryption(
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
 
+    // Clear local sync progress so next sync treats this as a new device,
+    // triggering Phase 1.5 (full snapshot import) + incremental replay.
+    conn.execute("UPDATE sync_log SET uploaded = 0", [])
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    let remote_keys = crate::sync::sync_state::list_by_prefix(&conn, "remote:")?;
+    for (key, _) in &remote_keys {
+        crate::sync::sync_state::delete(&conn, key)?;
+    }
+    crate::sync::sync_state::delete(&conn, "last_sync_at")?;
+
     Ok(())
 }
 
