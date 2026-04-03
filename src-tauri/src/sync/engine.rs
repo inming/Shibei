@@ -302,6 +302,9 @@ impl SyncEngine {
         let snapshot: super::export::FullSnapshot = serde_json::from_slice(&data)?;
 
         let conn = self.pool.get().map_err(DbError::Pool)?;
+        // Temporarily disable FK checks — snapshot import is in topo order but
+        // some cross-references may not resolve until the full import completes
+        conn.execute_batch("PRAGMA foreign_keys = OFF")?;
         let mut imported = 0usize;
 
         // Import in topo order: folders → tags → resources (with tags) → highlights → comments
@@ -370,6 +373,9 @@ impl SyncEngine {
             }
             imported += 1;
         }
+
+        // Re-enable FK checks
+        conn.execute_batch("PRAGMA foreign_keys = ON")?;
 
         eprintln!("[sync] Snapshot imported: {} entities", imported);
         Ok(imported)
