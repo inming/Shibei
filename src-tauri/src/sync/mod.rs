@@ -2,6 +2,7 @@ pub mod backend;
 pub mod credentials;
 pub mod crypto;
 pub mod keyring;
+pub mod encrypted_backend;
 pub mod device;
 pub mod engine;
 pub mod export;

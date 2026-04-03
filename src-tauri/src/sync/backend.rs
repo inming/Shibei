@@ -176,7 +176,6 @@ impl SyncBackend for S3Backend {
     }
 }
 
-#[cfg(test)]
 pub mod mock {
     use super::{BackendError, ObjectInfo, ObjectMeta, SyncBackend};
     use async_trait::async_trait;
@@ -185,6 +184,12 @@ pub mod mock {
 
     pub struct MockBackend {
         store: Mutex<HashMap<String, Vec<u8>>>,
+    }
+
+    impl Default for MockBackend {
+        fn default() -> Self {
+            Self::new()
+        }
     }
 
     impl MockBackend {
