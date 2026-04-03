@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
 use crate::db::{self, folders, resources, tags};
+use crate::events;
 use crate::storage;
 
 /// Shared state for the HTTP server.
@@ -418,7 +419,8 @@ async fn handle_save(
     })?;
 
     // Notify desktop app that a new resource was saved (best-effort, outside transaction)
-    let _ = state.app_handle.emit("resource-saved", serde_json::json!({
+    let _ = state.app_handle.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({
+        "action": "created",
         "resource_id": resource.id,
         "folder_id": resource.folder_id,
     }));

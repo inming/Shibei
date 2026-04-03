@@ -4,6 +4,7 @@ use serde::Serialize;
 use tauri::Emitter;
 
 use crate::db::{self, comments, folders, highlights, resources, tags, DbError};
+use crate::events;
 use crate::storage;
 
 /// Shared application state managed by Tauri.
@@ -60,28 +61,35 @@ pub async fn cmd_list_folders(
 #[tauri::command]
 pub async fn cmd_create_folder(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     name: String,
     parent_id: String,
 ) -> Result<folders::Folder, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    folders::create_folder(&conn, &name, &parent_id, sync_ctx.as_ref()).map_err(Into::into)
+    let folder = folders::create_folder(&conn, &name, &parent_id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "created", "parent_id": parent_id }));
+    Ok(folder)
 }
 
 #[tauri::command]
 pub async fn cmd_rename_folder(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
     name: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    folders::rename_folder(&conn, &id, &name, sync_ctx.as_ref()).map_err(Into::into)
+    folders::rename_folder(&conn, &id, &name, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "updated", "folder_id": id }));
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_delete_folder(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
 ) -> Result<Vec<String>, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
@@ -92,29 +100,37 @@ pub async fn cmd_delete_folder(
         let dir = storage::resource_dir(&state.base_dir, rid);
         let _ = std::fs::remove_dir_all(dir);
     }
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "deleted", "folder_id": id }));
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted" }));
     Ok(resource_ids)
 }
 
 #[tauri::command]
 pub async fn cmd_move_folder(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
     new_parent_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    folders::move_folder(&conn, &id, &new_parent_id, sync_ctx.as_ref()).map_err(Into::into)
+    folders::move_folder(&conn, &id, &new_parent_id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "moved", "folder_id": id }));
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_reorder_folder(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
     new_sort_order: i64,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    folders::reorder_folder(&conn, &id, new_sort_order, sync_ctx.as_ref()).map_err(Into::into)
+    folders::reorder_folder(&conn, &id, new_sort_order, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "reordered", "folder_id": id }));
+    Ok(())
 }
 
 // ── Resources ──
@@ -148,6 +164,7 @@ pub async fn cmd_get_resource(
 #[tauri::command]
 pub async fn cmd_delete_resource(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
@@ -158,30 +175,37 @@ pub async fn cmd_delete_resource(
     if let Err(e) = std::fs::remove_dir_all(&dir) {
         eprintln!("[shibei] Failed to clean up resource directory {:?}: {}", dir, e);
     }
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": id }));
     Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_move_resource(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
     new_folder_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    resources::move_resource(&conn, &id, &new_folder_id, sync_ctx.as_ref()).map_err(Into::into)
+    resources::move_resource(&conn, &id, &new_folder_id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "moved", "resource_id": id, "folder_id": new_folder_id }));
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_update_resource(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
     title: String,
     description: Option<String>,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    resources::update_resource(&conn, &id, &title, description.as_deref(), sync_ctx.as_ref()).map_err(Into::into)
+    resources::update_resource(&conn, &id, &title, description.as_deref(), sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "updated", "resource_id": id }));
+    Ok(())
 }
 
 // ── Tags ──
@@ -197,22 +221,28 @@ pub async fn cmd_list_tags(
 #[tauri::command]
 pub async fn cmd_create_tag(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     name: String,
     color: String,
 ) -> Result<tags::Tag, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    tags::create_tag(&conn, &name, &color, sync_ctx.as_ref()).map_err(Into::into)
+    let tag = tags::create_tag(&conn, &name, &color, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "created", "tag_id": tag.id }));
+    Ok(tag)
 }
 
 #[tauri::command]
 pub async fn cmd_delete_tag(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    tags::delete_tag(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
+    tags::delete_tag(&conn, &id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "deleted", "tag_id": id }));
+    Ok(())
 }
 
 #[tauri::command]
@@ -227,35 +257,44 @@ pub async fn cmd_get_tags_for_resource(
 #[tauri::command]
 pub async fn cmd_add_tag_to_resource(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     resource_id: String,
     tag_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    tags::add_tag_to_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref()).map_err(Into::into)
+    tags::add_tag_to_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "updated", "tag_id": tag_id, "resource_id": resource_id }));
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_remove_tag_from_resource(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     resource_id: String,
     tag_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref()).map_err(Into::into)
+    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "updated", "tag_id": tag_id, "resource_id": resource_id }));
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_update_tag(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
     name: String,
     color: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    tags::update_tag(&conn, &id, &name, &color, sync_ctx.as_ref()).map_err(Into::into)
+    tags::update_tag(&conn, &id, &name, &color, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "updated", "tag_id": id }));
+    Ok(())
 }
 
 #[tauri::command]
@@ -281,6 +320,7 @@ pub async fn cmd_get_highlights(
 #[tauri::command]
 pub async fn cmd_create_highlight(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     resource_id: String,
     text_content: String,
     anchor: highlights::Anchor,
@@ -288,18 +328,23 @@ pub async fn cmd_create_highlight(
 ) -> Result<highlights::Highlight, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    highlights::create_highlight(&conn, &resource_id, &text_content, &anchor, &color, sync_ctx.as_ref())
-        .map_err(Into::into)
+    let highlight = highlights::create_highlight(&conn, &resource_id, &text_content, &anchor, &color, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "created", "resource_id": resource_id }));
+    Ok(highlight)
 }
 
 #[tauri::command]
 pub async fn cmd_delete_highlight(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
+    resource_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    highlights::delete_highlight(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
+    highlights::delete_highlight(&conn, &id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": resource_id }));
+    Ok(())
 }
 
 // ── Comments ──
@@ -316,35 +361,45 @@ pub async fn cmd_get_comments(
 #[tauri::command]
 pub async fn cmd_create_comment(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     resource_id: String,
     highlight_id: Option<String>,
     content: String,
 ) -> Result<comments::Comment, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    comments::create_comment(&conn, &resource_id, highlight_id.as_deref(), &content, sync_ctx.as_ref())
-        .map_err(Into::into)
+    let comment = comments::create_comment(&conn, &resource_id, highlight_id.as_deref(), &content, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "created", "resource_id": resource_id }));
+    Ok(comment)
 }
 
 #[tauri::command]
 pub async fn cmd_update_comment(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
+    resource_id: String,
     content: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    comments::update_comment(&conn, &id, &content, sync_ctx.as_ref()).map_err(Into::into)
+    comments::update_comment(&conn, &id, &content, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "updated", "resource_id": resource_id }));
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_delete_comment(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     id: String,
+    resource_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
-    comments::delete_comment(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
+    comments::delete_comment(&conn, &id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": resource_id }));
+    Ok(())
 }
 
 #[tauri::command]
@@ -379,11 +434,16 @@ pub async fn cmd_sync_now(
     encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
     app: tauri::AppHandle,
 ) -> Result<String, CommandError> {
-    let engine = build_sync_engine(&state, &encryption_state).await?;
-    let result = engine.sync().await
-        .map_err(|e| CommandError { message: e.to_string() })?;
-    // Notify frontend to refresh data
-    let _ = app.emit("sync-completed", ());
+    let _ = app.emit(events::SYNC_STARTED, ());
+    let engine = build_sync_engine(&state, &encryption_state).await.inspect_err(|e| {
+        let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": e.message }));
+    })?;
+    let result = engine.sync().await.map_err(|e| {
+        let msg = e.to_string();
+        let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": msg }));
+        CommandError { message: e.to_string() }
+    })?;
+    let _ = app.emit(events::DATA_SYNC_COMPLETED, ());
     Ok(format!("{:?}", result))
 }
 
@@ -488,6 +548,7 @@ fn build_raw_s3_backend(state: &AppState) -> Result<crate::sync::backend::S3Back
 pub async fn cmd_setup_encryption(
     state: tauri::State<'_, Arc<AppState>>,
     encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+    app: tauri::AppHandle,
     password: String,
 ) -> Result<(), CommandError> {
     use crate::sync::backend::SyncBackend;
@@ -529,6 +590,7 @@ pub async fn cmd_setup_encryption(
     encryption_state.set_key(mk);
     crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
 
+    let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));
     Ok(())
 }
 
@@ -536,6 +598,7 @@ pub async fn cmd_setup_encryption(
 pub async fn cmd_unlock_encryption(
     state: tauri::State<'_, Arc<AppState>>,
     encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+    app: tauri::AppHandle,
     password: String,
 ) -> Result<(), CommandError> {
     use crate::sync::backend::SyncBackend;
@@ -573,12 +636,14 @@ pub async fn cmd_unlock_encryption(
     }
     crate::sync::sync_state::delete(&conn, "last_sync_at")?;
 
+    let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));
     Ok(())
 }
 
 #[tauri::command]
 pub async fn cmd_change_encryption_password(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     old_password: String,
     new_password: String,
 ) -> Result<(), CommandError> {
@@ -605,6 +670,7 @@ pub async fn cmd_change_encryption_password(
     backend.upload("meta/keyring.json", new_json.as_bytes()).await
         .map_err(|e| CommandError { message: format!("上传密钥文件失败: {}", e) })?;
 
+    let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));
     Ok(())
 }
 
@@ -628,6 +694,7 @@ pub async fn cmd_get_encryption_status(
 #[tauri::command]
 pub async fn cmd_save_sync_config(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     endpoint: String,
     region: String,
     bucket: String,
@@ -643,6 +710,7 @@ pub async fn cmd_save_sync_config(
         crate::sync::credentials::store_credentials(&conn, &access_key, &secret_key)?;
     }
     // sync_interval is stored separately via cmd_set_sync_interval
+    let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "sync" }));
     Ok(())
 }
 
@@ -732,10 +800,12 @@ pub async fn cmd_get_snapshot_status(
 #[tauri::command]
 pub async fn cmd_set_sync_interval(
     state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
     minutes: i64,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     crate::sync::sync_state::set(&conn, "config:sync_interval", &minutes.to_string())?;
+    let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "sync" }));
     Ok(())
 }
 
