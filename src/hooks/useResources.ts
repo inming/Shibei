@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Resource, Tag } from "@/types";
 import * as cmd from "@/lib/commands";
+import { DataEvents } from "@/lib/events";
 
 export function useResources(
   folderId: string | null,
@@ -43,15 +44,15 @@ export function useResources(
     refresh();
   }, [refresh]);
 
-  // Auto-refresh when a new resource is saved via the extension
+  // Auto-refresh on domain events
   useEffect(() => {
-    let isCancelled = false;
-    const unlisten = listen("resource-saved", () => {
-      if (!isCancelled) refresh();
-    });
+    const u1 = listen(DataEvents.RESOURCE_CHANGED, () => { refresh(); });
+    const u2 = listen(DataEvents.TAG_CHANGED, () => { refresh(); });
+    const u3 = listen(DataEvents.SYNC_COMPLETED, () => { refresh(); });
     return () => {
-      isCancelled = true;
-      unlisten.then((fn) => fn());
+      u1.then((f) => f());
+      u2.then((f) => f());
+      u3.then((f) => f());
     };
   }, [refresh]);
 
