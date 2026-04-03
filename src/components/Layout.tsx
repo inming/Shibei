@@ -1,12 +1,16 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
+import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
+import { useSync } from "@/hooks/useSync";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
 import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
 import { PreviewPanel } from "@/components/PreviewPanel";
+import { SyncStatus } from "@/components/SyncStatus";
+import { SyncSettings } from "@/components/SyncSettings";
 import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
@@ -23,6 +27,8 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [listPanelWidth, setListPanelWidth] = useState(340);
   const [resourceRefreshKey, setResourceRefreshKey] = useState(0);
+  const [showSyncSettings, setShowSyncSettings] = useState(false);
+  const sync = useSync();
   const dragging = useRef(false);
 
   const sensors = useSensors(
@@ -32,6 +38,15 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
   const [activeDrag, setActiveDrag] = useState<{ type: "folder" | "resource"; id: string; title: string } | null>(null);
   const [_overDropTarget, setOverDropTarget] = useState<string | null>(null);
   const folderTreeRefreshRef = useRef<(() => void) | null>(null);
+
+  // Refresh all data when sync completes
+  useEffect(() => {
+    const unlisten = listen("sync-completed", () => {
+      setResourceRefreshKey((k) => k + 1);
+      folderTreeRefreshRef.current?.();
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
 
   const handleResourceSelect = useCallback((resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => {
     if (event.metaKey) {
@@ -224,7 +239,20 @@ export function LibraryView({ onOpenResource }: LibraryViewProps) {
             onRefreshRef={folderTreeRefreshRef}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
+          <SyncStatus
+            status={sync.status}
+            lastSyncAt={sync.lastSyncAt}
+            onSync={sync.triggerSync}
+            onOpenSettings={() => setShowSyncSettings(true)}
+          />
         </div>
+        {showSyncSettings && (
+          <SyncSettings
+            onClose={() => setShowSyncSettings(false)}
+            intervalMinutes={sync.intervalMinutes}
+            onIntervalChange={sync.setIntervalMinutes}
+          />
+        )}
 
         {/* Col 2: Resource list */}
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>

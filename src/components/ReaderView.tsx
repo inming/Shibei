@@ -34,6 +34,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
   const [failedHighlightIds, setFailedHighlightIds] = useState<Set<string>>(new Set());
+  const [snapshotStatus, setSnapshotStatus] = useState<string>("synced");
+  const [downloading, setDownloading] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -43,6 +46,38 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   // Clear selection toolbar when resource changes (e.g. switching tabs)
   useEffect(() => {
     setSelection(null);
+  }, [resource.id]);
+
+  // Check snapshot status and auto-download if pending
+  useEffect(() => {
+    let cancelled = false;
+    cmd.getSnapshotStatus(resource.id).then(async (status) => {
+      if (cancelled) return;
+      setSnapshotStatus(status);
+      if (status === "pending") {
+        setDownloading(true);
+        try {
+          const success = await cmd.downloadSnapshot(resource.id);
+          if (cancelled) return;
+          if (success) {
+            setSnapshotStatus("synced");
+            setIframeKey((k) => k + 1);
+          } else {
+            toast.error("快照不存在");
+          }
+        } catch (err: unknown) {
+          if (!cancelled) {
+            const msg = err && typeof err === "object" && "message" in err
+              ? String((err as { message: string }).message)
+              : String(err);
+            toast.error(`快照下载失败: ${msg}`);
+          }
+        } finally {
+          if (!cancelled) setDownloading(false);
+        }
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [resource.id]);
 
   const {
@@ -295,13 +330,21 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           </span>
         </div>
 
-        {/* MHTML content */}
-        <iframe
-          ref={iframeRef}
-          className={styles.iframe}
-          src={`${PROTOCOL_BASE}/resource/${resource.id}`}
-          title={resource.title}
-        />
+        {/* Snapshot content or loading indicator */}
+        {snapshotStatus === "pending" || downloading ? (
+          <div className={styles.downloadPrompt}>
+            <div className={styles.spinner} />
+            <p>正在下载快照...</p>
+          </div>
+        ) : (
+          <iframe
+            key={iframeKey}
+            ref={iframeRef}
+            className={styles.iframe}
+            src={`${PROTOCOL_BASE}/resource/${resource.id}`}
+            title={resource.title}
+          />
+        )}
       </div>
 
       {/* Selection toolbar */}

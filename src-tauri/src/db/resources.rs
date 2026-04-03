@@ -2,6 +2,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 use super::{now_iso8601, DbError};
+use crate::sync::{self, SyncContext};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Resource {
@@ -36,13 +37,15 @@ pub struct CreateResourceInput {
 pub fn create_resource(
     conn: &Connection,
     input: CreateResourceInput,
+    sync_ctx: Option<&SyncContext>,
 ) -> Result<Resource, DbError> {
     let id = input.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
 
     conn.execute(
-        "INSERT INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, hlc)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             id,
             input.title,
@@ -56,10 +59,11 @@ pub fn create_resource(
             now,
             input.captured_at,
             input.selection_meta,
+            hlc_str,
         ],
     )?;
 
-    Ok(Resource {
+    let resource = Resource {
         id,
         title: input.title,
         url: input.url,
@@ -72,13 +76,46 @@ pub fn create_resource(
         created_at: now,
         captured_at: input.captured_at,
         selection_meta: input.selection_meta,
-    })
+    };
+
+    if let Some(ctx) = sync_ctx {
+        // Include tag_ids (empty for create)
+        let payload = build_resource_payload(&resource, &[]);
+        sync::sync_log::append(
+            conn,
+            "resource",
+            &resource.id,
+            "INSERT",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
+    Ok(resource)
+}
+
+/// Build a JSON payload for a resource including tag_ids.
+fn build_resource_payload(resource: &Resource, tag_ids: &[String]) -> String {
+    let mut map = serde_json::to_value(resource).unwrap_or_default();
+    if let Some(obj) = map.as_object_mut() {
+        obj.insert(
+            "tag_ids".to_string(),
+            serde_json::Value::Array(
+                tag_ids
+                    .iter()
+                    .map(|id| serde_json::Value::String(id.clone()))
+                    .collect(),
+            ),
+        );
+    }
+    serde_json::to_string(&map).unwrap_or_default()
 }
 
 pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
     conn.query_row(
         "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
-         FROM resources WHERE id = ?1",
+         FROM resources WHERE id = ?1 AND deleted_at IS NULL",
         params![id],
         |row| {
             Ok(Resource {
@@ -131,7 +168,7 @@ pub fn list_resources_by_folder(
         SortBy::CreatedAt => format!(
             "SELECT id, title, url, domain, author, description, folder_id, \
              resource_type, file_path, created_at, captured_at, selection_meta \
-             FROM resources WHERE folder_id = ?1 ORDER BY created_at {}",
+             FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL ORDER BY created_at {}",
             order_dir
         ),
         SortBy::AnnotatedAt => format!(
@@ -139,12 +176,12 @@ pub fn list_resources_by_folder(
              r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
              FROM resources r LEFT JOIN (\
                SELECT resource_id, MAX(created_at) AS last_at FROM (\
-                 SELECT resource_id, created_at FROM highlights \
+                 SELECT resource_id, created_at FROM highlights WHERE deleted_at IS NULL \
                  UNION ALL \
-                 SELECT resource_id, created_at FROM comments\
+                 SELECT resource_id, created_at FROM comments WHERE deleted_at IS NULL\
                ) GROUP BY resource_id\
              ) a ON r.id = a.resource_id \
-             WHERE r.folder_id = ?1 \
+             WHERE r.folder_id = ?1 AND r.deleted_at IS NULL \
              ORDER BY COALESCE(a.last_at, r.created_at) {}",
             order_dir
         ),
@@ -175,39 +212,126 @@ pub fn move_resource(
     conn: &Connection,
     id: &str,
     new_folder_id: &str,
+    sync_ctx: Option<&SyncContext>,
 ) -> Result<(), DbError> {
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
     let changed = conn.execute(
-        "UPDATE resources SET folder_id = ?1 WHERE id = ?2",
-        params![new_folder_id, id],
+        "UPDATE resources SET folder_id = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3 AND deleted_at IS NULL",
+        params![new_folder_id, hlc_str, id],
     )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("resource {}", id)));
     }
+
+    if let Some(ctx) = sync_ctx {
+        let resource = get_resource(conn, id)?;
+        let tag_ids = get_tag_ids_for_resource(conn, id)?;
+        let payload = build_resource_payload(&resource, &tag_ids);
+        sync::sync_log::append(
+            conn,
+            "resource",
+            id,
+            "UPDATE",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
     Ok(())
 }
 
-pub fn update_resource(conn: &Connection, id: &str, title: &str, description: Option<&str>) -> Result<(), DbError> {
+pub fn update_resource(
+    conn: &Connection,
+    id: &str,
+    title: &str,
+    description: Option<&str>,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<(), DbError> {
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
     let changed = conn.execute(
-        "UPDATE resources SET title = ?1, description = ?2 WHERE id = ?3",
-        params![title, description, id],
+        "UPDATE resources SET title = ?1, description = ?2, hlc = COALESCE(?3, hlc) WHERE id = ?4 AND deleted_at IS NULL",
+        params![title, description, hlc_str, id],
     )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("resource {id}")));
     }
+
+    if let Some(ctx) = sync_ctx {
+        let resource = get_resource(conn, id)?;
+        let tag_ids = get_tag_ids_for_resource(conn, id)?;
+        let payload = build_resource_payload(&resource, &tag_ids);
+        sync::sync_log::append(
+            conn,
+            "resource",
+            id,
+            "UPDATE",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
     Ok(())
 }
 
-pub fn delete_resource(conn: &Connection, id: &str) -> Result<String, DbError> {
-    let changed = conn.execute("DELETE FROM resources WHERE id = ?1", params![id])?;
+pub fn delete_resource(
+    conn: &Connection,
+    id: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<String, DbError> {
+    // Serialize before soft-delete
+    let resource_before = if sync_ctx.is_some() {
+        Some(get_resource(conn, id)?)
+    } else {
+        None
+    };
+
+    let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+    let changed = conn.execute(
+        "UPDATE resources SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, id],
+    )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("resource {}", id)));
     }
+    // Cascade soft-delete to highlights, comments, resource_tags
+    conn.execute(
+        "UPDATE highlights SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    conn.execute(
+        "UPDATE comments SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+    conn.execute(
+        "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+        params![now, id],
+    )?;
+
+    if let Some(ctx) = sync_ctx {
+        if let Some(resource) = resource_before {
+            let payload = serde_json::to_string(&resource)
+                .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+            sync::sync_log::append(
+                conn,
+                "resource",
+                id,
+                "DELETE",
+                &payload,
+                hlc_str.as_deref().unwrap_or(""),
+                ctx.device_id,
+            )?;
+        }
+    }
+
     Ok(id.to_string())
 }
 
 pub fn count_by_folder(conn: &Connection) -> Result<std::collections::HashMap<String, i64>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT folder_id, COUNT(*) FROM resources GROUP BY folder_id",
+        "SELECT folder_id, COUNT(*) FROM resources WHERE deleted_at IS NULL GROUP BY folder_id",
     )?;
     let counts = stmt
         .query_map([], |row| {
@@ -249,7 +373,7 @@ pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbErro
 
     let mut stmt = conn.prepare(
         "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
-         FROM resources WHERE url LIKE ?1",
+         FROM resources WHERE url LIKE ?1 AND deleted_at IS NULL",
     )?;
     let resources = stmt
         .query_map(rusqlite::params![like_pattern], |row| {
@@ -274,6 +398,19 @@ pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbErro
     Ok(resources)
 }
 
+/// Helper to get tag IDs for a resource (used for sync log payloads).
+fn get_tag_ids_for_resource(conn: &Connection, resource_id: &str) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT t.id FROM tags t
+         JOIN resource_tags rt ON t.id = rt.tag_id
+         WHERE rt.resource_id = ?1 AND t.deleted_at IS NULL AND rt.deleted_at IS NULL",
+    )?;
+    let ids = stmt
+        .query_map(params![resource_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +432,7 @@ mod tests {
                 captured_at: "2026-01-01T00:00:00Z".to_string(),
                 selection_meta: None,
             },
+            None,
         )
         .unwrap()
     }
@@ -302,7 +440,7 @@ mod tests {
     #[test]
     fn test_create_and_get_resource() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &folder.id);
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
@@ -320,7 +458,7 @@ mod tests {
     #[test]
     fn test_list_resources_by_folder() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         create_test_resource(&conn, &folder.id);
         create_test_resource(&conn, &folder.id);
 
@@ -331,11 +469,11 @@ mod tests {
     #[test]
     fn test_move_resource() {
         let conn = test_db();
-        let f1 = folders::create_folder(&conn, "a", "__root__").unwrap();
-        let f2 = folders::create_folder(&conn, "b", "__root__").unwrap();
+        let f1 = folders::create_folder(&conn, "a", "__root__", None).unwrap();
+        let f2 = folders::create_folder(&conn, "b", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &f1.id);
 
-        move_resource(&conn, &resource.id, &f2.id).unwrap();
+        move_resource(&conn, &resource.id, &f2.id, None).unwrap();
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
         assert_eq!(fetched.folder_id, f2.id);
@@ -344,10 +482,10 @@ mod tests {
     #[test]
     fn test_update_resource() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &folder.id);
 
-        update_resource(&conn, &resource.id, "Updated Title", Some("A description")).unwrap();
+        update_resource(&conn, &resource.id, "Updated Title", Some("A description"), None).unwrap();
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
         assert_eq!(fetched.title, "Updated Title");
@@ -357,11 +495,11 @@ mod tests {
     #[test]
     fn test_update_resource_clears_description() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &folder.id);
 
-        update_resource(&conn, &resource.id, "Title", Some("desc")).unwrap();
-        update_resource(&conn, &resource.id, "Title", None).unwrap();
+        update_resource(&conn, &resource.id, "Title", Some("desc"), None).unwrap();
+        update_resource(&conn, &resource.id, "Title", None, None).unwrap();
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
         assert_eq!(fetched.description, None);
@@ -370,17 +508,17 @@ mod tests {
     #[test]
     fn test_update_resource_not_found() {
         let conn = test_db();
-        let result = update_resource(&conn, "nonexistent", "Title", None);
+        let result = update_resource(&conn, "nonexistent", "Title", None, None);
         assert!(matches!(result, Err(DbError::NotFound(_))));
     }
 
     #[test]
     fn test_delete_resource() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &folder.id);
 
-        let deleted_id = delete_resource(&conn, &resource.id).unwrap();
+        let deleted_id = delete_resource(&conn, &resource.id, None).unwrap();
         assert_eq!(deleted_id, resource.id);
 
         let result = get_resource(&conn, &resource.id);
@@ -388,9 +526,23 @@ mod tests {
     }
 
     #[test]
+    fn test_soft_delete_resource() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let resource = create_test_resource(&conn, &folder.id);
+        delete_resource(&conn, &resource.id, None).unwrap();
+        let resources = list_resources_by_folder(&conn, &folder.id, SortBy::CreatedAt, SortOrder::Desc).unwrap();
+        assert!(resources.is_empty());
+        let deleted_at: Option<String> = conn
+            .query_row("SELECT deleted_at FROM resources WHERE id = ?1", params![resource.id], |row| row.get(0))
+            .unwrap();
+        assert!(deleted_at.is_some());
+    }
+
+    #[test]
     fn test_find_by_url_normalized() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         create_test_resource(&conn, &folder.id);
 
         // Should match with trailing slash
@@ -409,8 +561,8 @@ mod tests {
     #[test]
     fn test_count_by_folder() {
         let conn = test_db();
-        let f1 = folders::create_folder(&conn, "a", "__root__").unwrap();
-        let f2 = folders::create_folder(&conn, "b", "__root__").unwrap();
+        let f1 = folders::create_folder(&conn, "a", "__root__", None).unwrap();
+        let f2 = folders::create_folder(&conn, "b", "__root__", None).unwrap();
 
         create_test_resource(&conn, &f1.id);
         create_test_resource(&conn, &f1.id);
@@ -436,7 +588,7 @@ mod tests {
     #[test]
     fn test_create_resource_with_selection_meta() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_resource(
             &conn,
             CreateResourceInput {
@@ -452,6 +604,7 @@ mod tests {
                 captured_at: "2026-01-01T00:00:00Z".to_string(),
                 selection_meta: Some("{\"selector\":\"article.post\",\"tag_name\":\"article\",\"text_preview\":\"Hello world\"}".to_string()),
             },
+            None,
         )
         .unwrap();
 
@@ -465,7 +618,7 @@ mod tests {
     #[test]
     fn test_create_resource_without_selection_meta() {
         let conn = test_db();
-        let folder = folders::create_folder(&conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_resource(
             &conn,
             CreateResourceInput {
@@ -481,6 +634,7 @@ mod tests {
                 captured_at: "2026-01-01T00:00:00Z".to_string(),
                 selection_meta: None,
             },
+            None,
         )
         .unwrap();
 

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, Highlight, Comment, Anchor } from "@/types";
+import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig } from "@/types";
 
 // ── Folders ──
 
@@ -138,6 +138,42 @@ export function updateComment(id: string, content: string): Promise<void> {
 
 export function deleteComment(id: string): Promise<void> {
   return invoke("cmd_delete_comment", { id });
+}
+
+// ── Sync ──
+
+export function syncNow(): Promise<string> {
+  return invoke("cmd_sync_now");
+}
+
+export function saveSyncConfig(
+  endpoint: string, region: string, bucket: string,
+  accessKey: string, secretKey: string,
+): Promise<void> {
+  return invoke("cmd_save_sync_config", { endpoint, region, bucket, accessKey, secretKey });
+}
+
+export function getSyncConfig(): Promise<SyncConfig> {
+  return invoke("cmd_get_sync_config");
+}
+
+export function testS3Connection(
+  endpoint: string, region: string, bucket: string,
+  accessKey: string, secretKey: string,
+): Promise<boolean> {
+  return invoke("cmd_test_s3_connection", { endpoint, region, bucket, accessKey, secretKey });
+}
+
+export function downloadSnapshot(resourceId: string): Promise<boolean> {
+  return invoke("cmd_download_snapshot", { resourceId });
+}
+
+export function getSnapshotStatus(resourceId: string): Promise<string> {
+  return invoke("cmd_get_snapshot_status", { resourceId });
+}
+
+export function setSyncInterval(minutes: number): Promise<void> {
+  return invoke("cmd_set_sync_interval", { minutes });
 }
 
 // ── Debug ──

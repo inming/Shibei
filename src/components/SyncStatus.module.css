@@ -1,0 +1,12 @@
+.container { display: flex; align-items: center; gap: var(--spacing-xs); }
+.btn { display: flex; align-items: center; gap: var(--spacing-xs); padding: 2px var(--spacing-sm); border-radius: 4px; font-size: var(--font-size-sm); color: var(--color-text-secondary); cursor: pointer; }
+.btn:hover { background: var(--color-bg-hover); }
+.text { font-size: 11px; }
+.idle { color: var(--color-text-muted); }
+.success { color: #16a34a; }
+.error { color: var(--color-danger); }
+.syncing { color: var(--color-accent); }
+.spinning { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.gear { font-size: var(--font-size-sm); color: var(--color-text-muted); cursor: pointer; padding: 2px; }
+.gear:hover { color: var(--color-text-primary); }

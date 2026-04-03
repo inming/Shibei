@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use tauri::Emitter;
 
 use crate::db::{self, comments, folders, highlights, resources, tags, DbError};
 use crate::storage;
@@ -10,6 +11,18 @@ pub struct AppState {
     pub pool: db::DbPool,
     pub base_dir: std::path::PathBuf,
     pub auth_token: String,
+    pub sync_clock: Option<crate::sync::hlc::HlcClock>,
+    pub device_id: Option<String>,
+    pub sync_engine: Option<Arc<crate::sync::engine::SyncEngine>>,
+}
+
+impl AppState {
+    pub fn sync_context(&self) -> Option<crate::sync::SyncContext<'_>> {
+        match (&self.sync_clock, &self.device_id) {
+            (Some(clock), Some(device_id)) => Some(crate::sync::SyncContext { clock, device_id }),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -51,7 +64,8 @@ pub async fn cmd_create_folder(
     parent_id: String,
 ) -> Result<folders::Folder, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::create_folder(&conn, &name, &parent_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::create_folder(&conn, &name, &parent_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -61,7 +75,8 @@ pub async fn cmd_rename_folder(
     name: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::rename_folder(&conn, &id, &name).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::rename_folder(&conn, &id, &name, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -70,7 +85,8 @@ pub async fn cmd_delete_folder(
     id: String,
 ) -> Result<Vec<String>, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    let resource_ids = folders::delete_folder(&conn, &id)?;
+    let sync_ctx = state.sync_context();
+    let resource_ids = folders::delete_folder(&conn, &id, sync_ctx.as_ref())?;
     // Clean up filesystem (best-effort)
     for rid in &resource_ids {
         let dir = storage::resource_dir(&state.base_dir, rid);
@@ -86,7 +102,8 @@ pub async fn cmd_move_folder(
     new_parent_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::move_folder(&conn, &id, &new_parent_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::move_folder(&conn, &id, &new_parent_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -96,7 +113,8 @@ pub async fn cmd_reorder_folder(
     new_sort_order: i64,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::reorder_folder(&conn, &id, new_sort_order).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::reorder_folder(&conn, &id, new_sort_order, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 // ── Resources ──
@@ -133,7 +151,8 @@ pub async fn cmd_delete_resource(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    let rid = resources::delete_resource(&conn, &id)?;
+    let sync_ctx = state.sync_context();
+    let rid = resources::delete_resource(&conn, &id, sync_ctx.as_ref())?;
     drop(conn);
     let dir = storage::resource_dir(&state.base_dir, &rid);
     if let Err(e) = std::fs::remove_dir_all(&dir) {
@@ -149,7 +168,8 @@ pub async fn cmd_move_resource(
     new_folder_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    resources::move_resource(&conn, &id, &new_folder_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    resources::move_resource(&conn, &id, &new_folder_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -160,7 +180,8 @@ pub async fn cmd_update_resource(
     description: Option<String>,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    resources::update_resource(&conn, &id, &title, description.as_deref()).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    resources::update_resource(&conn, &id, &title, description.as_deref(), sync_ctx.as_ref()).map_err(Into::into)
 }
 
 // ── Tags ──
@@ -180,7 +201,8 @@ pub async fn cmd_create_tag(
     color: String,
 ) -> Result<tags::Tag, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::create_tag(&conn, &name, &color).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::create_tag(&conn, &name, &color, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -189,7 +211,8 @@ pub async fn cmd_delete_tag(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::delete_tag(&conn, &id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::delete_tag(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -208,7 +231,8 @@ pub async fn cmd_add_tag_to_resource(
     tag_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::add_tag_to_resource(&conn, &resource_id, &tag_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::add_tag_to_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -218,7 +242,8 @@ pub async fn cmd_remove_tag_from_resource(
     tag_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -229,7 +254,8 @@ pub async fn cmd_update_tag(
     color: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::update_tag(&conn, &id, &name, &color).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::update_tag(&conn, &id, &name, &color, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -261,7 +287,8 @@ pub async fn cmd_create_highlight(
     color: String,
 ) -> Result<highlights::Highlight, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    highlights::create_highlight(&conn, &resource_id, &text_content, &anchor, &color)
+    let sync_ctx = state.sync_context();
+    highlights::create_highlight(&conn, &resource_id, &text_content, &anchor, &color, sync_ctx.as_ref())
         .map_err(Into::into)
 }
 
@@ -271,7 +298,8 @@ pub async fn cmd_delete_highlight(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    highlights::delete_highlight(&conn, &id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    highlights::delete_highlight(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 // ── Comments ──
@@ -293,7 +321,8 @@ pub async fn cmd_create_comment(
     content: String,
 ) -> Result<comments::Comment, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    comments::create_comment(&conn, &resource_id, highlight_id.as_deref(), &content)
+    let sync_ctx = state.sync_context();
+    comments::create_comment(&conn, &resource_id, highlight_id.as_deref(), &content, sync_ctx.as_ref())
         .map_err(Into::into)
 }
 
@@ -304,7 +333,8 @@ pub async fn cmd_update_comment(
     content: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    comments::update_comment(&conn, &id, &content).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    comments::update_comment(&conn, &id, &content, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -313,7 +343,8 @@ pub async fn cmd_delete_comment(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    comments::delete_comment(&conn, &id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    comments::delete_comment(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -338,6 +369,168 @@ pub async fn cmd_get_auth_token(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<String, CommandError> {
     Ok(state.auth_token.clone())
+}
+
+// ── Sync ──
+
+#[tauri::command]
+pub async fn cmd_sync_now(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<String, CommandError> {
+    let engine = build_sync_engine(&state)?;
+    let result = engine.sync().await
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    // Notify frontend to refresh data
+    let _ = app.emit("sync-completed", ());
+    Ok(format!("{:?}", result))
+}
+
+/// Build a SyncEngine from current config. Called on each sync to pick up latest settings.
+fn build_sync_engine(state: &AppState) -> Result<crate::sync::engine::SyncEngine, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（Region 未设置）".to_string() })?;
+    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（Bucket 未设置）".to_string() })?;
+    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
+    let (access_key, secret_key) = crate::sync::credentials::load_credentials(&conn)?
+        .ok_or_else(|| CommandError { message: "请先配置同步设置（凭据未设置）".to_string() })?;
+
+    let s3_config = crate::sync::backend::S3Config {
+        endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
+        region,
+        bucket,
+        access_key,
+        secret_key,
+    };
+    let backend = crate::sync::backend::S3Backend::new(s3_config)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+
+    let device_id = state.device_id.as_ref()
+        .ok_or_else(|| CommandError { message: "Device ID not initialized".to_string() })?;
+    let clock = Arc::new(crate::sync::hlc::HlcClock::new(device_id.clone()));
+
+    Ok(crate::sync::engine::SyncEngine::new(
+        state.pool.clone(),
+        Arc::new(backend),
+        device_id.clone(),
+        clock,
+        state.base_dir.clone(),
+    ))
+}
+
+#[tauri::command]
+pub async fn cmd_save_sync_config(
+    state: tauri::State<'_, Arc<AppState>>,
+    endpoint: String,
+    region: String,
+    bucket: String,
+    access_key: String,
+    secret_key: String,
+) -> Result<(), CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    crate::sync::sync_state::set(&conn, "config:s3_endpoint", &endpoint)?;
+    crate::sync::sync_state::set(&conn, "config:s3_region", &region)?;
+    crate::sync::sync_state::set(&conn, "config:s3_bucket", &bucket)?;
+    // Only update credentials if not placeholder
+    if access_key != "__keep__" && secret_key != "__keep__" {
+        crate::sync::credentials::store_credentials(&conn, &access_key, &secret_key)?;
+    }
+    // sync_interval is stored separately via cmd_set_sync_interval
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_get_sync_config(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
+    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?.unwrap_or_default();
+    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?.unwrap_or_default();
+    let has_credentials = crate::sync::credentials::load_credentials(&conn)
+        .map(|c| c.is_some()).unwrap_or(false);
+    let last_sync = crate::sync::sync_state::get(&conn, "last_sync_at")?.unwrap_or_default();
+    let sync_interval: i64 = crate::sync::sync_state::get(&conn, "config:sync_interval")?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
+    Ok(serde_json::json!({
+        "endpoint": endpoint,
+        "region": region,
+        "bucket": bucket,
+        "has_credentials": has_credentials,
+        "last_sync_at": last_sync,
+        "sync_interval": sync_interval,
+    }))
+}
+
+#[tauri::command]
+pub async fn cmd_test_s3_connection(
+    state: tauri::State<'_, Arc<AppState>>,
+    endpoint: String,
+    region: String,
+    bucket: String,
+    access_key: String,
+    secret_key: String,
+) -> Result<bool, CommandError> {
+    if region.is_empty() || bucket.is_empty() {
+        return Err(CommandError { message: "Region and Bucket are required".to_string() });
+    }
+    // If credentials are placeholder, load from DB
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let (ak, sk) = if access_key == "__keep__" || secret_key == "__keep__" {
+        crate::sync::credentials::load_credentials(&conn)?
+            .ok_or_else(|| CommandError { message: "Credentials not configured".to_string() })?
+    } else if access_key.is_empty() || secret_key.is_empty() {
+        return Err(CommandError { message: "Access Key and Secret Key are required".to_string() });
+    } else {
+        (access_key, secret_key)
+    };
+    let config = crate::sync::backend::S3Config {
+        endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
+        region,
+        bucket,
+        access_key: ak,
+        secret_key: sk,
+    };
+    use crate::sync::backend::SyncBackend as _;
+    let backend = crate::sync::backend::S3Backend::new(config)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    backend.list("").await.map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn cmd_download_snapshot(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+) -> Result<bool, CommandError> {
+    let engine = build_sync_engine(&state)?;
+    engine.download_snapshot(&resource_id).await
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn cmd_get_snapshot_status(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+) -> Result<String, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let status = crate::sync::sync_state::get(&conn, &format!("snapshot:{}", resource_id))?
+        .unwrap_or_else(|| "synced".to_string());
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn cmd_set_sync_interval(
+    state: tauri::State<'_, Arc<AppState>>,
+    minutes: i64,
+) -> Result<(), CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    crate::sync::sync_state::set(&conn, "config:sync_interval", &minutes.to_string())?;
+    Ok(())
 }
 
 // ── Debug ──

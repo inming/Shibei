@@ -21,6 +21,17 @@ pub struct AppState {
     pub base_dir: PathBuf,
     pub token: String,
     pub app_handle: tauri::AppHandle,
+    pub sync_clock: Option<crate::sync::hlc::HlcClock>,
+    pub device_id: Option<String>,
+}
+
+impl AppState {
+    fn sync_context(&self) -> Option<crate::sync::SyncContext<'_>> {
+        match (&self.sync_clock, &self.device_id) {
+            (Some(clock), Some(device_id)) => Some(crate::sync::SyncContext { clock, device_id }),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -326,6 +337,7 @@ async fn handle_save(
     })?;
 
     // Create resource in database
+    let sync_ctx = state.sync_context();
     let resource = match resources::create_resource(
         &conn,
         resources::CreateResourceInput {
@@ -341,6 +353,7 @@ async fn handle_save(
             captured_at: payload.captured_at,
             selection_meta: payload.selection_meta,
         },
+        sync_ctx.as_ref(),
     ) {
         Ok(r) => r,
         Err(e) => {
@@ -363,7 +376,7 @@ async fn handle_save(
         let tag_id = match tag {
             Some(t) => t.id.clone(),
             None => {
-                match tags::create_tag(&conn, tag_name, "#888888") {
+                match tags::create_tag(&conn, tag_name, "#888888", sync_ctx.as_ref()) {
                     Ok(new_tag) => new_tag.id,
                     Err(e) => {
                         let _ = conn.execute_batch("ROLLBACK");
@@ -381,7 +394,7 @@ async fn handle_save(
             }
         };
 
-        if let Err(e) = tags::add_tag_to_resource(&conn, &resource.id, &tag_id) {
+        if let Err(e) = tags::add_tag_to_resource(&conn, &resource.id, &tag_id, sync_ctx.as_ref()) {
             let _ = conn.execute_batch("ROLLBACK");
             let _ =
                 std::fs::remove_dir_all(storage::resource_dir(&state.base_dir, &resource_id));

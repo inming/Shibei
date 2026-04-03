@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import * as cmd from "@/lib/commands";
 import type { Tag } from "@/types";
 
@@ -20,6 +21,12 @@ export function useTags() {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // Auto-refresh when sync completes
+  useEffect(() => {
+    const unlisten = listen("sync-completed", () => { refresh(); });
+    return () => { unlisten.then((f) => f()); };
   }, [refresh]);
 
   const createTag = useCallback(
