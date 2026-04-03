@@ -1,3 +1,4 @@
+pub mod credentials;
 pub mod device;
 pub mod hlc;
 pub mod sync_log;
