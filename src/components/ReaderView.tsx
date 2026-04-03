@@ -48,28 +48,37 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     setSelection(null);
   }, [resource.id]);
 
-  // Check snapshot status when resource changes
+  // Check snapshot status and auto-download if pending
   useEffect(() => {
-    cmd.getSnapshotStatus(resource.id).then(setSnapshotStatus).catch(() => {});
-  }, [resource.id]);
-
-  const handleDownloadSnapshot = async () => {
-    setDownloading(true);
-    try {
-      const success = await cmd.downloadSnapshot(resource.id);
-      if (success) {
-        setSnapshotStatus("synced");
-        // Reload the iframe by bumping its key
-        setIframeKey((k) => k + 1);
-      } else {
-        toast.error("快照不存在");
+    let cancelled = false;
+    cmd.getSnapshotStatus(resource.id).then(async (status) => {
+      if (cancelled) return;
+      setSnapshotStatus(status);
+      if (status === "pending") {
+        setDownloading(true);
+        try {
+          const success = await cmd.downloadSnapshot(resource.id);
+          if (cancelled) return;
+          if (success) {
+            setSnapshotStatus("synced");
+            setIframeKey((k) => k + 1);
+          } else {
+            toast.error("快照不存在");
+          }
+        } catch (err: unknown) {
+          if (!cancelled) {
+            const msg = err && typeof err === "object" && "message" in err
+              ? String((err as { message: string }).message)
+              : String(err);
+            toast.error(`快照下载失败: ${msg}`);
+          }
+        } finally {
+          if (!cancelled) setDownloading(false);
+        }
       }
-    } catch (err: unknown) {
-      toast.error(`下载失败: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setDownloading(false);
-    }
-  };
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [resource.id]);
 
   const {
     highlights,
@@ -321,13 +330,11 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           </span>
         </div>
 
-        {/* Snapshot content or download prompt */}
-        {snapshotStatus === "pending" ? (
+        {/* Snapshot content or loading indicator */}
+        {snapshotStatus === "pending" || downloading ? (
           <div className={styles.downloadPrompt}>
-            <p>快照尚未下载到本机</p>
-            <button onClick={handleDownloadSnapshot} disabled={downloading}>
-              {downloading ? "下载中..." : "下载快照"}
-            </button>
+            <div className={styles.spinner} />
+            <p>正在下载快照...</p>
           </div>
         ) : (
           <iframe
