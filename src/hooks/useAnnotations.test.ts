@@ -1,6 +1,6 @@
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
-import { mockInvoke } from "@/test/tauriMock";
+import { mockInvoke, emitTauriEvent } from "@/test/tauriMock";
 import { useAnnotations } from "./useAnnotations";
 import type { Highlight, Comment } from "@/types";
 
@@ -51,12 +51,10 @@ describe("useAnnotations", () => {
     expect(result.current.resourceNotes).toEqual([comment]);
   });
 
-  it("addHighlight adds to state and dispatches event", async () => {
+  it("addHighlight adds to state immediately", async () => {
     const highlight = makeHighlight();
-    // After addHighlight dispatches the event, refresh() is called and re-fetches.
-    // Return the highlight from the mock so state is consistent after refresh.
     mockInvoke((cmd) => {
-      if (cmd === "cmd_get_highlights") return [highlight];
+      if (cmd === "cmd_get_highlights") return [];
       if (cmd === "cmd_get_comments") return [];
       return undefined;
     });
@@ -64,14 +62,15 @@ describe("useAnnotations", () => {
     const { result } = renderHook(() => useAnnotations("r1"));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    await act(async () => {
+    act(() => {
       result.current.addHighlight(highlight);
     });
 
-    await waitFor(() => expect(result.current.highlights).toEqual([highlight]));
+    // addHighlight updates state immediately (for iframe postMessage)
+    expect(result.current.highlights).toEqual([highlight]);
   });
 
-  it("removeHighlight deletes and removes associated comments", async () => {
+  it("removeHighlight deletes and refreshes via event", async () => {
     const highlight = makeHighlight({ id: "h1" });
     const commentOnHighlight = makeComment({ id: "c1", highlight_id: "h1" });
     const note = makeComment({ id: "note1", highlight_id: null });
@@ -94,11 +93,14 @@ describe("useAnnotations", () => {
       await result.current.removeHighlight("h1");
     });
 
+    // Backend emits data:annotation-changed which triggers refresh
+    act(() => { emitTauriEvent("data:annotation-changed"); });
+
     await waitFor(() => expect(result.current.highlights).toEqual([]));
     expect(result.current.comments).toEqual([note]);
   });
 
-  it("addComment calls invoke and adds to state", async () => {
+  it("addComment calls invoke and refreshes via event", async () => {
     const newComment = makeComment({ id: "new-c", highlight_id: "h1", content: "new content" });
     let created = false;
     mockInvoke((cmd) => {
@@ -118,11 +120,13 @@ describe("useAnnotations", () => {
       await result.current.addComment("h1", "new content");
     });
 
+    act(() => { emitTauriEvent("data:annotation-changed"); });
+
     await waitFor(() => expect(result.current.comments).toHaveLength(1));
     expect(result.current.comments[0].content).toBe("new content");
   });
 
-  it("editComment updates content in state", async () => {
+  it("editComment updates content via event refresh", async () => {
     const comment = makeComment({ id: "c1", content: "original" });
     let updatedContent = "original";
     mockInvoke((cmd) => {
@@ -143,10 +147,12 @@ describe("useAnnotations", () => {
       await result.current.editComment("c1", "updated");
     });
 
+    act(() => { emitTauriEvent("data:annotation-changed"); });
+
     await waitFor(() => expect(result.current.comments[0].content).toBe("updated"));
   });
 
-  it("removeComment deletes from state", async () => {
+  it("removeComment deletes via event refresh", async () => {
     const comment = makeComment({ id: "c1" });
     let deleted = false;
     mockInvoke((cmd) => {
@@ -165,6 +171,8 @@ describe("useAnnotations", () => {
     await act(async () => {
       await result.current.removeComment("c1");
     });
+
+    act(() => { emitTauriEvent("data:annotation-changed"); });
 
     await waitFor(() => expect(result.current.comments).toEqual([]));
   });
@@ -190,7 +198,7 @@ describe("useAnnotations", () => {
     expect(h2Comments).toEqual([c2]);
   });
 
-  it("responds to shibei:annotations-changed custom event", async () => {
+  it("refreshes on data:annotation-changed Tauri event", async () => {
     let callCount = 0;
 
     mockInvoke((cmd) => {
@@ -208,7 +216,7 @@ describe("useAnnotations", () => {
     const countAfterMount = callCount;
 
     await act(async () => {
-      window.dispatchEvent(new CustomEvent("shibei:annotations-changed", { detail: "r1" }));
+      emitTauriEvent("data:annotation-changed");
     });
 
     await waitFor(() => expect(callCount).toBeGreaterThan(countAfterMount));

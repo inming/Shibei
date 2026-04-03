@@ -101,7 +101,7 @@ describe("useResources", () => {
     });
   });
 
-  it("refreshes on resource-saved Tauri event", async () => {
+  it("refreshes on data:resource-changed Tauri event", async () => {
     const folderId = "folder-3";
     const resource1 = makeResource("r1", folderId);
     const resource2 = makeResource("r2", folderId);
@@ -125,7 +125,7 @@ describe("useResources", () => {
     });
 
     act(() => {
-      emitTauriEvent("resource-saved");
+      emitTauriEvent("data:resource-changed");
     });
 
     await waitFor(() => {

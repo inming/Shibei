@@ -1,6 +1,6 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
-import { mockInvoke } from "@/test/tauriMock";
+import { mockInvoke, emitTauriEvent } from "@/test/tauriMock";
 import { useTags } from "./useTags";
 import type { Tag } from "@/types";
 
@@ -38,13 +38,15 @@ describe("useTags", () => {
     expect(result.current.tags).toHaveLength(2);
 
     let returned: Tag | undefined;
-    await waitFor(async () => {
+    await act(async () => {
       returned = await result.current.createTag("Ideas", "#0000ff");
     });
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    // Backend emits data:tag-changed which triggers refresh
+    act(() => { emitTauriEvent("data:tag-changed"); });
+
+    await waitFor(() => expect(result.current.tags).toHaveLength(3));
     expect(returned).toEqual(NEW_TAG);
-    expect(result.current.tags).toHaveLength(3);
     expect(result.current.tags[2].name).toBe("Ideas");
   });
 
@@ -63,11 +65,16 @@ describe("useTags", () => {
     const { result } = renderHook(() => useTags());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    await waitFor(async () => {
+    await act(async () => {
       await result.current.updateTag("1", "Research Updated", "#aaaaaa");
     });
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => { emitTauriEvent("data:tag-changed"); });
+
+    await waitFor(() => {
+      const t = result.current.tags.find((t) => t.id === "1");
+      expect(t?.name).toBe("Research Updated");
+    });
     const updated = result.current.tags.find((t) => t.id === "1");
     expect(updated?.name).toBe("Research Updated");
     expect(updated?.color).toBe("#aaaaaa");
@@ -89,12 +96,13 @@ describe("useTags", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.tags).toHaveLength(2);
 
-    await waitFor(async () => {
+    await act(async () => {
       await result.current.deleteTag("1");
     });
 
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.tags).toHaveLength(1);
+    act(() => { emitTauriEvent("data:tag-changed"); });
+
+    await waitFor(() => expect(result.current.tags).toHaveLength(1));
     expect(result.current.tags[0].id).toBe("2");
   });
 });
