@@ -2,6 +2,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 use super::{now_iso8601, DbError};
+use crate::sync::{self, SyncContext};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Comment {
@@ -18,48 +19,139 @@ pub fn create_comment(
     resource_id: &str,
     highlight_id: Option<&str>,
     content: &str,
+    sync_ctx: Option<&SyncContext>,
 ) -> Result<Comment, DbError> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
 
     conn.execute(
-        "INSERT INTO comments (id, highlight_id, resource_id, content, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id, highlight_id, resource_id, content, now, now],
+        "INSERT INTO comments (id, highlight_id, resource_id, content, created_at, updated_at, hlc)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![id, highlight_id, resource_id, content, now, now, hlc_str],
     )?;
 
-    Ok(Comment {
+    let comment = Comment {
         id,
         highlight_id: highlight_id.map(|s| s.to_string()),
         resource_id: resource_id.to_string(),
         content: content.to_string(),
         created_at: now.clone(),
         updated_at: now,
+    };
+
+    if let Some(ctx) = sync_ctx {
+        let payload = serde_json::to_string(&comment)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        sync::sync_log::append(
+            conn,
+            "comment",
+            &comment.id,
+            "INSERT",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
+    Ok(comment)
+}
+
+pub fn update_comment(
+    conn: &Connection,
+    id: &str,
+    content: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<(), DbError> {
+    let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+    let changed = conn.execute(
+        "UPDATE comments SET content = ?1, updated_at = ?2, hlc = COALESCE(?3, hlc) WHERE id = ?4 AND deleted_at IS NULL",
+        params![content, now, hlc_str, id],
+    )?;
+    if changed == 0 {
+        return Err(DbError::NotFound(format!("comment {}", id)));
+    }
+
+    if let Some(ctx) = sync_ctx {
+        let comment = get_comment(conn, id)?;
+        let payload = serde_json::to_string(&comment)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        sync::sync_log::append(
+            conn,
+            "comment",
+            id,
+            "UPDATE",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn delete_comment(
+    conn: &Connection,
+    id: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<(), DbError> {
+    // Serialize before soft-delete
+    let comment_before = if sync_ctx.is_some() {
+        get_comment(conn, id).ok()
+    } else {
+        None
+    };
+
+    let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+    let changed = conn.execute(
+        "UPDATE comments SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, id],
+    )?;
+    if changed == 0 {
+        return Err(DbError::NotFound(format!("comment {}", id)));
+    }
+
+    if let Some(ctx) = sync_ctx {
+        if let Some(comment) = comment_before {
+            let payload = serde_json::to_string(&comment)
+                .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+            sync::sync_log::append(
+                conn,
+                "comment",
+                id,
+                "DELETE",
+                &payload,
+                hlc_str.as_deref().unwrap_or(""),
+                ctx.device_id,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn get_comment(conn: &Connection, id: &str) -> Result<Comment, DbError> {
+    conn.query_row(
+        "SELECT id, highlight_id, resource_id, content, created_at, updated_at
+         FROM comments WHERE id = ?1 AND deleted_at IS NULL",
+        params![id],
+        |row| {
+            Ok(Comment {
+                id: row.get(0)?,
+                highlight_id: row.get(1)?,
+                resource_id: row.get(2)?,
+                content: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        },
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => DbError::NotFound(format!("comment {}", id)),
+        other => DbError::Sqlite(other),
     })
-}
-
-pub fn update_comment(conn: &Connection, id: &str, content: &str) -> Result<(), DbError> {
-    let now = now_iso8601();
-    let changed = conn.execute(
-        "UPDATE comments SET content = ?1, updated_at = ?2 WHERE id = ?3 AND deleted_at IS NULL",
-        params![content, now, id],
-    )?;
-    if changed == 0 {
-        return Err(DbError::NotFound(format!("comment {}", id)));
-    }
-    Ok(())
-}
-
-pub fn delete_comment(conn: &Connection, id: &str) -> Result<(), DbError> {
-    let now = now_iso8601();
-    let changed = conn.execute(
-        "UPDATE comments SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
-        params![now, id],
-    )?;
-    if changed == 0 {
-        return Err(DbError::NotFound(format!("comment {}", id)));
-    }
-    Ok(())
 }
 
 pub fn get_comments_for_resource(
@@ -117,7 +209,7 @@ mod tests {
     use crate::db::{folders, highlights, resources, test_db};
 
     fn setup_resource(conn: &Connection) -> resources::Resource {
-        let folder = folders::create_folder(conn, "docs", "__root__").unwrap();
+        let folder = folders::create_folder(conn, "docs", "__root__", None).unwrap();
         resources::create_resource(
             conn,
             resources::CreateResourceInput {
@@ -133,6 +225,7 @@ mod tests {
                 captured_at: "2026-01-01".to_string(),
                 selection_meta: None,
             },
+            None,
         )
         .unwrap()
     }
@@ -149,9 +242,9 @@ mod tests {
                 suffix: "".to_string(),
             },
         };
-        let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0").unwrap();
+        let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0", None).unwrap();
 
-        let comment = create_comment(&conn, &resource.id, Some(&hl.id), "great insight").unwrap();
+        let comment = create_comment(&conn, &resource.id, Some(&hl.id), "great insight", None).unwrap();
         assert_eq!(comment.content, "great insight");
         assert_eq!(comment.highlight_id.as_deref(), Some(hl.id.as_str()));
     }
@@ -161,7 +254,7 @@ mod tests {
         let conn = test_db();
         let resource = setup_resource(&conn);
 
-        let comment = create_comment(&conn, &resource.id, None, "general note").unwrap();
+        let comment = create_comment(&conn, &resource.id, None, "general note", None).unwrap();
         assert!(comment.highlight_id.is_none());
     }
 
@@ -169,9 +262,9 @@ mod tests {
     fn test_update_comment() {
         let conn = test_db();
         let resource = setup_resource(&conn);
-        let comment = create_comment(&conn, &resource.id, None, "old").unwrap();
+        let comment = create_comment(&conn, &resource.id, None, "old", None).unwrap();
 
-        update_comment(&conn, &comment.id, "new content").unwrap();
+        update_comment(&conn, &comment.id, "new content", None).unwrap();
 
         let comments = get_comments_for_resource(&conn, &resource.id).unwrap();
         assert_eq!(comments[0].content, "new content");
@@ -181,9 +274,9 @@ mod tests {
     fn test_delete_comment() {
         let conn = test_db();
         let resource = setup_resource(&conn);
-        let comment = create_comment(&conn, &resource.id, None, "temp").unwrap();
+        let comment = create_comment(&conn, &resource.id, None, "temp", None).unwrap();
 
-        delete_comment(&conn, &comment.id).unwrap();
+        delete_comment(&conn, &comment.id, None).unwrap();
 
         let comments = get_comments_for_resource(&conn, &resource.id).unwrap();
         assert!(comments.is_empty());
@@ -201,11 +294,11 @@ mod tests {
                 suffix: "".to_string(),
             },
         };
-        let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0").unwrap();
+        let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0", None).unwrap();
 
-        create_comment(&conn, &resource.id, Some(&hl.id), "comment 1").unwrap();
-        create_comment(&conn, &resource.id, Some(&hl.id), "comment 2").unwrap();
-        create_comment(&conn, &resource.id, None, "resource note").unwrap();
+        create_comment(&conn, &resource.id, Some(&hl.id), "comment 1", None).unwrap();
+        create_comment(&conn, &resource.id, Some(&hl.id), "comment 2", None).unwrap();
+        create_comment(&conn, &resource.id, None, "resource note", None).unwrap();
 
         let hl_comments = get_comments_for_highlight(&conn, &hl.id).unwrap();
         assert_eq!(hl_comments.len(), 2);
@@ -226,10 +319,10 @@ mod tests {
                 suffix: "".to_string(),
             },
         };
-        let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0").unwrap();
-        let comment = create_comment(&conn, &resource.id, Some(&hl.id), "note").unwrap();
+        let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0", None).unwrap();
+        let comment = create_comment(&conn, &resource.id, Some(&hl.id), "note", None).unwrap();
 
-        delete_comment(&conn, &comment.id).unwrap();
+        delete_comment(&conn, &comment.id, None).unwrap();
 
         // Highlight should still exist
         let highlights = highlights::get_highlights_for_resource(&conn, &resource.id).unwrap();

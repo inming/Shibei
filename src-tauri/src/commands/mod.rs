@@ -10,6 +10,17 @@ pub struct AppState {
     pub pool: db::DbPool,
     pub base_dir: std::path::PathBuf,
     pub auth_token: String,
+    pub sync_clock: Option<crate::sync::hlc::HlcClock>,
+    pub device_id: Option<String>,
+}
+
+impl AppState {
+    pub fn sync_context(&self) -> Option<crate::sync::SyncContext<'_>> {
+        match (&self.sync_clock, &self.device_id) {
+            (Some(clock), Some(device_id)) => Some(crate::sync::SyncContext { clock, device_id }),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -51,7 +62,8 @@ pub async fn cmd_create_folder(
     parent_id: String,
 ) -> Result<folders::Folder, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::create_folder(&conn, &name, &parent_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::create_folder(&conn, &name, &parent_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -61,7 +73,8 @@ pub async fn cmd_rename_folder(
     name: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::rename_folder(&conn, &id, &name).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::rename_folder(&conn, &id, &name, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -70,7 +83,8 @@ pub async fn cmd_delete_folder(
     id: String,
 ) -> Result<Vec<String>, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    let resource_ids = folders::delete_folder(&conn, &id)?;
+    let sync_ctx = state.sync_context();
+    let resource_ids = folders::delete_folder(&conn, &id, sync_ctx.as_ref())?;
     // Clean up filesystem (best-effort)
     for rid in &resource_ids {
         let dir = storage::resource_dir(&state.base_dir, rid);
@@ -86,7 +100,8 @@ pub async fn cmd_move_folder(
     new_parent_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::move_folder(&conn, &id, &new_parent_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::move_folder(&conn, &id, &new_parent_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -96,7 +111,8 @@ pub async fn cmd_reorder_folder(
     new_sort_order: i64,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    folders::reorder_folder(&conn, &id, new_sort_order).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    folders::reorder_folder(&conn, &id, new_sort_order, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 // ── Resources ──
@@ -133,7 +149,8 @@ pub async fn cmd_delete_resource(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    let rid = resources::delete_resource(&conn, &id)?;
+    let sync_ctx = state.sync_context();
+    let rid = resources::delete_resource(&conn, &id, sync_ctx.as_ref())?;
     drop(conn);
     let dir = storage::resource_dir(&state.base_dir, &rid);
     if let Err(e) = std::fs::remove_dir_all(&dir) {
@@ -149,7 +166,8 @@ pub async fn cmd_move_resource(
     new_folder_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    resources::move_resource(&conn, &id, &new_folder_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    resources::move_resource(&conn, &id, &new_folder_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -160,7 +178,8 @@ pub async fn cmd_update_resource(
     description: Option<String>,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    resources::update_resource(&conn, &id, &title, description.as_deref()).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    resources::update_resource(&conn, &id, &title, description.as_deref(), sync_ctx.as_ref()).map_err(Into::into)
 }
 
 // ── Tags ──
@@ -180,7 +199,8 @@ pub async fn cmd_create_tag(
     color: String,
 ) -> Result<tags::Tag, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::create_tag(&conn, &name, &color).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::create_tag(&conn, &name, &color, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -189,7 +209,8 @@ pub async fn cmd_delete_tag(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::delete_tag(&conn, &id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::delete_tag(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -208,7 +229,8 @@ pub async fn cmd_add_tag_to_resource(
     tag_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::add_tag_to_resource(&conn, &resource_id, &tag_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::add_tag_to_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -218,7 +240,8 @@ pub async fn cmd_remove_tag_from_resource(
     tag_id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -229,7 +252,8 @@ pub async fn cmd_update_tag(
     color: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    tags::update_tag(&conn, &id, &name, &color).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    tags::update_tag(&conn, &id, &name, &color, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -261,7 +285,8 @@ pub async fn cmd_create_highlight(
     color: String,
 ) -> Result<highlights::Highlight, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    highlights::create_highlight(&conn, &resource_id, &text_content, &anchor, &color)
+    let sync_ctx = state.sync_context();
+    highlights::create_highlight(&conn, &resource_id, &text_content, &anchor, &color, sync_ctx.as_ref())
         .map_err(Into::into)
 }
 
@@ -271,7 +296,8 @@ pub async fn cmd_delete_highlight(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    highlights::delete_highlight(&conn, &id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    highlights::delete_highlight(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 // ── Comments ──
@@ -293,7 +319,8 @@ pub async fn cmd_create_comment(
     content: String,
 ) -> Result<comments::Comment, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    comments::create_comment(&conn, &resource_id, highlight_id.as_deref(), &content)
+    let sync_ctx = state.sync_context();
+    comments::create_comment(&conn, &resource_id, highlight_id.as_deref(), &content, sync_ctx.as_ref())
         .map_err(Into::into)
 }
 
@@ -304,7 +331,8 @@ pub async fn cmd_update_comment(
     content: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    comments::update_comment(&conn, &id, &content).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    comments::update_comment(&conn, &id, &content, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -313,7 +341,8 @@ pub async fn cmd_delete_comment(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    comments::delete_comment(&conn, &id).map_err(Into::into)
+    let sync_ctx = state.sync_context();
+    comments::delete_comment(&conn, &id, sync_ctx.as_ref()).map_err(Into::into)
 }
 
 #[tauri::command]

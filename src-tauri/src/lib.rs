@@ -56,11 +56,19 @@ pub fn run() {
     // Generate a single auth token shared between Tauri commands and HTTP server
     let auth_token = uuid::Uuid::new_v4().to_string();
 
+    // Initialize sync clock and device ID
+    let device_id = sync::device::get_or_create_device_id(&base_dir).ok();
+    let sync_clock = device_id
+        .as_ref()
+        .map(|id| sync::hlc::HlcClock::new(id.clone()));
+
     // Shared state for Tauri commands
     let cmd_state = Arc::new(commands::AppState {
         pool: pool.clone(),
         base_dir: base_dir.clone(),
         auth_token: auth_token.clone(),
+        sync_clock,
+        device_id: device_id.clone(),
     });
 
     let server_token = auth_token.clone();
@@ -126,11 +134,16 @@ pub fn run() {
         })
         .setup(move |app| {
             // Create server state with app_handle for event emission
+            let server_sync_clock = device_id
+                .as_ref()
+                .map(|id| sync::hlc::HlcClock::new(id.clone()));
             let server_state = Arc::new(server::AppState {
                 pool,
                 base_dir: server_base_dir,
                 token: server_token,
                 app_handle: app.handle().clone(),
+                sync_clock: server_sync_clock,
+                device_id,
             });
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = server::start_server(server_state).await {
