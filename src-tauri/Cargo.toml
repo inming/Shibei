@@ -30,6 +30,12 @@ r2d2 = "0.8"
 r2d2_sqlite = { version = "0.27", features = ["bundled"] }
 rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
 async-trait = "0.1.89"
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+zeroize = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3"
