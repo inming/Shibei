@@ -248,7 +248,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       {editingResource && (
         <ResourceEditDialog
           resource={editingResource}
-          onSave={refresh}
+          onSave={() => { refresh(); onDataChanged?.(); }}
           onClose={() => setEditingResource(null)}
         />
       )}

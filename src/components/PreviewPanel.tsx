@@ -11,10 +11,19 @@ interface PreviewPanelProps {
   onOpenInReader: (highlightId?: string) => void;
 }
 
-export function PreviewPanel({ resource, refreshKey, onOpenInReader }: PreviewPanelProps) {
+export function PreviewPanel({ resource: initialResource, refreshKey, onOpenInReader }: PreviewPanelProps) {
+  const [resource, setResource] = useState<Resource>(initialResource);
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
+
+  // Re-fetch resource data when refreshKey changes (e.g. after edit or sync)
+  useEffect(() => {
+    setResource(initialResource);
+    if (refreshKey) {
+      cmd.getResource(initialResource.id).then(setResource).catch(() => {});
+    }
+  }, [initialResource, refreshKey]);
 
   useEffect(() => {
     cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
