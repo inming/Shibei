@@ -66,7 +66,6 @@ export function useAnnotations(resourceId: string) {
     async (highlightId: string | null, content: string) => {
       try {
         const comment = await cmd.createComment(resourceId, highlightId, content);
-        setComments((prev) => [...prev, comment]);
         return comment;
       } catch (err) {
         console.error("Failed to create comment:", err);

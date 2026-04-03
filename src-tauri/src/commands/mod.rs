@@ -168,6 +168,7 @@ pub async fn cmd_delete_resource(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let folder_id = resources::get_resource(&conn, &id)?.folder_id;
     let sync_ctx = state.sync_context();
     let rid = resources::delete_resource(&conn, &id, sync_ctx.as_ref())?;
     drop(conn);
@@ -175,7 +176,7 @@ pub async fn cmd_delete_resource(
     if let Err(e) = std::fs::remove_dir_all(&dir) {
         eprintln!("[shibei] Failed to clean up resource directory {:?}: {}", dir, e);
     }
-    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": id }));
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": id, "folder_id": folder_id }));
     Ok(())
 }
 

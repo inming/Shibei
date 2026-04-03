@@ -1,6 +1,6 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
-import { mockInvoke } from "@/test/tauriMock";
+import { mockInvoke, emitTauriEvent } from "@/test/tauriMock";
 import { useFolders } from "./useFolders";
 import type { Folder } from "@/types";
 
@@ -97,5 +97,35 @@ describe("useFolders", () => {
 
     await waitFor(() => expect(result.current.folders).toHaveLength(2));
     expect(result.current.folders[1].id).toBe("f2");
+  });
+
+  it("refreshes on data:folder-changed Tauri event", async () => {
+    const folder1 = makeFolder("f1", "root", "Folder One");
+    const folder2 = makeFolder("f2", "root", "Folder Two");
+    let callCount = 0;
+
+    mockInvoke((cmd, args) => {
+      if (cmd === "cmd_list_folders" && args?.parentId === "root") {
+        callCount++;
+        return callCount === 1 ? [folder1] : [folder1, folder2];
+      }
+      return [];
+    });
+
+    const { result } = renderHook(() => useFolders("root"));
+
+    await waitFor(() => {
+      expect(result.current.folders).toHaveLength(1);
+    });
+
+    act(() => {
+      emitTauriEvent("data:folder-changed");
+    });
+
+    await waitFor(() => {
+      expect(result.current.folders).toHaveLength(2);
+    });
+
+    expect(result.current.folders).toEqual([folder1, folder2]);
   });
 });
