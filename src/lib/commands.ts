@@ -114,8 +114,8 @@ export function createHighlight(
   return invoke("cmd_create_highlight", { resourceId, textContent, anchor, color });
 }
 
-export function deleteHighlight(id: string): Promise<void> {
-  return invoke("cmd_delete_highlight", { id });
+export function deleteHighlight(id: string, resourceId: string): Promise<void> {
+  return invoke("cmd_delete_highlight", { id, resourceId });
 }
 
 // ── Comments ──
@@ -132,12 +132,12 @@ export function createComment(
   return invoke("cmd_create_comment", { resourceId, highlightId, content });
 }
 
-export function updateComment(id: string, content: string): Promise<void> {
-  return invoke("cmd_update_comment", { id, content });
+export function updateComment(id: string, content: string, resourceId: string): Promise<void> {
+  return invoke("cmd_update_comment", { id, content, resourceId });
 }
 
-export function deleteComment(id: string): Promise<void> {
-  return invoke("cmd_delete_comment", { id });
+export function deleteComment(id: string, resourceId: string): Promise<void> {
+  return invoke("cmd_delete_comment", { id, resourceId });
 }
 
 // ── Sync ──
