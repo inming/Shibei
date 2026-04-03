@@ -674,7 +674,12 @@ impl SyncEngine {
     ) -> Result<(), SyncError> {
         let resource_id = payload["resource_id"].as_str().unwrap_or("");
         let text_content = payload["text_content"].as_str().unwrap_or("");
-        let anchor = payload["anchor"].as_str().unwrap_or("");
+        // anchor is stored as JSON string in DB, but may arrive as object or string in payload
+        let anchor = if payload["anchor"].is_string() {
+            payload["anchor"].as_str().unwrap_or("").to_string()
+        } else {
+            payload["anchor"].to_string()
+        };
         let color = payload["color"].as_str().unwrap_or("#FFEB3B");
         let created_at = payload["created_at"].as_str().unwrap_or("");
 
