@@ -2,13 +2,15 @@ import { useState, useEffect } from "react";
 import { useSync } from "@/hooks/useSync";
 import { SyncPage } from "@/components/Settings/SyncPage";
 import { EncryptionPage } from "@/components/Settings/EncryptionPage";
+import { LockScreenPage } from "@/components/Settings/LockScreenPage";
 import styles from "./SettingsView.module.css";
 
-type SettingsSection = "sync" | "encryption";
+type SettingsSection = "sync" | "encryption" | "security";
 
 const NAV_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: "sync", label: "同步" },
   { id: "encryption", label: "加密" },
+  { id: "security", label: "安全" },
 ];
 
 interface SettingsViewProps {
@@ -46,6 +48,9 @@ export function SettingsView({ initialSection }: SettingsViewProps) {
           )}
           {section === "encryption" && (
             <EncryptionPage />
+          )}
+          {section === "security" && (
+            <LockScreenPage />
           )}
         </div>
       </div>

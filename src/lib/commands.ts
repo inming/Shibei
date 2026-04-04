@@ -254,6 +254,28 @@ export function purgeAllDeleted(): Promise<void> {
   return invoke("cmd_purge_all_deleted");
 }
 
+// ── Lock Screen ──
+
+export function setupLockPin(pin: string): Promise<void> {
+  return invoke("cmd_setup_lock_pin", { pin });
+}
+
+export function verifyLockPin(pin: string): Promise<boolean> {
+  return invoke("cmd_verify_lock_pin", { pin });
+}
+
+export function getLockStatus(): Promise<{ enabled: boolean; timeout_minutes: number }> {
+  return invoke("cmd_get_lock_status");
+}
+
+export function setLockTimeout(minutes: number): Promise<void> {
+  return invoke("cmd_set_lock_timeout", { minutes });
+}
+
+export function disableLockPin(pin: string): Promise<void> {
+  return invoke("cmd_disable_lock_pin", { pin });
+}
+
 // ── Debug ──
 
 const DEBUG_ENABLED = import.meta.env.VITE_DEBUG === "1";
