@@ -19,6 +19,7 @@ function App() {
   const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"sync" | "encryption" | undefined>(undefined);
 
   const openResource = useCallback((resource: Resource, highlightId?: string) => {
     setReaderTabs((prev) => {
@@ -34,8 +35,9 @@ function App() {
     setActiveTabId(resource.id);
   }, []);
 
-  const openSettings = useCallback(() => {
+  const openSettings = useCallback((section?: "sync" | "encryption") => {
     setSettingsOpen(true);
+    setSettingsSection(section);
     setActiveTabId(SETTINGS_TAB_ID);
   }, []);
 
@@ -86,7 +88,7 @@ function App() {
         ))}
         {settingsOpen && (
           <div className={`${styles.tabPane} ${activeTabId !== SETTINGS_TAB_ID ? styles.tabPaneHidden : ""}`}>
-            <SettingsView />
+            <SettingsView initialSection={settingsSection} />
           </div>
         )}
       </div>

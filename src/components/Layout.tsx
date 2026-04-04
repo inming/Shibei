@@ -13,7 +13,7 @@ import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
   onOpenResource: (resource: Resource, highlightId?: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: "sync" | "encryption") => void;
 }
 
 export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps) {

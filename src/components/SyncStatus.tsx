@@ -5,7 +5,7 @@ interface SyncStatusProps {
   status: SyncStatusType;
   lastSyncAt: string;
   onSync: () => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: "sync" | "encryption") => void;
   encryptionEnabled?: boolean;
   encryptionUnlocked?: boolean;
   autoUnlockPending?: boolean;
@@ -32,14 +32,14 @@ export function SyncStatus({
           <span className={styles.text}>正在检查...</span>
         </span>
       ) : (
-        <button className={`${styles.btn} ${styles[status]}`} onClick={needsUnlock ? onOpenSettings : onSync}
+        <button className={`${styles.btn} ${styles[status]}`} onClick={needsUnlock ? () => onOpenSettings("encryption") : onSync}
           disabled={status === "syncing"}
           title={needsUnlock ? "需要输入加密密码" : lastSyncAt ? `最后同步: ${new Date(lastSyncAt).toLocaleString()}` : "点击同步"}>
           <span className={status === "syncing" ? styles.spinning : ""}>{icon}</span>
           <span className={styles.text}>{needsUnlock ? "需解锁" : label}</span>
         </button>
       )}
-      <button className={styles.gear} onClick={onOpenSettings} title="同步设置">⚙</button>
+      <button className={styles.gear} onClick={() => onOpenSettings()} title="同步设置">⚙</button>
     </div>
   );
 }

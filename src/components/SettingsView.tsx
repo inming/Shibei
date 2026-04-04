@@ -11,8 +11,12 @@ const NAV_ITEMS: { id: SettingsSection; label: string }[] = [
   { id: "encryption", label: "加密" },
 ];
 
-export function SettingsView() {
-  const [section, setSection] = useState<SettingsSection>("sync");
+interface SettingsViewProps {
+  initialSection?: SettingsSection;
+}
+
+export function SettingsView({ initialSection }: SettingsViewProps) {
+  const [section, setSection] = useState<SettingsSection>(initialSection ?? "sync");
   const sync = useSync();
 
   return (
