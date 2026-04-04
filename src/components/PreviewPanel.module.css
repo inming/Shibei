@@ -18,29 +18,55 @@
   word-break: break-word;
 }
 
-.metaDomain {
+.metaTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--spacing-sm);
+}
+
+.metaTable td {
+  padding: 3px 0;
   font-size: var(--font-size-sm);
+  vertical-align: top;
+}
+
+.metaLabel {
   color: var(--color-text-muted);
+  white-space: nowrap;
+  padding-right: var(--spacing-md) !important;
+  width: 1%;
 }
 
-.metaFolder {
-  font-size: var(--font-size-sm);
-  color: var(--color-accent);
-  cursor: pointer;
-  margin-top: var(--spacing-xs);
-}
-
-.metaFolder:hover {
-  text-decoration: underline;
+.metaValue {
+  color: var(--color-text-primary);
+  word-break: break-word;
 }
 
 .metaUrl {
-  font-size: 11px;
   color: var(--color-text-muted);
-  margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: block;
+  max-width: 300px;
+}
+
+.breadcrumb {
+  display: inline;
+}
+
+.breadcrumbSep {
+  color: var(--color-text-muted);
+  margin: 0 2px;
+}
+
+.breadcrumbItem {
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.breadcrumbItem:hover {
+  text-decoration: underline;
 }
 
 .tagRow {

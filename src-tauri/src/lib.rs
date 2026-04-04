@@ -85,6 +85,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::cmd_list_folders,
             commands::cmd_get_folder,
+            commands::cmd_get_folder_path,
             commands::cmd_create_folder,
             commands::cmd_rename_folder,
             commands::cmd_delete_folder,

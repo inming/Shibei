@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { Resource, Tag } from "@/types";
+import type { Resource, Tag, Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 import { useAnnotations } from "@/hooks/useAnnotations";
@@ -18,7 +18,7 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavi
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [folderName, setFolderName] = useState<string>("");
+  const [folderPath, setFolderPath] = useState<Folder[]>([]);
 
   useEffect(() => {
     setResource(initialResource);
@@ -29,7 +29,7 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavi
   }, [resource.id]);
 
   useEffect(() => {
-    cmd.getFolder(resource.folder_id).then((f) => setFolderName(f.name)).catch(() => setFolderName(""));
+    cmd.getFolderPath(resource.folder_id).then(setFolderPath).catch(() => setFolderPath([]));
   }, [resource.folder_id]);
 
   useEffect(() => {
@@ -43,10 +43,10 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavi
     const u3 = listen(DataEvents.SYNC_COMPLETED, () => {
       cmd.getResource(resource.id).then(setResource).catch(() => {});
       cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
-      cmd.getFolder(resource.folder_id).then((f) => setFolderName(f.name)).catch(() => setFolderName(""));
+      cmd.getFolderPath(resource.folder_id).then(setFolderPath).catch(() => setFolderPath([]));
     });
     const u4 = listen(DataEvents.FOLDER_CHANGED, () => {
-      cmd.getFolder(resource.folder_id).then((f) => setFolderName(f.name)).catch(() => setFolderName(""));
+      cmd.getFolderPath(resource.folder_id).then(setFolderPath).catch(() => setFolderPath([]));
     });
     return () => {
       u1.then((f) => f());
@@ -65,30 +65,58 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavi
       {/* Meta section */}
       <div className={styles.metaSection}>
         <div className={styles.metaTitle}>{resource.title}</div>
-        <div className={styles.metaDomain}>
-          {domain} · {new Date(resource.created_at).toLocaleDateString()}
-        </div>
-        {folderName && (
-          <div
-            className={styles.metaFolder}
-            onClick={() => onNavigateToFolder?.(resource.folder_id)}
-          >
-            📁 {folderName}
-          </div>
-        )}
-        <div className={styles.metaUrl} title={resource.url}>
-          {resource.url}
-        </div>
-        {tags.length > 0 && (
-          <div className={styles.tagRow}>
-            {tags.map((tag) => (
-              <span key={tag.id} className={styles.tagBadge}>
-                <span className={styles.tagDot} style={{ backgroundColor: tag.color }} />
-                {tag.name}
-              </span>
-            ))}
-          </div>
-        )}
+
+        <table className={styles.metaTable}>
+          <tbody>
+            <tr>
+              <td className={styles.metaLabel}>网址</td>
+              <td className={styles.metaValue}>
+                <span className={styles.metaUrl} title={resource.url}>{domain}</span>
+              </td>
+            </tr>
+            <tr>
+              <td className={styles.metaLabel}>收藏时间</td>
+              <td className={styles.metaValue}>
+                {new Date(resource.created_at).toLocaleString()}
+              </td>
+            </tr>
+            {folderPath.length > 0 && (
+              <tr>
+                <td className={styles.metaLabel}>文件夹</td>
+                <td className={styles.metaValue}>
+                  <span className={styles.breadcrumb}>
+                    {folderPath.map((f, i) => (
+                      <span key={f.id}>
+                        {i > 0 && <span className={styles.breadcrumbSep}>/</span>}
+                        <span
+                          className={styles.breadcrumbItem}
+                          onClick={() => onNavigateToFolder?.(f.id)}
+                        >
+                          {f.name}
+                        </span>
+                      </span>
+                    ))}
+                  </span>
+                </td>
+              </tr>
+            )}
+            {tags.length > 0 && (
+              <tr>
+                <td className={styles.metaLabel}>标签</td>
+                <td className={styles.metaValue}>
+                  <div className={styles.tagRow}>
+                    {tags.map((tag) => (
+                      <span key={tag.id} className={styles.tagBadge}>
+                        <span className={styles.tagDot} style={{ backgroundColor: tag.color }} />
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <hr className={styles.divider} />

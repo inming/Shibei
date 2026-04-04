@@ -147,6 +147,28 @@ pub fn delete_folder(
     Ok(resource_ids)
 }
 
+/// Return the folder path from root to the given folder.
+/// Returns folders in order: [root-child, ..., parent, folder].
+/// Excludes the __root__ pseudo-folder.
+pub fn get_folder_path(conn: &Connection, folder_id: &str) -> Result<Vec<Folder>, DbError> {
+    let mut path = Vec::new();
+    let mut current_id = folder_id.to_string();
+
+    // Walk up the tree collecting ancestors
+    loop {
+        if current_id == "__root__" {
+            break;
+        }
+        let folder = get_folder(conn, &current_id)?;
+        let parent = folder.parent_id.clone();
+        path.push(folder);
+        current_id = parent;
+    }
+
+    path.reverse(); // Now [root-child, ..., parent, folder]
+    Ok(path)
+}
+
 /// Read a single folder by id.
 pub fn get_folder(conn: &Connection, id: &str) -> Result<Folder, DbError> {
     conn.query_row(
@@ -400,6 +422,33 @@ pub fn purge_folder(conn: &Connection, id: &str) -> Result<Vec<String>, DbError>
     }
     conn.execute("DELETE FROM resources WHERE folder_id = ?1", params![id])?;
     conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?;
+
+    Ok(resource_ids)
+}
+
+/// Permanently delete all soft-deleted folders and the resources inside them.
+/// Returns the list of resource IDs that were purged (for filesystem cleanup).
+pub fn purge_all_deleted_folders(conn: &Connection) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT r.id FROM resources r
+         JOIN folders f ON r.folder_id = f.id
+         WHERE f.deleted_at IS NOT NULL",
+    )?;
+    let resource_ids: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for rid in &resource_ids {
+        conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![rid])?;
+        conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![rid])?;
+        conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![rid])?;
+    }
+    conn.execute(
+        "DELETE FROM resources WHERE folder_id IN (SELECT id FROM folders WHERE deleted_at IS NOT NULL)",
+        [],
+    )?;
+    conn.execute("DELETE FROM folders WHERE deleted_at IS NOT NULL", [])?;
 
     Ok(resource_ids)
 }

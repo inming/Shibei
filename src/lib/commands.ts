@@ -39,6 +39,10 @@ export function getFolder(id: string): Promise<Folder> {
   return invoke("cmd_get_folder", { id });
 }
 
+export function getFolderPath(folderId: string): Promise<Folder[]> {
+  return invoke("cmd_get_folder_path", { folderId });
+}
+
 // ── Resources ──
 
 export function listResources(

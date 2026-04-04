@@ -129,6 +129,15 @@ pub async fn cmd_get_folder(
 }
 
 #[tauri::command]
+pub async fn cmd_get_folder_path(
+    state: tauri::State<'_, Arc<AppState>>,
+    folder_id: String,
+) -> Result<Vec<folders::Folder>, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    folders::get_folder_path(&conn, &folder_id).map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn cmd_reorder_folder(
     state: tauri::State<'_, Arc<AppState>>,
     app: tauri::AppHandle,
