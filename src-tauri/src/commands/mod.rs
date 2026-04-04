@@ -552,6 +552,9 @@ pub async fn cmd_setup_encryption(
     app: tauri::AppHandle,
     password: String,
 ) -> Result<(), CommandError> {
+    // Clear any stale keychain entry (old MK is now invalid)
+    let _ = crate::sync::os_keystore::delete_master_key();
+
     use crate::sync::backend::SyncBackend;
     use crate::sync::keyring::Keyring;
 
@@ -623,19 +626,33 @@ pub async fn cmd_unlock_encryption(
         other => CommandError { message: format!("解锁失败: {}", other) },
     })?;
 
-    encryption_state.set_key(mk);
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+
+    // Only reset sync progress on first unlock (new device joining)
+    let is_first_unlock = !crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
+    // If remember_key is enabled, save MK to keychain (before set_key consumes mk)
+    if crate::sync::sync_state::get(&conn, "config:remember_encryption_key")?
+        .map(|v| v == "true")
+        .unwrap_or(false)
+    {
+        let _ = crate::sync::os_keystore::save_master_key(&mk);
+    }
+
+    encryption_state.set_key(mk);
     crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
 
-    // Clear local sync progress so next sync treats this as a new device,
-    // triggering Phase 1.5 (full snapshot import) + incremental replay.
-    conn.execute("UPDATE sync_log SET uploaded = 0", [])
-        .map_err(|e| CommandError { message: e.to_string() })?;
-    let remote_keys = crate::sync::sync_state::list_by_prefix(&conn, "remote:")?;
-    for (key, _) in &remote_keys {
-        crate::sync::sync_state::delete(&conn, key)?;
+    if is_first_unlock {
+        conn.execute("UPDATE sync_log SET uploaded = 0", [])
+            .map_err(|e| CommandError { message: e.to_string() })?;
+        let remote_keys = crate::sync::sync_state::list_by_prefix(&conn, "remote:")?;
+        for (key, _) in &remote_keys {
+            crate::sync::sync_state::delete(&conn, key)?;
+        }
+        crate::sync::sync_state::delete(&conn, "last_sync_at")?;
     }
-    crate::sync::sync_state::delete(&conn, "last_sync_at")?;
 
     let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));
     Ok(())
@@ -685,10 +702,18 @@ pub async fn cmd_get_encryption_status(
         .map(|v| v == "true")
         .unwrap_or(false);
     let unlocked = encryption_state.is_unlocked();
+    let remember_key = if enabled {
+        crate::sync::sync_state::get(&conn, "config:remember_encryption_key")?
+            .map(|v| v == "true")
+            .unwrap_or(false)
+    } else {
+        false
+    };
 
     Ok(serde_json::json!({
         "enabled": enabled,
         "unlocked": unlocked,
+        "remember_key": remember_key,
     }))
 }
 
