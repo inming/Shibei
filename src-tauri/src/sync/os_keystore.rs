@@ -70,6 +70,7 @@ mod tests {
     // On CI without a keychain, they will be ignored.
 
     #[test]
+    #[ignore] // Requires interactive macOS Keychain access; run manually with --ignored
     fn test_save_load_delete_roundtrip() {
         // Clean up first in case a previous test run left state
         let _ = delete_master_key();
