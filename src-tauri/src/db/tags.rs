@@ -392,6 +392,17 @@ mod tests {
     }
 
     #[test]
+    fn test_create_tag_after_delete() {
+        let conn = test_db();
+        let tag = create_tag(&conn, "rust", "#FF5733", None).unwrap();
+        delete_tag(&conn, &tag.id, None).unwrap();
+        // Creating a tag with the same name after deletion should succeed
+        let tag2 = create_tag(&conn, "rust", "#000000", None).unwrap();
+        assert_ne!(tag.id, tag2.id);
+        assert_eq!(tag2.name, "rust");
+    }
+
+    #[test]
     fn test_delete_tag_removes_associations() {
         let conn = test_db();
         let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
