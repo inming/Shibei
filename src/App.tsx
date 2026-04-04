@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster } from "react-hot-toast";
 import type { Resource } from "@/types";
-import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
+import { DataEvents, type ResourceChangedPayload, type ConfigChangedPayload } from "@/lib/events";
 import { TabBar, type TabItem } from "@/components/TabBar";
 import { LibraryView } from "@/components/Layout";
 import { ReaderView } from "@/components/ReaderView";
@@ -129,7 +129,7 @@ function App() {
 
   // Listen for config changes (user enables/disables lock in settings)
   useEffect(() => {
-    const unlisten = listen<{ scope: string }>("data:config-changed", async (event) => {
+    const unlisten = listen<ConfigChangedPayload>(DataEvents.CONFIG_CHANGED, async (event) => {
       if (event.payload.scope === "lock_screen") {
         try {
           const status = await cmd.getLockStatus();

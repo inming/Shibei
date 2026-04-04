@@ -108,7 +108,7 @@ export function LockScreenPage() {
 
       {!enabled ? (
         <div>
-          <p className={styles.hint} style={{ marginBottom: 16 }}>
+          <p className={`${styles.hint} ${lockStyles.hintSpaced}`}>
             启用锁屏后，应用在一段时间无操作后会自动锁定，需要输入 PIN 码解锁。
           </p>
           <button

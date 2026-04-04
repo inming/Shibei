@@ -46,7 +46,7 @@ export interface AnnotationChangedPayload {
 }
 
 export interface ConfigChangedPayload {
-  scope: "sync" | "encryption";
+  scope: "sync" | "encryption" | "lock_screen";
 }
 
 export interface SyncFailedPayload {
