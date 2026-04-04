@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use rand::rngs::OsRng;
 use serde::Serialize;
 use tauri::Emitter;
 
@@ -1110,6 +1113,113 @@ pub async fn cmd_purge_all_deleted(
 
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted" }));
     let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "deleted" }));
+
+    Ok(())
+}
+
+// ── Lock Screen ──
+
+const KEYRING_SERVICE: &str = "com.shibei.app";
+const KEYRING_LOCK_PIN: &str = "lock-pin-hash";
+const KEYRING_LOCK_TIMEOUT: &str = "lock-timeout-minutes";
+
+#[tauri::command]
+pub async fn cmd_setup_lock_pin(pin: String) -> Result<(), CommandError> {
+    if pin.len() != 4 || !pin.chars().all(|c| c.is_ascii_digit()) {
+        return Err(CommandError { message: "PIN 必须为 4 位数字".to_string() });
+    }
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let hash = argon2
+        .hash_password(pin.as_bytes(), &salt)
+        .map_err(|e| CommandError { message: format!("hash error: {}", e) })?
+        .to_string();
+
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_PIN)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    entry.set_password(&hash)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+
+    // Set default timeout (10 minutes)
+    let timeout_entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_TIMEOUT)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    timeout_entry.set_password("10")
+        .map_err(|e| CommandError { message: e.to_string() })?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_verify_lock_pin(pin: String) -> Result<bool, CommandError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_PIN)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    let hash_str = match entry.get_password() {
+        Ok(h) => h,
+        Err(keyring::Error::NoEntry) => return Err(CommandError { message: "未设置 PIN".to_string() }),
+        Err(e) => return Err(CommandError { message: e.to_string() }),
+    };
+    let parsed_hash = PasswordHash::new(&hash_str)
+        .map_err(|e| CommandError { message: format!("invalid hash: {}", e) })?;
+    Ok(Argon2::default().verify_password(pin.as_bytes(), &parsed_hash).is_ok())
+}
+
+#[tauri::command]
+pub async fn cmd_get_lock_status() -> Result<serde_json::Value, CommandError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_PIN)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    let enabled = match entry.get_password() {
+        Ok(_) => true,
+        Err(keyring::Error::NoEntry) => false,
+        Err(e) => return Err(CommandError { message: e.to_string() }),
+    };
+
+    let timeout_minutes: u32 = if enabled {
+        let timeout_entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_TIMEOUT)
+            .map_err(|e| CommandError { message: e.to_string() })?;
+        match timeout_entry.get_password() {
+            Ok(v) => v.parse().unwrap_or(10),
+            Err(_) => 10,
+        }
+    } else {
+        10
+    };
+
+    Ok(serde_json::json!({
+        "enabled": enabled,
+        "timeout_minutes": timeout_minutes,
+    }))
+}
+
+#[tauri::command]
+pub async fn cmd_set_lock_timeout(minutes: u32) -> Result<(), CommandError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_TIMEOUT)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    entry.set_password(&minutes.to_string())
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_disable_lock_pin(pin: String) -> Result<(), CommandError> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_PIN)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    let hash_str = match entry.get_password() {
+        Ok(h) => h,
+        Err(keyring::Error::NoEntry) => return Ok(()),
+        Err(e) => return Err(CommandError { message: e.to_string() }),
+    };
+    let parsed_hash = PasswordHash::new(&hash_str)
+        .map_err(|e| CommandError { message: format!("invalid hash: {}", e) })?;
+    if Argon2::default().verify_password(pin.as_bytes(), &parsed_hash).is_err() {
+        return Err(CommandError { message: "PIN 不正确".to_string() });
+    }
+
+    entry.delete_credential()
+        .map_err(|e| CommandError { message: e.to_string() })?;
+
+    if let Ok(timeout_entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_LOCK_TIMEOUT) {
+        let _ = timeout_entry.delete_credential();
+    }
 
     Ok(())
 }

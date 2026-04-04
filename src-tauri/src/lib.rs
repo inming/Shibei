@@ -137,6 +137,11 @@ pub fn run() {
             commands::cmd_purge_resource,
             commands::cmd_purge_folder,
             commands::cmd_purge_all_deleted,
+            commands::cmd_setup_lock_pin,
+            commands::cmd_verify_lock_pin,
+            commands::cmd_get_lock_status,
+            commands::cmd_set_lock_timeout,
+            commands::cmd_disable_lock_pin,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();
