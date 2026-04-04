@@ -5,13 +5,12 @@
 }
 
 .sidebar {
-  width: var(--sidebar-width);
   min-width: 160px;
-  border-right: 1px solid var(--color-border);
   background: var(--color-bg-secondary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .listPanel {

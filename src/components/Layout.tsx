@@ -24,9 +24,27 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [listPanelWidth, setListPanelWidth] = useState(340);
   const sync = useSync();
+
+  // Layout constants — see CLAUDE.md "三栏布局约束"
+  const SIDEBAR_MIN = 160;
+  const SIDEBAR_STORAGE_KEY = "shibei-sidebar-width";
+  const LIST_MIN = 240;
+  const PREVIEW_MIN = 280;
+  const HANDLE_WIDTH = 4;
+
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    return saved ? Math.max(SIDEBAR_MIN, parseInt(saved, 10)) : 200;
+  });
+  const [listPanelWidth, setListPanelWidth] = useState(340);
+
+  // Refs to track current values inside event handlers (avoids stale closures)
+  const sidebarWidthRef = useRef(sidebarWidth);
+  useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
+
   const dragging = useRef(false);
+  const sidebarDragging = useRef(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -149,37 +167,35 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
     layoutRef.current?.classList.add(styles.resizing);
   }, []);
 
-  // Layout constants — see CLAUDE.md "三栏布局约束"
-  const LIST_MIN = 240;
-  const PREVIEW_MIN = 280;
-  const HANDLE_WIDTH = 4;
-
-  function getSidebarWidth() {
-    return document.querySelector(`.${styles.sidebar}`)?.getBoundingClientRect().width ?? 200;
-  }
-
-  function clampListWidth(width: number) {
-    const maxWidth = window.innerWidth - getSidebarWidth() - HANDLE_WIDTH - PREVIEW_MIN;
-    return Math.max(LIST_MIN, Math.min(maxWidth, width));
-  }
-
-  // Clamp listPanelWidth when window resizes
-  useEffect(() => {
-    function onResize() {
-      setListPanelWidth((prev) => clampListWidth(prev));
-    }
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+  const handleSidebarMouseDown = useCallback(() => {
+    sidebarDragging.current = true;
+    layoutRef.current?.classList.add(styles.resizing);
   }, []);
 
+  // Mouse move/up handlers for both resize handles
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
+      if (sidebarDragging.current) {
+        const maxWidth = window.innerWidth * 0.3;
+        const newWidth = Math.max(SIDEBAR_MIN, Math.min(maxWidth, e.clientX));
+        setSidebarWidth(newWidth);
+        sidebarWidthRef.current = newWidth;
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(Math.round(newWidth)));
+        return;
+      }
       if (!dragging.current) return;
-      const newWidth = e.clientX - getSidebarWidth();
-      setListPanelWidth(clampListWidth(newWidth));
+      const sw = sidebarWidthRef.current;
+      const maxWidth = window.innerWidth - sw - HANDLE_WIDTH * 2 - PREVIEW_MIN;
+      const newWidth = Math.max(LIST_MIN, Math.min(maxWidth, e.clientX - sw - HANDLE_WIDTH));
+      setListPanelWidth(newWidth);
     }
 
     function onMouseUp() {
+      if (sidebarDragging.current) {
+        sidebarDragging.current = false;
+        layoutRef.current?.classList.remove(styles.resizing);
+        return;
+      }
       if (!dragging.current) return;
       dragging.current = false;
       layoutRef.current?.classList.remove(styles.resizing);
@@ -191,6 +207,20 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
     };
+  }, []);
+
+  // Clamp widths when window resizes
+  useEffect(() => {
+    function onResize() {
+      setSidebarWidth((prev) => Math.min(prev, window.innerWidth * 0.3));
+      setListPanelWidth((prev) => {
+        const sw = sidebarWidthRef.current;
+        const maxWidth = window.innerWidth - sw - HANDLE_WIDTH * 2 - PREVIEW_MIN;
+        return Math.max(LIST_MIN, Math.min(maxWidth, prev));
+      });
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   const handleToggleTag = useCallback((tagId: string) => {
@@ -216,7 +246,7 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
     >
       <div ref={layoutRef} className={styles.layout}>
         {/* Col 1: Folder tree + Tags */}
-        <div className={styles.sidebar}>
+        <div className={styles.sidebar} style={{ width: sidebarWidth }}>
           <FolderTree
             selectedFolderId={selectedFolderId}
             onSelectFolder={setSelectedFolderId}
@@ -233,6 +263,9 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
           />
         </div>
 
+        {/* Sidebar resize handle */}
+        <div className={styles.resizeHandle} onMouseDown={handleSidebarMouseDown} />
+
         {/* Col 2: Resource list */}
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>
           <ResourceList
@@ -248,7 +281,7 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
           />
         </div>
 
-        {/* Resize handle */}
+        {/* List↔Preview resize handle */}
         <div className={styles.resizeHandle} onMouseDown={handleMouseDown} />
 
         {/* Col 3: Preview or placeholder */}
