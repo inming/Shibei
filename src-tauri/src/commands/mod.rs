@@ -191,12 +191,8 @@ pub async fn cmd_delete_resource(
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let folder_id = resources::get_resource(&conn, &id)?.folder_id;
     let sync_ctx = state.sync_context();
-    let rid = resources::delete_resource(&conn, &id, sync_ctx.as_ref())?;
-    drop(conn);
-    let dir = storage::resource_dir(&state.base_dir, &rid);
-    if let Err(e) = std::fs::remove_dir_all(&dir) {
-        eprintln!("[shibei] Failed to clean up resource directory {:?}: {}", dir, e);
-    }
+    resources::delete_resource(&conn, &id, sync_ctx.as_ref())?;
+    // Snapshot files are kept until purge, so restore can still access them.
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": id, "folder_id": folder_id }));
     Ok(())
 }
