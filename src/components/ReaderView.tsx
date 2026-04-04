@@ -37,6 +37,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [snapshotStatus, setSnapshotStatus] = useState<string>("synced");
   const [downloading, setDownloading] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
+  const [iframeLoading, setIframeLoading] = useState(true);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -46,7 +47,13 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   // Clear selection toolbar when resource changes (e.g. switching tabs)
   useEffect(() => {
     setSelection(null);
+    setIframeLoading(true);
   }, [resource.id]);
+
+  // Reset loading when iframe key changes (e.g. after download)
+  useEffect(() => {
+    setIframeLoading(true);
+  }, [iframeKey]);
 
   // Check snapshot status and auto-download if pending
   useEffect(() => {
@@ -337,13 +344,23 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
             <p>正在下载快照...</p>
           </div>
         ) : (
-          <iframe
-            key={iframeKey}
-            ref={iframeRef}
-            className={styles.iframe}
-            src={`${PROTOCOL_BASE}/resource/${resource.id}`}
-            title={resource.title}
-          />
+          <>
+            {iframeLoading && (
+              <div className={styles.loadingOverlay}>
+                <div className={styles.spinner} />
+                <p>加载中...</p>
+              </div>
+            )}
+            <iframe
+              key={iframeKey}
+              ref={iframeRef}
+              className={styles.iframe}
+              style={iframeLoading ? { visibility: "hidden", position: "absolute" } : undefined}
+              src={`${PROTOCOL_BASE}/resource/${resource.id}`}
+              title={resource.title}
+              onLoad={() => setIframeLoading(false)}
+            />
+          </>
         )}
       </div>
 
