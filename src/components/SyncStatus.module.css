@@ -1,13 +1,71 @@
-.container { display: flex; align-items: center; gap: var(--spacing-xs); }
-.btn { display: flex; align-items: center; gap: var(--spacing-xs); padding: 2px var(--spacing-sm); border-radius: 4px; font-size: var(--font-size-sm); color: var(--color-text-secondary); cursor: pointer; }
-.btn:hover { background: var(--color-bg-hover); }
-.text { font-size: 11px; }
+.container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  border-top: 1px solid var(--color-border);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.syncBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+}
+
+.syncBtn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.syncBtn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .idle { color: var(--color-text-muted); }
 .success { color: #16a34a; }
 .error { color: var(--color-danger); }
 .syncing { color: var(--color-accent); }
-.spinning { display: inline-block; animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.gear { font-size: var(--font-size-sm); color: var(--color-text-muted); cursor: pointer; padding: 2px; }
-.gear:hover { color: var(--color-text-primary); }
-.lock { font-size: 12px; margin-right: 2px; }
+
+.spinning {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.gear {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+}
+
+.gear:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.lock {
+  font-size: 14px;
+  flex-shrink: 0;
+}
