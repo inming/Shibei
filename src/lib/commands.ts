@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus } from "@/types";
+import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult } from "@/types";
 
 // ── Folders ──
 
@@ -192,6 +192,18 @@ export function changeEncryptionPassword(oldPassword: string, newPassword: strin
 
 export function getEncryptionStatus(): Promise<EncryptionStatus> {
   return invoke("cmd_get_encryption_status");
+}
+
+export function autoUnlockEncryption(): Promise<AutoUnlockResult> {
+  return invoke("cmd_auto_unlock");
+}
+
+export function setRememberKey(remember: boolean): Promise<void> {
+  return invoke("cmd_set_remember_key", { remember });
+}
+
+export function getRememberKey(): Promise<boolean> {
+  return invoke("cmd_get_remember_key");
 }
 
 // ── Debug ──

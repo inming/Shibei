@@ -74,4 +74,12 @@ export interface SyncConfig {
 export interface EncryptionStatus {
   enabled: boolean;
   unlocked: boolean;
+  remember_key: boolean;
 }
+
+export type AutoUnlockResult =
+  | "unlocked"
+  | "unlocked_unverified"
+  | "no_stored_key"
+  | "keychain_error"
+  | "key_mismatch";
