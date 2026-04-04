@@ -917,7 +917,7 @@ mod tests {
         let backend = Arc::new(MockBackend::new());
         let engine = make_engine(pool, backend, "dev-a", _dir.path().to_path_buf());
 
-        let result = engine.sync().await.unwrap();
+        let result = engine.sync(None).await.unwrap();
         match result {
             SyncResult::Success {
                 uploaded,
@@ -962,7 +962,7 @@ mod tests {
             .unwrap();
         }
 
-        let result = engine.sync().await.unwrap();
+        let result = engine.sync(None).await.unwrap();
         match result {
             SyncResult::Success { uploaded, .. } => {
                 assert_eq!(uploaded, 1);
@@ -1014,7 +1014,7 @@ mod tests {
             .unwrap();
         }
 
-        let result_a = engine_a.sync().await.unwrap();
+        let result_a = engine_a.sync(None).await.unwrap();
         match result_a {
             SyncResult::Success { uploaded, .. } => assert_eq!(uploaded, 1),
             _ => panic!("expected Success"),
@@ -1024,7 +1024,7 @@ mod tests {
         let (_dir_b, pool_b) = test_pool();
         let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
 
-        let result_b = engine_b.sync().await.unwrap();
+        let result_b = engine_b.sync(None).await.unwrap();
         match result_b {
             SyncResult::Success {
                 downloaded,
@@ -1081,7 +1081,7 @@ mod tests {
             .unwrap();
         }
 
-        engine_a.sync().await.unwrap();
+        engine_a.sync(None).await.unwrap();
 
         // Device B: create same folder locally with a NEWER HLC, then sync
         let (_dir_b, pool_b) = test_pool();
@@ -1098,7 +1098,7 @@ mod tests {
             .unwrap();
         }
 
-        engine_b.sync().await.unwrap();
+        engine_b.sync(None).await.unwrap();
 
         // Verify that Device B's local (newer) name is preserved
         {
@@ -1143,7 +1143,7 @@ mod tests {
             )
             .unwrap();
         }
-        engine_a.sync().await.unwrap();
+        engine_a.sync(None).await.unwrap();
 
         // Delete and upload
         {
@@ -1163,13 +1163,13 @@ mod tests {
             )
             .unwrap();
         }
-        engine_a.sync().await.unwrap();
+        engine_a.sync(None).await.unwrap();
 
         // Device B: sync both changes
         let (_dir_b, pool_b) = test_pool();
         let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
 
-        engine_b.sync().await.unwrap();
+        engine_b.sync(None).await.unwrap();
 
         // Verify folder is soft-deleted on Device B
         {
@@ -1248,7 +1248,7 @@ mod tests {
         let _guard = engine.lock.lock().await;
 
         // Trying to sync should return AlreadyRunning
-        let result = engine.sync().await;
+        let result = engine.sync(None).await;
         assert!(matches!(result, Err(SyncError::AlreadyRunning)));
     }
 }
