@@ -42,19 +42,40 @@
   word-break: break-word;
 }
 
-.metaUrl {
-  color: var(--color-accent);
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-  max-width: 300px;
-  cursor: pointer;
+.urlRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
 }
 
-.metaUrl:hover {
-  text-decoration: underline;
+.metaUrl {
+  color: var(--color-text-primary);
+  word-break: break-all;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  flex: 1;
+}
+
+.urlOpenBtn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 1px;
+}
+
+.urlOpenBtn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .breadcrumb {

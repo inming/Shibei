@@ -279,25 +279,27 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
       <div ref={layoutRef} className={styles.layout}>
         {/* Col 1: Folder tree + Tags */}
         <div className={styles.sidebar} style={{ width: sidebarWidth }}>
-          <FolderTree
-            selectedFolderId={selectedFolderId}
-            onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); }}
-          />
-          <button
-            className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
-            onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
-            onContextMenu={handleTrashContextMenu}
-          >
-            回收站
-          </button>
-          {trashContextMenu && (
-            <ContextMenu
-              x={trashContextMenu.x}
-              y={trashContextMenu.y}
-              items={trashMenuItems}
-              onClose={() => setTrashContextMenu(null)}
+          <div className={styles.sidebarMain}>
+            <FolderTree
+              selectedFolderId={selectedFolderId}
+              onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); }}
             />
-          )}
+            <button
+              className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
+              onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
+              onContextMenu={handleTrashContextMenu}
+            >
+              回收站
+            </button>
+            {trashContextMenu && (
+              <ContextMenu
+                x={trashContextMenu.x}
+                y={trashContextMenu.y}
+                items={trashMenuItems}
+                onClose={() => setTrashContextMenu(null)}
+              />
+            )}
+          </div>
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
           <div className={styles.sidebarBottom}>
             <SyncStatus

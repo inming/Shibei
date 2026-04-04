@@ -67,17 +67,16 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavi
             <tr>
               <td className={styles.metaLabel}>网址</td>
               <td className={styles.metaValue}>
-                <a
-                  className={styles.metaUrl}
-                  href={resource.url}
-                  title={resource.url}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    import("@tauri-apps/plugin-opener").then((mod) => mod.openUrl(resource.url));
-                  }}
-                >
-                  {resource.url}
-                </a>
+                <div className={styles.urlRow}>
+                  <span className={styles.metaUrl}>{resource.url}</span>
+                  <button
+                    className={styles.urlOpenBtn}
+                    title="在浏览器中打开"
+                    onClick={() => import("@tauri-apps/plugin-opener").then((mod) => mod.openUrl(resource.url))}
+                  >
+                    ↗
+                  </button>
+                </div>
               </td>
             </tr>
             <tr>
