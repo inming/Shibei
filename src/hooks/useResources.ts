@@ -22,7 +22,9 @@ export function useResources(
     }
     setLoading(true);
     try {
-      const list = await cmd.listResources(folderId, sortBy, sortOrder);
+      const list = folderId === "__all__"
+        ? await cmd.listAllResources(sortBy, sortOrder)
+        : await cmd.listResources(folderId, sortBy, sortOrder);
       setResources(list);
       // Fetch tags for all resources in parallel
       const tagEntries = await Promise.all(

@@ -57,6 +57,16 @@ export function listResources(
   });
 }
 
+export function listAllResources(
+  sortBy?: "created_at" | "annotated_at",
+  sortOrder?: "asc" | "desc",
+): Promise<Resource[]> {
+  return invoke("cmd_list_all_resources", {
+    sortBy: sortBy ?? "created_at",
+    sortOrder: sortOrder ?? "desc",
+  });
+}
+
 export function getResource(id: string): Promise<Resource> {
   return invoke("cmd_get_resource", { id });
 }

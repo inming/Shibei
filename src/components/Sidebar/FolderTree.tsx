@@ -11,6 +11,8 @@ import { Spinner } from "@/components/Spinner";
 import { Modal } from "@/components/Modal";
 import styles from "./FolderTree.module.css";
 
+export const ALL_RESOURCES_ID = "__all__";
+
 interface FolderTreeProps {
   selectedFolderId: string | null;
   onSelectFolder: (id: string) => void;
@@ -190,6 +192,13 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
 
   return (
     <div className={styles.section}>
+      <button
+        className={`${styles.allResources} ${selectedFolderId === ALL_RESOURCES_ID ? styles.allResourcesActive : ""}`}
+        onClick={() => onSelectFolder(ALL_RESOURCES_ID)}
+      >
+        <span className={styles.allResourcesIcon}>📋</span>
+        <span>全部资料</span>
+      </button>
       <div
         ref={setRootDropRef}
         className={`${styles.header} ${isRootOver ? styles.dropTarget : ""}`}
