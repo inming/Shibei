@@ -3,7 +3,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { listen } from "@tauri-apps/api/event";
 import { useFolders } from "@/hooks/useFolders";
 import { DataEvents } from "@/lib/events";
-import type { Folder } from "@/types";
+import { ALL_RESOURCES_ID, type Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { FolderEditDialog } from "@/components/Sidebar/FolderEditDialog";
@@ -11,7 +11,7 @@ import { Spinner } from "@/components/Spinner";
 import { Modal } from "@/components/Modal";
 import styles from "./FolderTree.module.css";
 
-export const ALL_RESOURCES_ID = "__all__";
+export { ALL_RESOURCES_ID };
 
 interface FolderTreeProps {
   selectedFolderId: string | null;

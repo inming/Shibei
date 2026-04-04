@@ -134,4 +134,30 @@ describe("useResources", () => {
 
     expect(result.current.resources).toEqual([resource1, resource2]);
   });
+
+  it("calls cmd_list_all_resources when folderId is __all__", async () => {
+    const resource1 = makeResource("r1", "folder-a");
+    const resource2 = makeResource("r2", "folder-b");
+    let calledCmd: string | undefined;
+
+    mockInvoke((cmd, _args) => {
+      if (cmd === "cmd_list_all_resources") {
+        calledCmd = cmd;
+        return [resource1, resource2];
+      }
+      if (cmd === "cmd_get_tags_for_resource") {
+        return [];
+      }
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useResources("__all__"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(calledCmd).toBe("cmd_list_all_resources");
+    expect(result.current.resources).toEqual([resource1, resource2]);
+  });
 });

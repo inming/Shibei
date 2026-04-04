@@ -654,6 +654,31 @@ mod tests {
     }
 
     #[test]
+    fn test_list_all_resources() {
+        let conn = test_db();
+        let f1 = folders::create_folder(&conn, "a", "__root__", None).unwrap();
+        let f2 = folders::create_folder(&conn, "b", "__root__", None).unwrap();
+        create_test_resource(&conn, &f1.id);
+        create_test_resource(&conn, &f2.id);
+        create_test_resource(&conn, &f1.id);
+
+        let all = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc).unwrap();
+        assert_eq!(all.len(), 3);
+
+        // Soft-deleted resources should be excluded
+        delete_resource(&conn, &all[0].id, None).unwrap();
+        let all_after = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc).unwrap();
+        assert_eq!(all_after.len(), 2);
+    }
+
+    #[test]
+    fn test_list_all_resources_empty() {
+        let conn = test_db();
+        let all = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc).unwrap();
+        assert!(all.is_empty());
+    }
+
+    #[test]
     fn test_move_resource() {
         let conn = test_db();
         let f1 = folders::create_folder(&conn, "a", "__root__", None).unwrap();

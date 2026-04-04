@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
-import type { Resource, Tag } from "@/types";
+import { ALL_RESOURCES_ID, type Resource, type Tag } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 
@@ -22,7 +22,7 @@ export function useResources(
     }
     setLoading(true);
     try {
-      const list = folderId === "__all__"
+      const list = folderId === ALL_RESOURCES_ID
         ? await cmd.listAllResources(sortBy, sortOrder)
         : await cmd.listResources(folderId, sortBy, sortOrder);
       setResources(list);

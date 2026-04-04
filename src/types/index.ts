@@ -1,3 +1,6 @@
+/** Special folder ID representing "all resources across all folders". */
+export const ALL_RESOURCES_ID = "__all__";
+
 export interface Folder {
   id: string;
   name: string;
