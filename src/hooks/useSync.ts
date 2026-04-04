@@ -15,6 +15,7 @@ export function useSync() {
   const syncingRef = useRef(false);
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionUnlocked, setEncryptionUnlocked] = useState(false);
+  const [autoUnlockPending, setAutoUnlockPending] = useState(false);
 
   // Load config on mount
   useEffect(() => {
@@ -22,9 +23,34 @@ export function useSync() {
       if (c.last_sync_at) setLastSyncAt(c.last_sync_at);
       setIntervalMinutes(c.sync_interval ?? 5);
     }).catch(() => {});
-    cmd.getEncryptionStatus().then((es) => {
+
+    cmd.getEncryptionStatus().then(async (es) => {
       setEncryptionEnabled(es.enabled);
-      setEncryptionUnlocked(es.unlocked);
+
+      if (es.enabled && !es.unlocked) {
+        setAutoUnlockPending(true);
+        try {
+          const result = await cmd.autoUnlockEncryption();
+          switch (result) {
+            case "unlocked":
+            case "unlocked_unverified":
+              setEncryptionUnlocked(true);
+              break;
+            case "keychain_error":
+              toast("系统钥匙串不可用，请手动输入密码", { icon: "ℹ️" });
+              break;
+            case "key_mismatch":
+              toast("加密密钥已变更，请重新输入密码", { icon: "⚠️" });
+              break;
+            case "no_stored_key":
+              break;
+          }
+        } finally {
+          setAutoUnlockPending(false);
+        }
+      } else {
+        setEncryptionUnlocked(es.unlocked);
+      }
     }).catch(() => {});
   }, []);
 
@@ -92,5 +118,5 @@ export function useSync() {
     }).catch(() => {});
   }, []);
 
-  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync, encryptionEnabled, encryptionUnlocked, refreshEncryptionStatus };
+  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync, encryptionEnabled, encryptionUnlocked, autoUnlockPending, refreshEncryptionStatus };
 }
