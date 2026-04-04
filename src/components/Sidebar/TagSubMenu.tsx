@@ -14,14 +14,22 @@ export function TagSubMenu({ resourceIds, onClose, onTagsChanged }: TagSubMenuPr
   const { tags } = useTags();
   const [assignedTagIds, setAssignedTagIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    // For single resource, show which tags are assigned
+  const loadAssigned = useCallback(async () => {
     if (resourceIds.length === 1) {
-      cmd.getTagsForResource(resourceIds[0]).then((resourceTags) => {
+      try {
+        const resourceTags = await cmd.getTagsForResource(resourceIds[0]);
         setAssignedTagIds(new Set(resourceTags.map((t) => t.id)));
-      });
+      } catch {
+        setAssignedTagIds(new Set());
+      }
+    } else {
+      setAssignedTagIds(new Set());
     }
   }, [resourceIds]);
+
+  useEffect(() => {
+    loadAssigned();
+  }, [loadAssigned]);
 
   const handleToggle = useCallback(async (tagId: string) => {
     try {
