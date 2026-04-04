@@ -444,6 +444,25 @@ pub fn purge_resource(conn: &Connection, id: &str) -> Result<(), DbError> {
     Ok(())
 }
 
+/// Permanently delete all soft-deleted resources and their annotations.
+/// Returns the list of resource IDs that were purged (for filesystem cleanup).
+pub fn purge_all_deleted_resources(conn: &Connection) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare("SELECT id FROM resources WHERE deleted_at IS NOT NULL")?;
+    let ids: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for rid in &ids {
+        conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![rid])?;
+        conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![rid])?;
+        conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![rid])?;
+    }
+    conn.execute("DELETE FROM resources WHERE deleted_at IS NOT NULL", [])?;
+
+    Ok(ids)
+}
+
 pub fn count_by_folder(conn: &Connection) -> Result<std::collections::HashMap<String, i64>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT folder_id, COUNT(*) FROM resources WHERE deleted_at IS NULL GROUP BY folder_id",

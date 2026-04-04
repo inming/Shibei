@@ -1072,6 +1072,33 @@ pub async fn cmd_purge_folder(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn cmd_purge_all_deleted(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<(), CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+
+    // Purge deleted folders (and resources inside them) first
+    let mut all_resource_ids = folders::purge_all_deleted_folders(&conn)?;
+    // Then purge standalone soft-deleted resources
+    let resource_ids = resources::purge_all_deleted_resources(&conn)?;
+    all_resource_ids.extend(resource_ids);
+
+    drop(conn);
+
+    // Cleanup filesystem (best-effort)
+    for rid in &all_resource_ids {
+        let dir = storage::resource_dir(&state.base_dir, rid);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted" }));
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "deleted" }));
+
+    Ok(())
+}
+
 // ── Debug ──
 
 #[tauri::command]

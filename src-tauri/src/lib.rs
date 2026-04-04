@@ -135,6 +135,7 @@ pub fn run() {
             commands::cmd_restore_folder,
             commands::cmd_purge_resource,
             commands::cmd_purge_folder,
+            commands::cmd_purge_all_deleted,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

@@ -240,6 +240,10 @@ export function purgeFolder(id: string): Promise<void> {
   return invoke("cmd_purge_folder", { id });
 }
 
+export function purgeAllDeleted(): Promise<void> {
+  return invoke("cmd_purge_all_deleted");
+}
+
 // ── Debug ──
 
 const DEBUG_ENABLED = import.meta.env.VITE_DEBUG === "1";

@@ -10,6 +10,8 @@ import { ResourceList } from "@/components/Sidebar/ResourceList";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { SyncStatus } from "@/components/SyncStatus";
 import { TrashList } from "@/components/TrashList";
+import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import { Modal } from "@/components/Modal";
 import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
@@ -26,6 +28,8 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [showTrash, setShowTrash] = useState(false);
+  const [trashContextMenu, setTrashContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showClearTrashConfirm, setShowClearTrashConfirm] = useState(false);
   const sync = useSync();
 
   // Layout constants — see CLAUDE.md "三栏布局约束"
@@ -237,6 +241,32 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
     });
   }, []);
 
+  const handleTrashContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setTrashContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleClearTrash = useCallback(async () => {
+    setShowClearTrashConfirm(false);
+    try {
+      await cmd.purgeAllDeleted();
+      toast.success("回收站已清空");
+    } catch {
+      toast.error("清空回收站失败");
+    }
+  }, []);
+
+  const trashMenuItems: MenuItem[] = [
+    {
+      label: "清空回收站",
+      danger: true,
+      onClick: () => {
+        setTrashContextMenu(null);
+        setShowClearTrashConfirm(true);
+      },
+    },
+  ];
+
   return (
     <DndContext
       sensors={sensors}
@@ -258,9 +288,18 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
             <button
               className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
               onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
+              onContextMenu={handleTrashContextMenu}
             >
               回收站
             </button>
+            {trashContextMenu && (
+              <ContextMenu
+                x={trashContextMenu.x}
+                y={trashContextMenu.y}
+                items={trashMenuItems}
+                onClose={() => setTrashContextMenu(null)}
+              />
+            )}
             <SyncStatus
               status={sync.status}
               lastSyncAt={sync.lastSyncAt}
@@ -324,6 +363,27 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
           </div>
         )}
       </DragOverlay>
+      {showClearTrashConfirm && (
+        <Modal title="确认清空回收站" onClose={() => setShowClearTrashConfirm(false)}>
+          <p style={{ marginBottom: "16px" }}>
+            确定要清空回收站吗？此操作将彻底删除所有已删除的资料和文件夹，无法撤销。
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+            <button
+              style={{ padding: "6px 16px", borderRadius: "4px", border: "1px solid var(--color-border)", background: "transparent", cursor: "pointer" }}
+              onClick={() => setShowClearTrashConfirm(false)}
+            >
+              取消
+            </button>
+            <button
+              style={{ padding: "6px 16px", borderRadius: "4px", border: "none", background: "var(--color-danger)", color: "white", cursor: "pointer" }}
+              onClick={handleClearTrash}
+            >
+              清空
+            </button>
+          </div>
+        </Modal>
+      )}
     </DndContext>
   );
 }
