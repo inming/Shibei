@@ -23,6 +23,26 @@
   color: var(--color-text-muted);
 }
 
+.metaFolder {
+  font-size: var(--font-size-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+  margin-top: var(--spacing-xs);
+}
+
+.metaFolder:hover {
+  text-decoration: underline;
+}
+
+.metaUrl {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tagRow {
   display: flex;
   flex-wrap: wrap;

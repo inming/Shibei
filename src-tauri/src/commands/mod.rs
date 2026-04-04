@@ -120,6 +120,15 @@ pub async fn cmd_move_folder(
 }
 
 #[tauri::command]
+pub async fn cmd_get_folder(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<folders::Folder, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    folders::get_folder(&conn, &id).map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn cmd_reorder_folder(
     state: tauri::State<'_, Arc<AppState>>,
     app: tauri::AppHandle,

@@ -258,6 +258,7 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
               key={selectedResource.id}
               resource={selectedResource}
               onOpenInReader={(highlightId) => onOpenResource(selectedResource, highlightId)}
+              onNavigateToFolder={(folderId) => setSelectedFolderId(folderId)}
             />
           ) : (
             <div className={styles.mainPlaceholder}>

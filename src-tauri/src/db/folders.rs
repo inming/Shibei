@@ -148,7 +148,7 @@ pub fn delete_folder(
 }
 
 /// Read a single folder by id.
-fn get_folder(conn: &Connection, id: &str) -> Result<Folder, DbError> {
+pub fn get_folder(conn: &Connection, id: &str) -> Result<Folder, DbError> {
     conn.query_row(
         "SELECT id, name, parent_id, sort_order, created_at, updated_at
          FROM folders WHERE id = ?1 AND deleted_at IS NULL",

@@ -10,13 +10,15 @@ import styles from "./PreviewPanel.module.css";
 interface PreviewPanelProps {
   resource: Resource;
   onOpenInReader: (highlightId?: string) => void;
+  onNavigateToFolder?: (folderId: string) => void;
 }
 
-export function PreviewPanel({ resource: initialResource, onOpenInReader }: PreviewPanelProps) {
+export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavigateToFolder }: PreviewPanelProps) {
   const [resource, setResource] = useState<Resource>(initialResource);
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [folderName, setFolderName] = useState<string>("");
 
   useEffect(() => {
     setResource(initialResource);
@@ -25,6 +27,10 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader }: Prev
   useEffect(() => {
     cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
   }, [resource.id]);
+
+  useEffect(() => {
+    cmd.getFolder(resource.folder_id).then((f) => setFolderName(f.name)).catch(() => setFolderName(""));
+  }, [resource.folder_id]);
 
   useEffect(() => {
     const u1 = listen(DataEvents.RESOURCE_CHANGED, () => {
@@ -37,13 +43,18 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader }: Prev
     const u3 = listen(DataEvents.SYNC_COMPLETED, () => {
       cmd.getResource(resource.id).then(setResource).catch(() => {});
       cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
+      cmd.getFolder(resource.folder_id).then((f) => setFolderName(f.name)).catch(() => setFolderName(""));
+    });
+    const u4 = listen(DataEvents.FOLDER_CHANGED, () => {
+      cmd.getFolder(resource.folder_id).then((f) => setFolderName(f.name)).catch(() => setFolderName(""));
     });
     return () => {
       u1.then((f) => f());
       u2.then((f) => f());
       u3.then((f) => f());
+      u4.then((f) => f());
     };
-  }, [resource.id]);
+  }, [resource.id, resource.folder_id]);
 
   const domain = resource.domain ?? (() => {
     try { return new URL(resource.url).hostname; } catch { return resource.url; }
@@ -56,6 +67,17 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader }: Prev
         <div className={styles.metaTitle}>{resource.title}</div>
         <div className={styles.metaDomain}>
           {domain} · {new Date(resource.created_at).toLocaleDateString()}
+        </div>
+        {folderName && (
+          <div
+            className={styles.metaFolder}
+            onClick={() => onNavigateToFolder?.(resource.folder_id)}
+          >
+            📁 {folderName}
+          </div>
+        )}
+        <div className={styles.metaUrl} title={resource.url}>
+          {resource.url}
         </div>
         {tags.length > 0 && (
           <div className={styles.tagRow}>

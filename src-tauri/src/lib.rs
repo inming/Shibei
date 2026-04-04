@@ -84,6 +84,7 @@ pub fn run() {
         .manage(Arc::new(sync::EncryptionState::new()))
         .invoke_handler(tauri::generate_handler![
             commands::cmd_list_folders,
+            commands::cmd_get_folder,
             commands::cmd_create_folder,
             commands::cmd_rename_folder,
             commands::cmd_delete_folder,

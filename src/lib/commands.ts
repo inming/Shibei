@@ -35,6 +35,10 @@ export function reorderFolder(id: string, newSortOrder: number): Promise<void> {
   return invoke("cmd_reorder_folder", { id, newSortOrder });
 }
 
+export function getFolder(id: string): Promise<Folder> {
+  return invoke("cmd_get_folder", { id });
+}
+
 // ── Resources ──
 
 export function listResources(
