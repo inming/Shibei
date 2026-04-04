@@ -355,7 +355,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
               key={iframeKey}
               ref={iframeRef}
               className={styles.iframe}
-              style={iframeLoading ? { visibility: "hidden", position: "absolute" } : undefined}
+              style={iframeLoading ? { visibility: "hidden", position: "absolute", inset: 0 } : undefined}
               src={`${PROTOCOL_BASE}/resource/${resource.id}`}
               title={resource.title}
               onLoad={() => setIframeLoading(false)}

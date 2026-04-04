@@ -1,9 +1,9 @@
 .toolbar {
   position: fixed;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -23,9 +23,24 @@
   }
 }
 
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rowLabel {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  user-select: none;
+  flex-shrink: 0;
+}
+
 .colorBtn {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
