@@ -29,6 +29,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [editFolder, setEditFolder] = useState<{ id: string; name: string } | null>(null);
   const [deleteFolder, setDeleteFolder] = useState<{ id: string; name: string } | null>(null);
@@ -201,64 +202,70 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       </button>
       <div
         ref={setRootDropRef}
-        className={`${styles.header} ${isRootOver ? styles.dropTarget : ""}`}
+        className={`${styles.sectionHeader} ${isRootOver ? styles.dropTarget : ""}`}
+        onClick={() => setCollapsed(!collapsed)}
       >
-        <span className={styles.title}>文件夹</span>
+        <span className={styles.sectionHeaderIcon}>📁</span>
+        <span className={styles.sectionHeaderLabel}>文件夹</span>
         <button
           className={styles.addButton}
-          onClick={() => setIsCreating(!isCreating)}
+          onClick={(e) => { e.stopPropagation(); setIsCreating(!isCreating); setCollapsed(false); }}
           title="新建文件夹"
         >
           +
         </button>
       </div>
 
-      {isCreating && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleCreate();
-          }}
-          style={{ padding: "0 8px 8px" }}
-        >
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="文件夹名称..."
-            autoFocus
-            style={{
-              width: "100%",
-              padding: "4px 8px",
-              border: "1px solid var(--color-border)",
-              borderRadius: "4px",
-              fontSize: "var(--font-size-sm)",
-            }}
-            onBlur={() => {
-              if (!newName.trim()) setIsCreating(false);
-            }}
-          />
-        </form>
-      )}
+      {!collapsed && (
+        <>
+          {isCreating && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreate();
+              }}
+              style={{ padding: "0 8px 8px" }}
+            >
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="文件夹名称..."
+                autoFocus
+                style={{
+                  width: "100%",
+                  padding: "4px 8px",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "4px",
+                  fontSize: "var(--font-size-sm)",
+                }}
+                onBlur={() => {
+                  if (!newName.trim()) setIsCreating(false);
+                }}
+              />
+            </form>
+          )}
 
-      <div
-        ref={treeRef}
-        tabIndex={0}
-        role="tree"
-        aria-label="文件夹"
-        onKeyDown={handleTreeKeyDown}
-      >
-        <FolderNode
-          parentId="__root__"
-          depth={0}
-          selectedFolderId={selectedFolderId}
-          expandedIds={expandedIds}
-          nonLeafIds={nonLeafIds}
-          folderCounts={folderCounts}
-          onSelect={onSelectFolder}
-          onToggleExpand={toggleExpand}
-          onContextMenu={handleContextMenu}
-        />
-      </div>
+          <div
+            ref={treeRef}
+            tabIndex={0}
+            role="tree"
+            aria-label="文件夹"
+            onKeyDown={handleTreeKeyDown}
+          >
+            <FolderNode
+              parentId="__root__"
+              depth={0}
+              selectedFolderId={selectedFolderId}
+              expandedIds={expandedIds}
+              nonLeafIds={nonLeafIds}
+              folderCounts={folderCounts}
+              onSelect={onSelectFolder}
+              onToggleExpand={toggleExpand}
+              onContextMenu={handleContextMenu}
+            />
+          </div>
+        </>
+      )}
 
       {contextMenu && (
         <ContextMenu
@@ -486,7 +493,7 @@ function DraggableFolderItem({
     <div ref={ref} style={{ opacity: isDragging ? 0.4 : 1 }}>
       <div
         className={`${styles.item} ${isSelected ? styles.itemSelected : ""} ${isOver ? styles.dropTarget : ""}`}
-        style={{ paddingLeft: `${8 + depth * 16}px` }}
+        style={{ paddingLeft: `${8 + depth * 12}px` }}
         data-folder-id={folder.id}
         {...attributes}
         {...listeners}

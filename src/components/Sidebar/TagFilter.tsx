@@ -13,6 +13,7 @@ interface TagFilterProps {
 }
 
 export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
+  const [collapsed, setCollapsed] = useState(false);
   const { tags, createTag, updateTag, deleteTag } = useTags();
 
   // Popover state
@@ -83,31 +84,42 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
 
   return (
     <div className={styles.section}>
-      <div className={styles.header}>
-        <span className={styles.title}>标签</span>
-        <button className={styles.addBtn} onClick={handleAddClick}>
+      <div
+        className={styles.sectionHeader}
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <span className={styles.sectionHeaderIcon}>🏷️</span>
+        <span className={styles.sectionHeaderLabel}>标签</span>
+        <button
+          className={styles.addBtn}
+          onClick={(e) => { e.stopPropagation(); handleAddClick(e); }}
+        >
           +
         </button>
       </div>
-      {tags.length === 0 ? (
-        <div className={styles.empty}>暂无标签</div>
-      ) : (
-        <div className={styles.tagList}>
-          {tags.map((tag) => (
-            <button
-              key={tag.id}
-              className={`${styles.tag} ${selectedTagIds.has(tag.id) ? styles.selected : ""}`}
-              onClick={() => onToggleTag(tag.id)}
-              onContextMenu={(e) => handleContextMenu(e, tag)}
-            >
-              <span
-                className={styles.dot}
-                style={{ background: tag.color }}
-              />
-              {tag.name}
-            </button>
-          ))}
-        </div>
+      {!collapsed && (
+        <>
+          {tags.length === 0 ? (
+            <div className={styles.empty}>暂无标签</div>
+          ) : (
+            <div className={styles.tagList}>
+              {tags.map((tag) => (
+                <button
+                  key={tag.id}
+                  className={`${styles.tag} ${selectedTagIds.has(tag.id) ? styles.selected : ""}`}
+                  onClick={() => onToggleTag(tag.id)}
+                  onContextMenu={(e) => handleContextMenu(e, tag)}
+                >
+                  <span
+                    className={styles.dot}
+                    style={{ background: tag.color }}
+                  />
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {popover && (

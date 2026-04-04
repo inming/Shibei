@@ -286,11 +286,13 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               selectedFolderId={selectedFolderId}
               onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); }}
             />
+            <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
             <button
               className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
               onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
               onContextMenu={handleTrashContextMenu}
             >
+              <span className={styles.trashIcon}>🗑️</span>
               回收站
             </button>
             {trashContextMenu && (
@@ -302,7 +304,6 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               />
             )}
           </div>
-          <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
           <div className={styles.sidebarBottom}>
             <SyncStatus
               status={sync.status}
