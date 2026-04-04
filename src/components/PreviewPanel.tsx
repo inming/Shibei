@@ -34,9 +34,14 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader }: Prev
     const u2 = listen(DataEvents.TAG_CHANGED, () => {
       cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
     });
+    const u3 = listen(DataEvents.SYNC_COMPLETED, () => {
+      cmd.getResource(resource.id).then(setResource).catch(() => {});
+      cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
+    });
     return () => {
       u1.then((f) => f());
       u2.then((f) => f());
+      u3.then((f) => f());
     };
   }, [resource.id]);
 
