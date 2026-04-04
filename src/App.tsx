@@ -1,6 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Toaster } from "react-hot-toast";
 import type { Resource } from "@/types";
+import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
 import { TabBar, type TabItem } from "@/components/TabBar";
 import { LibraryView } from "@/components/Layout";
 import { ReaderView } from "@/components/ReaderView";
@@ -53,6 +55,26 @@ function App() {
       return next;
     });
     setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<ResourceChangedPayload>(
+      DataEvents.RESOURCE_CHANGED,
+      (event) => {
+        if (event.payload.action === "deleted") {
+          const id = event.payload.resource_id;
+          if (!id) return;
+          setReaderTabs((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
+          setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+        }
+      },
+    );
+    return () => { unlisten.then((f) => f()); };
   }, []);
 
   const tabs: TabItem[] = [
