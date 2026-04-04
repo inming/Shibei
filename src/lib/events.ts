@@ -17,6 +17,7 @@ export const DataEvents = {
 export const SyncEvents = {
   STARTED: "sync-started",
   FAILED: "sync-failed",
+  PROGRESS: "sync-progress",
 } as const;
 
 // ── Payload types ──
@@ -50,4 +51,10 @@ export interface ConfigChangedPayload {
 
 export interface SyncFailedPayload {
   message: string;
+}
+
+export interface SyncProgressPayload {
+  phase: "uploading" | "downloading";
+  current: number;
+  total: number;
 }

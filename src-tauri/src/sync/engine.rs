@@ -55,6 +55,10 @@ pub struct SyncEngine {
     base_dir: PathBuf,
 }
 
+/// Callback for reporting sync progress to the UI.
+/// Arguments: (phase, current, total)
+pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
+
 impl SyncEngine {
     pub fn new(
         pool: DbPool,
@@ -74,7 +78,7 @@ impl SyncEngine {
     }
 
     /// Run the full sync cycle: upload local changes, download and apply remote changes.
-    pub async fn sync(&self) -> Result<SyncResult, SyncError> {
+    pub async fn sync(&self, on_progress: Option<&ProgressCallback>) -> Result<SyncResult, SyncError> {
         // Try lock — skip if already syncing
         let _guard = match self.lock.try_lock() {
             Ok(guard) => guard,
@@ -85,13 +89,13 @@ impl SyncEngine {
         self.ensure_initial_snapshot().await?;
 
         // Phase 1: Upload local changes
-        let uploaded = self.upload_local_changes().await?;
+        let uploaded = self.upload_local_changes(on_progress).await?;
 
         // Phase 1.5: Import full snapshot if this is a new device
         let snapshot_imported = self.maybe_import_snapshot().await?;
 
         // Phase 2+3: Download and apply remote changes
-        let (downloaded, applied) = self.download_and_apply().await?;
+        let (downloaded, applied) = self.download_and_apply(on_progress).await?;
 
         // Update last_sync_at
         {
@@ -234,7 +238,7 @@ impl SyncEngine {
     }
 
     /// Phase 1: Upload pending sync_log entries and associated snapshots.
-    async fn upload_local_changes(&self) -> Result<usize, SyncError> {
+    async fn upload_local_changes(&self, on_progress: Option<&ProgressCallback>) -> Result<usize, SyncError> {
         let pending = {
             let conn = self.pool.get().map_err(DbError::Pool)?;
             sync_log::get_pending(&conn)?
@@ -268,15 +272,21 @@ impl SyncEngine {
         }
 
         // Upload snapshots for new resources
-        for entry in &pending {
-            if entry.entity_type == "resource" && entry.operation == "INSERT" {
-                if let Err(e) = self.upload_snapshot(&entry.entity_id).await {
-                    // Log but don't fail the whole sync for snapshot upload issues
-                    eprintln!(
-                        "warning: failed to upload snapshot for {}: {}",
-                        entry.entity_id, e
-                    );
-                }
+        let snapshot_entries: Vec<_> = pending
+            .iter()
+            .filter(|e| e.entity_type == "resource" && e.operation == "INSERT")
+            .collect();
+        let snapshot_total = snapshot_entries.len();
+
+        for (i, entry) in snapshot_entries.iter().enumerate() {
+            if let Err(e) = self.upload_snapshot(&entry.entity_id).await {
+                eprintln!(
+                    "warning: failed to upload snapshot for {}: {}",
+                    entry.entity_id, e
+                );
+            }
+            if let Some(cb) = on_progress {
+                cb("uploading", i + 1, snapshot_total);
             }
         }
 
@@ -392,7 +402,7 @@ impl SyncEngine {
     }
 
     /// Phase 2+3: Download remote changes and apply with LWW.
-    async fn download_and_apply(&self) -> Result<(usize, usize), SyncError> {
+    async fn download_and_apply(&self, on_progress: Option<&ProgressCallback>) -> Result<(usize, usize), SyncError> {
         // List all device directories under sync/
         let objects = self.backend.list("sync/").await?;
 
@@ -414,18 +424,23 @@ impl SyncEngine {
         // Skip self
         remote_devices.retain(|d| d != &self.device_id);
 
-        let mut total_downloaded = 0usize;
-        let mut all_entries: Vec<SyncLogEntry> = Vec::new();
+        // Pre-collect per-device file lists for progress counting
+        struct DeviceFiles {
+            device_id: String,
+            last_seq_key: String,
+            files: Vec<crate::sync::backend::ObjectInfo>,
+        }
+
+        let mut device_file_list: Vec<DeviceFiles> = Vec::new();
+        let mut total_files = 0usize;
 
         for device in &remote_devices {
-            // Get the last processed seq for this device
             let last_seq_key = format!("remote:{}:last_seq", device);
             let last_seq = {
                 let conn = self.pool.get().map_err(DbError::Pool)?;
                 sync_state::get(&conn, &last_seq_key)?
             };
 
-            // List JSONL files for this device
             let prefix = format!("sync/{}/", device);
             let mut files: Vec<_> = self
                 .backend
@@ -436,10 +451,8 @@ impl SyncEngine {
                 .collect();
             files.sort_by(|a, b| a.key.cmp(&b.key));
 
-            // Filter to only files after last_seq
             if let Some(ref seq) = last_seq {
                 files.retain(|f| {
-                    // Extract filename from key for comparison
                     if let Some(fname) = f.key.rsplit('/').next() {
                         fname > seq.as_str()
                     } else {
@@ -448,12 +461,28 @@ impl SyncEngine {
                 });
             }
 
+            total_files += files.len();
+            device_file_list.push(DeviceFiles {
+                device_id: device.clone(),
+                last_seq_key,
+                files,
+            });
+        }
+
+        let mut total_downloaded = 0usize;
+        let mut all_entries: Vec<SyncLogEntry> = Vec::new();
+
+        for df in &device_file_list {
             let mut latest_seq: Option<String> = None;
 
-            for file_obj in &files {
+            for file_obj in &df.files {
                 let data = self.backend.download(&file_obj.key).await?;
                 let content = String::from_utf8_lossy(&data);
                 total_downloaded += 1;
+
+                if let Some(cb) = on_progress {
+                    cb("downloading", total_downloaded, total_files);
+                }
 
                 for line in content.lines() {
                     let line = line.trim();
@@ -473,8 +502,10 @@ impl SyncEngine {
             // Update last_seq for this device
             if let Some(seq) = latest_seq {
                 let conn = self.pool.get().map_err(DbError::Pool)?;
-                sync_state::set(&conn, &last_seq_key, &seq)?;
+                sync_state::set(&conn, &df.last_seq_key, &seq)?;
             }
+
+            let _ = &df.device_id; // suppress unused field warning
         }
 
         // Phase 3: Apply with topo-sort

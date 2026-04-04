@@ -3,9 +3,15 @@ import { listen } from "@tauri-apps/api/event";
 import * as cmd from "@/lib/commands";
 import toast from "react-hot-toast";
 import { DataEvents, SyncEvents } from "@/lib/events";
-import type { ConfigChangedPayload, SyncFailedPayload } from "@/lib/events";
+import type { ConfigChangedPayload, SyncFailedPayload, SyncProgressPayload } from "@/lib/events";
 
 export type SyncStatusType = "idle" | "syncing" | "success" | "error";
+
+export interface SyncProgress {
+  phase: string;
+  current: number;
+  total: number;
+}
 
 export function useSync() {
   const [status, setStatus] = useState<SyncStatusType>("idle");
@@ -16,6 +22,7 @@ export function useSync() {
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionUnlocked, setEncryptionUnlocked] = useState(false);
   const [autoUnlockPending, setAutoUnlockPending] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
 
   // Refs for initial sync coordination
   const configLoadedRef = useRef(false);
@@ -84,11 +91,13 @@ export function useSync() {
       setStatus("success");
       setLastSyncAt(new Date().toISOString());
       setError("");
+      setSyncProgress(null);
       syncingRef.current = false;
     });
     const u2 = listen<SyncFailedPayload>(SyncEvents.FAILED, (event) => {
       setStatus("error");
       setError(event.payload.message);
+      setSyncProgress(null);
       syncingRef.current = false;
     });
     const u3 = listen(SyncEvents.STARTED, () => {
@@ -102,12 +111,16 @@ export function useSync() {
         }).catch(() => {});
       }
     });
+    const u5 = listen<SyncProgressPayload>(SyncEvents.PROGRESS, (event) => {
+      setSyncProgress(event.payload);
+    });
 
     return () => {
       u1.then((f) => f());
       u2.then((f) => f());
       u3.then((f) => f());
       u4.then((f) => f());
+      u5.then((f) => f());
     };
   }, []);
 
@@ -142,5 +155,5 @@ export function useSync() {
     }).catch(() => {});
   }, []);
 
-  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync, encryptionEnabled, encryptionUnlocked, autoUnlockPending, refreshEncryptionStatus };
+  return { status, lastSyncAt, error, intervalMinutes, setIntervalMinutes, triggerSync: doSync, encryptionEnabled, encryptionUnlocked, autoUnlockPending, refreshEncryptionStatus, syncProgress };
 }

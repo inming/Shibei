@@ -14,3 +14,4 @@ pub const DATA_CONFIG_CHANGED: &str = "data:config-changed";
 // Sync status events (UI-only, not data events)
 pub const SYNC_STARTED: &str = "sync-started";
 pub const SYNC_FAILED: &str = "sync-failed";
+pub const SYNC_PROGRESS: &str = "sync-progress";

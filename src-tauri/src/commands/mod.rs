@@ -448,7 +448,16 @@ pub async fn cmd_sync_now(
     let engine = build_sync_engine(&state, &encryption_state).await.inspect_err(|e| {
         let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": e.message }));
     })?;
-    let result = engine.sync().await.map_err(|e| {
+    let app_clone = app.clone();
+    let on_progress: crate::sync::engine::ProgressCallback = Box::new(move |phase, current, total| {
+        let _ = app_clone.emit(events::SYNC_PROGRESS, serde_json::json!({
+            "phase": phase,
+            "current": current,
+            "total": total
+        }));
+    });
+
+    let result = engine.sync(Some(&on_progress)).await.map_err(|e| {
         let msg = e.to_string();
         let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": msg }));
         CommandError { message: e.to_string() }

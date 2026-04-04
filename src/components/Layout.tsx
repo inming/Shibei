@@ -260,6 +260,7 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
             encryptionEnabled={sync.encryptionEnabled}
             encryptionUnlocked={sync.encryptionUnlocked}
             autoUnlockPending={sync.autoUnlockPending}
+            syncProgress={sync.syncProgress}
           />
         </div>
 
