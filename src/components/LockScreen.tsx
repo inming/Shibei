@@ -46,7 +46,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   return (
     <div className={styles.overlay} onClick={() => inputRef.current?.focus()}>
       <div className={styles.card}>
-        <div className={styles.icon} aria-hidden="true" />
+        <img className={styles.icon} src="/app-icon.png" alt="" aria-hidden="true" />
         <h2 className={styles.title}>拾贝已锁定</h2>
         <p className={styles.subtitle}>请输入 PIN 码解锁</p>
         <div key={errorCount} className={styles.dots}>

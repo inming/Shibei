@@ -21,24 +21,10 @@
 }
 
 .icon {
-  width: 48px;
-  height: 48px;
+  width: 128px;
+  height: 128px;
   margin-bottom: 8px;
-  border: 3px solid var(--color-text-muted);
-  border-radius: 50%;
-  position: relative;
-}
-
-.icon::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 4px;
-  height: 12px;
-  background: var(--color-text-muted);
-  transform: translate(-50%, -50%);
-  border-radius: 2px;
+  object-fit: contain;
 }
 
 .title {
