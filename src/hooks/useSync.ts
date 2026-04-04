@@ -17,11 +17,31 @@ export function useSync() {
   const [encryptionUnlocked, setEncryptionUnlocked] = useState(false);
   const [autoUnlockPending, setAutoUnlockPending] = useState(false);
 
+  // Refs for initial sync coordination
+  const configLoadedRef = useRef(false);
+  const encryptionResolvedRef = useRef(false);
+  const initialSyncDoneRef = useRef(false);
+
   // Load config on mount
   useEffect(() => {
+    const tryInitialSync = () => {
+      if (configLoadedRef.current && encryptionResolvedRef.current && !initialSyncDoneRef.current) {
+        initialSyncDoneRef.current = true;
+        // Small delay to ensure UI is ready
+        setTimeout(() => {
+          if (!syncingRef.current) {
+            syncingRef.current = true;
+            cmd.syncNow().catch(() => { syncingRef.current = false; });
+          }
+        }, 500);
+      }
+    };
+
     cmd.getSyncConfig().then((c) => {
       if (c.last_sync_at) setLastSyncAt(c.last_sync_at);
       setIntervalMinutes(c.sync_interval ?? 5);
+      configLoadedRef.current = c.has_credentials;
+      tryInitialSync();
     }).catch(() => {});
 
     cmd.getEncryptionStatus().then(async (es) => {
@@ -35,6 +55,8 @@ export function useSync() {
             case "unlocked":
             case "unlocked_unverified":
               setEncryptionUnlocked(true);
+              encryptionResolvedRef.current = true;
+              tryInitialSync();
               break;
             case "keychain_error":
               toast("系统钥匙串不可用，请手动输入密码", { icon: "ℹ️" });
@@ -50,6 +72,8 @@ export function useSync() {
         }
       } else {
         setEncryptionUnlocked(es.unlocked);
+        encryptionResolvedRef.current = true;
+        tryInitialSync();
       }
     }).catch(() => {});
   }, []);
