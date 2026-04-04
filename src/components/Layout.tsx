@@ -283,23 +283,23 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
             selectedFolderId={selectedFolderId}
             onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); }}
           />
+          <button
+            className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
+            onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
+            onContextMenu={handleTrashContextMenu}
+          >
+            回收站
+          </button>
+          {trashContextMenu && (
+            <ContextMenu
+              x={trashContextMenu.x}
+              y={trashContextMenu.y}
+              items={trashMenuItems}
+              onClose={() => setTrashContextMenu(null)}
+            />
+          )}
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
           <div className={styles.sidebarBottom}>
-            <button
-              className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
-              onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
-              onContextMenu={handleTrashContextMenu}
-            >
-              回收站
-            </button>
-            {trashContextMenu && (
-              <ContextMenu
-                x={trashContextMenu.x}
-                y={trashContextMenu.y}
-                items={trashMenuItems}
-                onClose={() => setTrashContextMenu(null)}
-              />
-            )}
             <SyncStatus
               status={sync.status}
               lastSyncAt={sync.lastSyncAt}

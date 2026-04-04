@@ -56,10 +56,6 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavi
     };
   }, [resource.id, resource.folder_id]);
 
-  const domain = resource.domain ?? (() => {
-    try { return new URL(resource.url).hostname; } catch { return resource.url; }
-  })();
-
   return (
     <div className={styles.panel}>
       {/* Meta section */}
@@ -71,7 +67,17 @@ export function PreviewPanel({ resource: initialResource, onOpenInReader, onNavi
             <tr>
               <td className={styles.metaLabel}>网址</td>
               <td className={styles.metaValue}>
-                <span className={styles.metaUrl} title={resource.url}>{domain}</span>
+                <a
+                  className={styles.metaUrl}
+                  href={resource.url}
+                  title={resource.url}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    import("@tauri-apps/plugin-opener").then((mod) => mod.openUrl(resource.url));
+                  }}
+                >
+                  {resource.url}
+                </a>
               </td>
             </tr>
             <tr>

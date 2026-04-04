@@ -43,12 +43,18 @@
 }
 
 .metaUrl {
-  color: var(--color-text-muted);
+  color: var(--color-accent);
+  text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
   max-width: 300px;
+  cursor: pointer;
+}
+
+.metaUrl:hover {
+  text-decoration: underline;
 }
 
 .breadcrumb {
