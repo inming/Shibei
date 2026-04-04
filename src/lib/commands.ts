@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult } from "@/types";
+import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder } from "@/types";
 
 // ── Folders ──
 
@@ -208,6 +208,32 @@ export function setRememberKey(remember: boolean): Promise<void> {
 
 export function getRememberKey(): Promise<boolean> {
   return invoke("cmd_get_remember_key");
+}
+
+// ── Recycle Bin ──
+
+export function listDeletedResources(): Promise<DeletedResource[]> {
+  return invoke("cmd_list_deleted_resources");
+}
+
+export function listDeletedFolders(): Promise<DeletedFolder[]> {
+  return invoke("cmd_list_deleted_folders");
+}
+
+export function restoreResource(id: string): Promise<Resource> {
+  return invoke("cmd_restore_resource", { id });
+}
+
+export function restoreFolder(id: string): Promise<Folder> {
+  return invoke("cmd_restore_folder", { id });
+}
+
+export function purgeResource(id: string): Promise<void> {
+  return invoke("cmd_purge_resource", { id });
+}
+
+export function purgeFolder(id: string): Promise<void> {
+  return invoke("cmd_purge_folder", { id });
 }
 
 // ── Debug ──

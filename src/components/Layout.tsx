@@ -9,6 +9,7 @@ import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { SyncStatus } from "@/components/SyncStatus";
+import { TrashList } from "@/components/TrashList";
 import styles from "./Layout.module.css";
 
 interface LibraryViewProps {
@@ -24,6 +25,7 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [showTrash, setShowTrash] = useState(false);
   const sync = useSync();
 
   // Layout constants — see CLAUDE.md "三栏布局约束"
@@ -249,9 +251,15 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
         <div className={styles.sidebar} style={{ width: sidebarWidth }}>
           <FolderTree
             selectedFolderId={selectedFolderId}
-            onSelectFolder={setSelectedFolderId}
+            onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); }}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
+          <button
+            className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
+            onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
+          >
+            回收站
+          </button>
           <SyncStatus
             status={sync.status}
             lastSyncAt={sync.lastSyncAt}
@@ -267,19 +275,23 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
         {/* Sidebar resize handle */}
         <div className={styles.resizeHandle} onMouseDown={handleSidebarMouseDown} />
 
-        {/* Col 2: Resource list */}
+        {/* Col 2: Resource list or Trash */}
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>
-          <ResourceList
-            folderId={selectedFolderId}
-            selectedResourceIds={selectedResourceIds}
-            selectedTagIds={selectedTagIds}
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSelectResource={handleResourceSelect}
-            onOpen={(resource) => onOpenResource(resource)}
-            onSortByChange={setSortBy}
-            onSortOrderChange={setSortOrder}
-          />
+          {showTrash ? (
+            <TrashList />
+          ) : (
+            <ResourceList
+              folderId={selectedFolderId}
+              selectedResourceIds={selectedResourceIds}
+              selectedTagIds={selectedTagIds}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSelectResource={handleResourceSelect}
+              onOpen={(resource) => onOpenResource(resource)}
+              onSortByChange={setSortBy}
+              onSortOrderChange={setSortOrder}
+            />
+          )}
         </div>
 
         {/* List↔Preview resize handle */}

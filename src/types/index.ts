@@ -83,3 +83,19 @@ export type AutoUnlockResult =
   | "no_stored_key"
   | "keychain_error"
   | "key_mismatch";
+
+export interface DeletedResource {
+  id: string;
+  title: string;
+  url: string;
+  domain: string | null;
+  folder_id: string;
+  deleted_at: string;
+}
+
+export interface DeletedFolder {
+  id: string;
+  name: string;
+  parent_id: string;
+  deleted_at: string;
+}
