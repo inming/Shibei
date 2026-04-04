@@ -13,6 +13,7 @@ function formatError(err: unknown): string {
 export function EncryptionPage() {
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionUnlocked, setEncryptionUnlocked] = useState(false);
+  const [rememberKey, setRememberKey] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState<"setup" | "unlock" | "change" | null>(null);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -24,6 +25,7 @@ export function EncryptionPage() {
       const es = await cmd.getEncryptionStatus();
       setEncryptionEnabled(es.enabled);
       setEncryptionUnlocked(es.unlocked);
+      setRememberKey(es.remember_key);
     } catch {
       // encryption status not available
     }
@@ -70,6 +72,7 @@ export function EncryptionPage() {
       toast.success("加密已解锁");
       setEncryptionUnlocked(true);
       resetPasswordFields();
+      void loadStatus();
     } catch (err) {
       toast.error(`解锁失败：${formatError(err)}`);
     } finally {
@@ -95,6 +98,17 @@ export function EncryptionPage() {
       toast.error(`修改密码失败：${formatError(err)}`);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleToggleRememberKey() {
+    const newValue = !rememberKey;
+    try {
+      await cmd.setRememberKey(newValue);
+      setRememberKey(newValue);
+      toast.success(newValue ? "已保存到系统钥匙串" : "已从系统钥匙串移除");
+    } catch (err) {
+      toast.error(`操作失败：${formatError(err)}`);
     }
   }
 
@@ -134,6 +148,17 @@ export function EncryptionPage() {
         <>
           <div className={styles.success}>
             端到端加密已启用且已解锁
+          </div>
+          <label className={styles.toggleRow}>
+            <input
+              type="checkbox"
+              checked={rememberKey}
+              onChange={handleToggleRememberKey}
+            />
+            <span>记住加密密钥</span>
+          </label>
+          <div className={styles.hint}>
+            将加密密钥保存在系统钥匙串中，启动时自动解锁。macOS 可能需要系统密码或 TouchID 验证。
           </div>
           <div className={styles.actions}>
             <button
