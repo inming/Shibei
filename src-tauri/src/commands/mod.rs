@@ -227,6 +227,21 @@ pub async fn cmd_update_resource(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn cmd_list_all_resources(
+    state: tauri::State<'_, Arc<AppState>>,
+    sort_by: Option<resources::SortBy>,
+    sort_order: Option<resources::SortOrder>,
+) -> Result<Vec<resources::Resource>, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    resources::list_all_resources(
+        &conn,
+        sort_by.unwrap_or(resources::SortBy::CreatedAt),
+        sort_order.unwrap_or(resources::SortOrder::Desc),
+    )
+    .map_err(Into::into)
+}
+
 // ── Tags ──
 
 #[tauri::command]

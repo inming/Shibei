@@ -208,6 +208,59 @@ pub fn list_resources_by_folder(
     Ok(resources)
 }
 
+pub fn list_all_resources(
+    conn: &Connection,
+    sort_by: SortBy,
+    sort_order: SortOrder,
+) -> Result<Vec<Resource>, DbError> {
+    let order_dir = match sort_order {
+        SortOrder::Asc => "ASC",
+        SortOrder::Desc => "DESC",
+    };
+    let sql = match sort_by {
+        SortBy::CreatedAt => format!(
+            "SELECT id, title, url, domain, author, description, folder_id, \
+             resource_type, file_path, created_at, captured_at, selection_meta \
+             FROM resources WHERE deleted_at IS NULL ORDER BY created_at {}",
+            order_dir
+        ),
+        SortBy::AnnotatedAt => format!(
+            "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             FROM resources r LEFT JOIN (\
+               SELECT resource_id, MAX(created_at) AS last_at FROM (\
+                 SELECT resource_id, created_at FROM highlights WHERE deleted_at IS NULL \
+                 UNION ALL \
+                 SELECT resource_id, created_at FROM comments WHERE deleted_at IS NULL\
+               ) GROUP BY resource_id\
+             ) a ON r.id = a.resource_id \
+             WHERE r.deleted_at IS NULL \
+             ORDER BY COALESCE(a.last_at, r.created_at) {}",
+            order_dir
+        ),
+    };
+    let mut stmt = conn.prepare(&sql)?;
+    let resources = stmt
+        .query_map([], |row| {
+            Ok(Resource {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                url: row.get(2)?,
+                domain: row.get(3)?,
+                author: row.get(4)?,
+                description: row.get(5)?,
+                folder_id: row.get(6)?,
+                resource_type: row.get(7)?,
+                file_path: row.get(8)?,
+                created_at: row.get(9)?,
+                captured_at: row.get(10)?,
+                selection_meta: row.get(11)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(resources)
+}
+
 pub fn move_resource(
     conn: &Connection,
     id: &str,
