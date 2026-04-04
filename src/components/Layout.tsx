@@ -313,16 +313,9 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               encryptionUnlocked={sync.encryptionUnlocked}
               autoUnlockPending={sync.autoUnlockPending}
               syncProgress={sync.syncProgress}
+              lockEnabled={lockEnabled}
+              onLock={onLock}
             />
-            {lockEnabled && onLock && (
-              <button className={styles.lockBtn} onClick={onLock} title="锁定应用">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="7" width="10" height="8" rx="1.5" />
-                  <path d="M5 7V5a3 3 0 0 1 6 0v2" />
-                </svg>
-                <span>锁定</span>
-              </button>
-            )}
           </div>
         </div>
 
