@@ -128,6 +128,12 @@ pub fn run() {
             commands::cmd_auto_unlock,
             commands::cmd_set_remember_key,
             commands::cmd_get_remember_key,
+            commands::cmd_list_deleted_resources,
+            commands::cmd_list_deleted_folders,
+            commands::cmd_restore_resource,
+            commands::cmd_restore_folder,
+            commands::cmd_purge_resource,
+            commands::cmd_purge_folder,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

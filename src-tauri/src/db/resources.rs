@@ -329,6 +329,114 @@ pub fn delete_resource(
     Ok(id.to_string())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeletedResource {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub domain: Option<String>,
+    pub folder_id: String,
+    pub deleted_at: String,
+}
+
+pub fn list_deleted_resources(conn: &Connection) -> Result<Vec<DeletedResource>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, title, url, domain, folder_id, deleted_at
+         FROM resources
+         WHERE deleted_at IS NOT NULL
+         ORDER BY deleted_at DESC",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(DeletedResource {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                url: row.get(2)?,
+                domain: row.get(3)?,
+                folder_id: row.get(4)?,
+                deleted_at: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn restore_resource(
+    conn: &Connection,
+    id: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<Resource, DbError> {
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+
+    // Check if the resource's folder still exists (not deleted)
+    let folder_id: String = conn
+        .query_row(
+            "SELECT folder_id FROM resources WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .map_err(|_| DbError::NotFound(format!("resource {}", id)))?;
+
+    let folder_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM folders WHERE id = ?1 AND deleted_at IS NULL",
+            params![folder_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+
+    let target_folder = if folder_exists {
+        folder_id
+    } else {
+        super::folders::ensure_inbox_folder(conn, sync_ctx)?
+    };
+
+    conn.execute(
+        "UPDATE resources SET deleted_at = NULL, folder_id = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3",
+        params![target_folder, hlc_str, id],
+    )?;
+
+    // Also restore associated highlights, comments, resource_tags
+    conn.execute(
+        "UPDATE highlights SET deleted_at = NULL WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+        params![id],
+    )?;
+    conn.execute(
+        "UPDATE comments SET deleted_at = NULL WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+        params![id],
+    )?;
+    conn.execute(
+        "UPDATE resource_tags SET deleted_at = NULL WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+        params![id],
+    )?;
+
+    let resource = get_resource(conn, id)?;
+
+    if let Some(ctx) = sync_ctx {
+        let payload = serde_json::to_string(&resource)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        sync::sync_log::append(
+            conn,
+            "resource",
+            id,
+            "UPDATE",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
+    Ok(resource)
+}
+
+pub fn purge_resource(conn: &Connection, id: &str) -> Result<(), DbError> {
+    conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![id])?;
+    conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![id])?;
+    conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![id])?;
+    conn.execute("DELETE FROM resources WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
 pub fn count_by_folder(conn: &Connection) -> Result<std::collections::HashMap<String, i64>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT folder_id, COUNT(*) FROM resources WHERE deleted_at IS NULL GROUP BY folder_id",

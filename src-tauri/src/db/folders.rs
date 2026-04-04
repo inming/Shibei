@@ -250,6 +250,150 @@ fn soft_delete_folder_tree(conn: &Connection, folder_id: &str) -> Result<(), DbE
     Ok(())
 }
 
+/// The well-known ID for the inbox virtual folder.
+pub const INBOX_FOLDER_ID: &str = "__inbox__";
+
+/// Ensure the inbox folder exists, creating it if needed.
+pub fn ensure_inbox_folder(
+    conn: &Connection,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<String, DbError> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM folders WHERE id = ?1 AND deleted_at IS NULL",
+            params![INBOX_FOLDER_ID],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+
+    if exists {
+        return Ok(INBOX_FOLDER_ID.to_string());
+    }
+
+    let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+
+    conn.execute(
+        "INSERT OR IGNORE INTO folders (id, name, parent_id, sort_order, created_at, updated_at, hlc)
+         VALUES (?1, '收件箱', '__root__', 0, ?2, ?3, ?4)",
+        params![INBOX_FOLDER_ID, now, now, hlc_str],
+    )?;
+
+    if let Some(ctx) = sync_ctx {
+        let folder = get_folder(conn, INBOX_FOLDER_ID)?;
+        let payload = serde_json::to_string(&folder)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        sync::sync_log::append(
+            conn,
+            "folder",
+            INBOX_FOLDER_ID,
+            "INSERT",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
+    Ok(INBOX_FOLDER_ID.to_string())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeletedFolder {
+    pub id: String,
+    pub name: String,
+    pub parent_id: String,
+    pub deleted_at: String,
+}
+
+pub fn list_deleted_folders(conn: &Connection) -> Result<Vec<DeletedFolder>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, parent_id, deleted_at FROM folders WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(DeletedFolder {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                parent_id: row.get(2)?,
+                deleted_at: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn restore_folder(
+    conn: &Connection,
+    id: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<Folder, DbError> {
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+
+    let parent_id: String = conn
+        .query_row(
+            "SELECT parent_id FROM folders WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .map_err(|_| DbError::NotFound(format!("folder {}", id)))?;
+
+    let parent_exists: bool = parent_id == "__root__"
+        || conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM folders WHERE id = ?1 AND deleted_at IS NULL",
+                params![parent_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+    let target_parent = if parent_exists {
+        parent_id
+    } else {
+        "__root__".to_string()
+    };
+
+    conn.execute(
+        "UPDATE folders SET deleted_at = NULL, parent_id = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3",
+        params![target_parent, hlc_str, id],
+    )?;
+
+    let folder = get_folder(conn, id)?;
+
+    if let Some(ctx) = sync_ctx {
+        let payload = serde_json::to_string(&folder)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        sync::sync_log::append(
+            conn,
+            "folder",
+            id,
+            "UPDATE",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
+    Ok(folder)
+}
+
+pub fn purge_folder(conn: &Connection, id: &str) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare("SELECT id FROM resources WHERE folder_id = ?1")?;
+    let resource_ids: Vec<String> = stmt
+        .query_map(params![id], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for rid in &resource_ids {
+        conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![rid])?;
+        conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![rid])?;
+        conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![rid])?;
+    }
+    conn.execute("DELETE FROM resources WHERE folder_id = ?1", params![id])?;
+    conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?;
+
+    Ok(resource_ids)
+}
+
 pub fn move_folder(
     conn: &Connection,
     id: &str,

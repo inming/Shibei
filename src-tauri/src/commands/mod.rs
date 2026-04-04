@@ -988,6 +988,81 @@ pub async fn cmd_set_sync_interval(
     Ok(())
 }
 
+// ── Recycle Bin ──
+
+#[tauri::command]
+pub async fn cmd_list_deleted_resources(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<resources::DeletedResource>, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    resources::list_deleted_resources(&conn).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_list_deleted_folders(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<folders::DeletedFolder>, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    folders::list_deleted_folders(&conn).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_restore_resource(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<resources::Resource, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let sync_ctx = state.sync_context();
+    let resource = resources::restore_resource(&conn, &id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "updated", "resource_id": id }));
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "updated" }));
+    Ok(resource)
+}
+
+#[tauri::command]
+pub async fn cmd_restore_folder(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<folders::Folder, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let sync_ctx = state.sync_context();
+    let folder = folders::restore_folder(&conn, &id, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "created", "folder_id": id }));
+    Ok(folder)
+}
+
+#[tauri::command]
+pub async fn cmd_purge_resource(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<(), CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    resources::purge_resource(&conn, &id)?;
+    let dir = storage::resource_dir(&state.base_dir, &id);
+    let _ = std::fs::remove_dir_all(dir);
+    let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": id }));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_purge_folder(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<(), CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let resource_ids = folders::purge_folder(&conn, &id)?;
+    for rid in &resource_ids {
+        let dir = storage::resource_dir(&state.base_dir, rid);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "deleted", "folder_id": id }));
+    Ok(())
+}
+
 // ── Debug ──
 
 #[tauri::command]
