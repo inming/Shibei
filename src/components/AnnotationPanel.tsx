@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import type { Highlight, Comment } from "@/types";
+import type { Highlight, Comment, Resource } from "@/types";
 import styles from "./AnnotationPanel.module.css";
 import { Modal } from "@/components/Modal";
+import { ResourceMeta } from "@/components/ResourceMeta";
 
 interface AnnotationPanelProps {
+  resource: Resource;
   highlights: Highlight[];
   failedHighlightIds: Set<string>;
   getCommentsForHighlight: (highlightId: string) => Comment[];
@@ -18,6 +20,7 @@ interface AnnotationPanelProps {
 }
 
 export function AnnotationPanel({
+  resource,
   highlights,
   failedHighlightIds,
   getCommentsForHighlight,
@@ -89,6 +92,7 @@ export function AnnotationPanel({
 
   return (
     <div className={styles.panel} style={style}>
+      <ResourceMeta resource={resource} />
       <div className={styles.header}>标注 ({highlights.length})</div>
       <div ref={scrollAreaRef} className={styles.scrollArea}>
         <div className={styles.list}>

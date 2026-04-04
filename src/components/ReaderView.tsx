@@ -360,6 +360,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
 
       {/* Annotation panel */}
       <AnnotationPanel
+        resource={resource}
         style={{ width: panelWidth }}
         highlights={highlights}
         getCommentsForHighlight={getCommentsForHighlight}
