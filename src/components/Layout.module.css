@@ -85,6 +85,11 @@
   color: var(--color-text-primary);
 }
 
+.sidebarBottom {
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
 .dragOverlay {
   padding: 4px 12px;
   background: var(--color-bg-primary);

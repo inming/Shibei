@@ -254,22 +254,24 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
             onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); }}
           />
           <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
-          <button
-            className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
-            onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
-          >
-            回收站
-          </button>
-          <SyncStatus
-            status={sync.status}
-            lastSyncAt={sync.lastSyncAt}
-            onSync={sync.triggerSync}
-            onOpenSettings={onOpenSettings}
-            encryptionEnabled={sync.encryptionEnabled}
-            encryptionUnlocked={sync.encryptionUnlocked}
-            autoUnlockPending={sync.autoUnlockPending}
-            syncProgress={sync.syncProgress}
-          />
+          <div className={styles.sidebarBottom}>
+            <button
+              className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
+              onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
+            >
+              回收站
+            </button>
+            <SyncStatus
+              status={sync.status}
+              lastSyncAt={sync.lastSyncAt}
+              onSync={sync.triggerSync}
+              onOpenSettings={onOpenSettings}
+              encryptionEnabled={sync.encryptionEnabled}
+              encryptionUnlocked={sync.encryptionUnlocked}
+              autoUnlockPending={sync.autoUnlockPending}
+              syncProgress={sync.syncProgress}
+            />
+          </div>
         </div>
 
         {/* Sidebar resize handle */}
