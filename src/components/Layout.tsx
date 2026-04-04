@@ -17,9 +17,11 @@ import styles from "./Layout.module.css";
 interface LibraryViewProps {
   onOpenResource: (resource: Resource, highlightId?: string) => void;
   onOpenSettings: (section?: "sync" | "encryption") => void;
+  lockEnabled?: boolean;
+  onLock?: () => void;
 }
 
-export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps) {
+export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLock }: LibraryViewProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
   const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
@@ -312,6 +314,15 @@ export function LibraryView({ onOpenResource, onOpenSettings }: LibraryViewProps
               autoUnlockPending={sync.autoUnlockPending}
               syncProgress={sync.syncProgress}
             />
+            {lockEnabled && onLock && (
+              <button className={styles.lockBtn} onClick={onLock} title="锁定应用">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="7" width="10" height="8" rx="1.5" />
+                  <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+                </svg>
+                <span>锁定</span>
+              </button>
+            )}
           </div>
         </div>
 

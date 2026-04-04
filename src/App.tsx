@@ -167,7 +167,12 @@ function App() {
       />
       <div className={styles.content}>
         <div className={`${styles.tabPane} ${activeTabId !== LIBRARY_TAB_ID ? styles.tabPaneHidden : ""}`}>
-          <LibraryView onOpenResource={openResource} onOpenSettings={openSettings} />
+          <LibraryView
+            onOpenResource={openResource}
+            onOpenSettings={openSettings}
+            lockEnabled={lockEnabled}
+            onLock={() => setLocked(true)}
+          />
         </div>
         {Array.from(readerTabs.entries()).map(([id, tab]) => (
           <div key={id} className={`${styles.tabPane} ${activeTabId !== id ? styles.tabPaneHidden : ""}`}>
