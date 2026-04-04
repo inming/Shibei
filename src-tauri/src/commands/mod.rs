@@ -692,6 +692,141 @@ pub async fn cmd_get_encryption_status(
     }))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoUnlockResult {
+    Unlocked,
+    UnlockedUnverified,
+    NoStoredKey,
+    KeychainError,
+    KeyMismatch,
+}
+
+#[tauri::command]
+pub async fn cmd_auto_unlock(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+) -> Result<AutoUnlockResult, CommandError> {
+    use crate::sync::backend::SyncBackend;
+    use crate::sync::keyring::{compute_verification_hash, Keyring};
+    use crate::sync::os_keystore;
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+
+    // 1. Try to load MK from OS keychain
+    let mk = match os_keystore::load_master_key() {
+        Ok(Some(mk)) => mk,
+        Ok(None) => return Ok(AutoUnlockResult::NoStoredKey),
+        Err(_) => return Ok(AutoUnlockResult::KeychainError),
+    };
+
+    // 2. Verify MK against remote keyring.json
+    let backend = match build_raw_s3_backend(&state) {
+        Ok(b) => b,
+        Err(_) => {
+            // No S3 config — optimistically trust keychain
+            encryption_state.set_key(mk);
+            return Ok(AutoUnlockResult::UnlockedUnverified);
+        }
+    };
+
+    let keyring_data = match backend.download("meta/keyring.json").await {
+        Ok(data) => data,
+        Err(_) => {
+            // S3 unreachable — optimistically trust keychain
+            encryption_state.set_key(mk);
+            return Ok(AutoUnlockResult::UnlockedUnverified);
+        }
+    };
+
+    let json = match String::from_utf8(keyring_data) {
+        Ok(j) => j,
+        Err(_) => {
+            encryption_state.set_key(mk);
+            return Ok(AutoUnlockResult::UnlockedUnverified);
+        }
+    };
+
+    let keyring = match Keyring::from_json(&json) {
+        Ok(k) => k,
+        Err(_) => {
+            encryption_state.set_key(mk);
+            return Ok(AutoUnlockResult::UnlockedUnverified);
+        }
+    };
+
+    // Compare verification hash
+    let actual_hash = compute_verification_hash(&mk);
+    let expected_hash = B64.decode(&keyring.verification_hash).unwrap_or_default();
+
+    if actual_hash[..] == expected_hash[..] {
+        encryption_state.set_key(mk);
+        Ok(AutoUnlockResult::Unlocked)
+    } else {
+        // MK is stale — another device reset encryption
+        let _ = os_keystore::delete_master_key();
+        let conn = state
+            .pool
+            .get()
+            .map_err(|e| CommandError {
+                message: e.to_string(),
+            })?;
+        let _ = crate::sync::sync_state::delete(&conn, "config:remember_encryption_key");
+        Ok(AutoUnlockResult::KeyMismatch)
+    }
+}
+
+#[tauri::command]
+pub async fn cmd_set_remember_key(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+    app: tauri::AppHandle,
+    remember: bool,
+) -> Result<(), CommandError> {
+    use crate::sync::os_keystore;
+
+    let conn = state
+        .pool
+        .get()
+        .map_err(|e| CommandError {
+            message: e.to_string(),
+        })?;
+
+    if remember {
+        let mk = encryption_state.get_key().ok_or_else(|| CommandError {
+            message: "加密未解锁，无法保存密钥".to_string(),
+        })?;
+        os_keystore::save_master_key(&mk).map_err(|e| CommandError {
+            message: format!("保存到系统钥匙串失败: {}", e),
+        })?;
+        crate::sync::sync_state::set(&conn, "config:remember_encryption_key", "true")?;
+    } else {
+        let _ = os_keystore::delete_master_key();
+        let _ = crate::sync::sync_state::delete(&conn, "config:remember_encryption_key");
+    }
+
+    let _ = app.emit(
+        events::DATA_CONFIG_CHANGED,
+        serde_json::json!({ "scope": "encryption" }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_get_remember_key(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<bool, CommandError> {
+    let conn = state
+        .pool
+        .get()
+        .map_err(|e| CommandError {
+            message: e.to_string(),
+        })?;
+    let remember = crate::sync::sync_state::get(&conn, "config:remember_encryption_key")?
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    Ok(remember)
+}
+
 #[tauri::command]
 pub async fn cmd_save_sync_config(
     state: tauri::State<'_, Arc<AppState>>,

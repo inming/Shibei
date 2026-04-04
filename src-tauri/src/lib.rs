@@ -124,6 +124,9 @@ pub fn run() {
             commands::cmd_unlock_encryption,
             commands::cmd_change_encryption_password,
             commands::cmd_get_encryption_status,
+            commands::cmd_auto_unlock,
+            commands::cmd_set_remember_key,
+            commands::cmd_get_remember_key,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();
