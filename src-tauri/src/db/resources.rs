@@ -430,10 +430,17 @@ pub fn restore_resource(
 }
 
 pub fn purge_resource(conn: &Connection, id: &str) -> Result<(), DbError> {
+    // Guard: only purge items that are already soft-deleted
+    let affected = conn.execute(
+        "DELETE FROM resources WHERE id = ?1 AND deleted_at IS NOT NULL",
+        params![id],
+    )?;
+    if affected == 0 {
+        return Err(DbError::NotFound(format!("deleted resource {}", id)));
+    }
     conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![id])?;
     conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![id])?;
     conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![id])?;
-    conn.execute("DELETE FROM resources WHERE id = ?1", params![id])?;
     Ok(())
 }
 

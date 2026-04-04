@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSync } from "@/hooks/useSync";
 import { SyncPage } from "@/components/Settings/SyncPage";
 import { EncryptionPage } from "@/components/Settings/EncryptionPage";
@@ -18,6 +18,10 @@ interface SettingsViewProps {
 export function SettingsView({ initialSection }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection ?? "sync");
   const sync = useSync();
+
+  useEffect(() => {
+    if (initialSection) setSection(initialSection);
+  }, [initialSection]);
 
   return (
     <div className={styles.container}>

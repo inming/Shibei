@@ -377,6 +377,16 @@ pub fn restore_folder(
 }
 
 pub fn purge_folder(conn: &Connection, id: &str) -> Result<Vec<String>, DbError> {
+    // Guard: only purge folders that are already soft-deleted
+    let is_deleted: bool = conn.query_row(
+        "SELECT deleted_at IS NOT NULL FROM folders WHERE id = ?1",
+        params![id],
+        |row| row.get(0),
+    ).map_err(|_| DbError::NotFound(format!("folder {}", id)))?;
+    if !is_deleted {
+        return Err(DbError::InvalidOperation(format!("folder {} is not deleted", id)));
+    }
+
     let mut stmt = conn.prepare("SELECT id FROM resources WHERE folder_id = ?1")?;
     let resource_ids: Vec<String> = stmt
         .query_map(params![id], |row| row.get::<_, String>(0))?

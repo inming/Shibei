@@ -426,7 +426,6 @@ impl SyncEngine {
 
         // Pre-collect per-device file lists for progress counting
         struct DeviceFiles {
-            device_id: String,
             last_seq_key: String,
             files: Vec<crate::sync::backend::ObjectInfo>,
         }
@@ -463,7 +462,6 @@ impl SyncEngine {
 
             total_files += files.len();
             device_file_list.push(DeviceFiles {
-                device_id: device.clone(),
                 last_seq_key,
                 files,
             });
@@ -504,8 +502,6 @@ impl SyncEngine {
                 let conn = self.pool.get().map_err(DbError::Pool)?;
                 sync_state::set(&conn, &df.last_seq_key, &seq)?;
             }
-
-            let _ = &df.device_id; // suppress unused field warning
         }
 
         // Phase 3: Apply with topo-sort
