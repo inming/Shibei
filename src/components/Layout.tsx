@@ -38,6 +38,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
   // Layout constants — see CLAUDE.md "三栏布局约束"
   const SIDEBAR_MIN = 160;
   const SIDEBAR_STORAGE_KEY = "shibei-sidebar-width";
+  const LIST_STORAGE_KEY = "shibei-list-width";
   const LIST_MIN = 240;
   const PREVIEW_MIN = 280;
   const HANDLE_WIDTH = 4;
@@ -46,7 +47,10 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
     return saved ? Math.max(SIDEBAR_MIN, parseInt(saved, 10)) : 200;
   });
-  const [listPanelWidth, setListPanelWidth] = useState(340);
+  const [listPanelWidth, setListPanelWidth] = useState(() => {
+    const saved = localStorage.getItem(LIST_STORAGE_KEY);
+    return saved ? Math.max(LIST_MIN, parseInt(saved, 10)) : 340;
+  });
 
   // Refs to track current values inside event handlers (avoids stale closures)
   const sidebarWidthRef = useRef(sidebarWidth);
@@ -197,6 +201,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
       const maxWidth = window.innerWidth - sw - HANDLE_WIDTH * 2 - PREVIEW_MIN;
       const newWidth = Math.max(LIST_MIN, Math.min(maxWidth, e.clientX - sw - HANDLE_WIDTH));
       setListPanelWidth(newWidth);
+      localStorage.setItem(LIST_STORAGE_KEY, String(Math.round(newWidth)));
     }
 
     function onMouseUp() {

@@ -27,6 +27,8 @@ button {
   color: inherit;
 }
 
-input {
+input, textarea {
   font: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
 }

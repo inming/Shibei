@@ -8,6 +8,7 @@ import { LibraryView } from "@/components/Layout";
 import { ReaderView } from "@/components/ReaderView";
 import { SettingsView } from "@/components/SettingsView";
 import { LockScreen } from "@/components/LockScreen";
+import { useTheme } from "@/hooks/useTheme";
 import * as cmd from "@/lib/commands";
 import styles from "./App.module.css";
 
@@ -23,7 +24,8 @@ function App() {
   const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSection, setSettingsSection] = useState<"sync" | "encryption" | undefined>(undefined);
+  const [settingsSection, setSettingsSection] = useState<"appearance" | "sync" | "encryption" | undefined>(undefined);
+  const theme = useTheme();
   const [locked, setLocked] = useState(false);
   const [lockEnabled, setLockEnabled] = useState(false);
   const lockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,7 +45,7 @@ function App() {
     setActiveTabId(resource.id);
   }, []);
 
-  const openSettings = useCallback((section?: "sync" | "encryption") => {
+  const openSettings = useCallback((section?: "appearance" | "sync" | "encryption") => {
     setSettingsOpen(true);
     setSettingsSection(section);
     setActiveTabId(SETTINGS_TAB_ID);
@@ -184,7 +186,11 @@ function App() {
         ))}
         {settingsOpen && (
           <div className={`${styles.tabPane} ${activeTabId !== SETTINGS_TAB_ID ? styles.tabPaneHidden : ""}`}>
-            <SettingsView initialSection={settingsSection} />
+            <SettingsView
+              initialSection={settingsSection}
+              themeMode={theme.mode}
+              onThemeModeChange={theme.setMode}
+            />
           </div>
         )}
       </div>

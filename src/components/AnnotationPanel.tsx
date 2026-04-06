@@ -4,6 +4,12 @@ import styles from "./AnnotationPanel.module.css";
 import { Modal } from "@/components/Modal";
 import { ResourceMeta } from "@/components/ResourceMeta";
 
+function autoResize(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 200) + "px";
+}
+
 interface AnnotationPanelProps {
   resource: Resource;
   highlights: Highlight[];
@@ -201,7 +207,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
       <div
         ref={ref}
         className={`${styles.highlightItem} ${isActive ? styles.highlightItemActive : ""} ${isFailed ? styles.highlightItemFailed : ""}`}
-        style={{ borderLeftColor: isFailed ? "#ccc" : highlight.color }}
+        style={{ borderLeftColor: isFailed ? "var(--color-text-muted)" : highlight.color }}
         onClick={onClick}
       >
         <div className={styles.highlightText}>{highlight.text_content}</div>
@@ -227,9 +233,10 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                 {editingCommentId === c.id ? (
                   <div>
                     <textarea
+                      ref={autoResize}
                       className={styles.commentInput}
                       value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
+                      onChange={(e) => { setEditText(e.target.value); autoResize(e.target); }}
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
@@ -299,9 +306,10 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
           {showInput ? (
             <div className={styles.addCommentWrap}>
               <textarea
+                ref={autoResize}
                 className={styles.commentInput}
                 value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
+                onChange={(e) => { setCommentText(e.target.value); autoResize(e.target); }}
                 placeholder="添加评论..."
                 autoFocus
                 onKeyDown={(e) => {
@@ -360,9 +368,10 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
           {editingNoteId === note.id ? (
             <div>
               <textarea
+                ref={autoResize}
                 className={styles.noteInput}
                 value={editText}
-                onChange={(e) => setEditText(e.target.value)}
+                onChange={(e) => { setEditText(e.target.value); autoResize(e.target); }}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -432,9 +441,10 @@ function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
   return (
     <div className={styles.noteInputFixed}>
       <textarea
+        ref={autoResize}
         className={styles.noteInput}
         value={noteText}
-        onChange={(e) => setNoteText(e.target.value)}
+        onChange={(e) => { setNoteText(e.target.value); autoResize(e.target); }}
         placeholder="添加笔记..."
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {

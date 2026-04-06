@@ -29,7 +29,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const didScrollToInitial = useRef(false);
   const draggingRef = useRef(false);
-  const [panelWidth, setPanelWidth] = useState(280);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem("shibei-annotation-width");
+    return saved ? Math.max(220, parseInt(saved, 10)) : 280;
+  });
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
@@ -38,6 +41,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [downloading, setDownloading] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [inverted, setInverted] = useState(false);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -286,7 +290,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       const rect = containerRef.current.getBoundingClientRect();
       const newWidth = rect.right - e.clientX;
       const maxW = rect.width - READER_MIN - HANDLE_WIDTH;
-      setPanelWidth(Math.max(PANEL_MIN, Math.min(maxW, newWidth)));
+      const clamped = Math.max(PANEL_MIN, Math.min(maxW, newWidth));
+      setPanelWidth(clamped);
+      localStorage.setItem("shibei-annotation-width", String(Math.round(clamped)));
     }
 
     function onMouseUp() {
@@ -335,6 +341,13 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           <span className={styles.metaTime}>
             {new Date(resource.created_at).toLocaleDateString()}
           </span>
+          <button
+            className={`${styles.invertBtn} ${inverted ? styles.invertBtnActive : ""}`}
+            onClick={() => setInverted((v) => !v)}
+            title={inverted ? "恢复原始配色" : "反色阅读"}
+          >
+            🌓
+          </button>
         </div>
 
         {/* Snapshot content or loading indicator */}
@@ -354,7 +367,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
             <iframe
               key={iframeKey}
               ref={iframeRef}
-              className={styles.iframe}
+              className={`${styles.iframe} ${inverted ? styles.iframeInverted : ""}`}
               style={iframeLoading ? { visibility: "hidden", position: "absolute", inset: 0 } : undefined}
               src={`${PROTOCOL_BASE}/resource/${resource.id}`}
               title={resource.title}
