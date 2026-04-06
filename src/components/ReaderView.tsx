@@ -29,7 +29,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const didScrollToInitial = useRef(false);
   const draggingRef = useRef(false);
-  const [panelWidth, setPanelWidth] = useState(280);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    const saved = localStorage.getItem("shibei-annotation-width");
+    return saved ? Math.max(220, parseInt(saved, 10)) : 280;
+  });
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
@@ -287,7 +290,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       const rect = containerRef.current.getBoundingClientRect();
       const newWidth = rect.right - e.clientX;
       const maxW = rect.width - READER_MIN - HANDLE_WIDTH;
-      setPanelWidth(Math.max(PANEL_MIN, Math.min(maxW, newWidth)));
+      const clamped = Math.max(PANEL_MIN, Math.min(maxW, newWidth));
+      setPanelWidth(clamped);
+      localStorage.setItem("shibei-annotation-width", String(Math.round(clamped)));
     }
 
     function onMouseUp() {
