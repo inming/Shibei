@@ -38,6 +38,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [downloading, setDownloading] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [inverted, setInverted] = useState(false);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -335,6 +336,13 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           <span className={styles.metaTime}>
             {new Date(resource.created_at).toLocaleDateString()}
           </span>
+          <button
+            className={`${styles.invertBtn} ${inverted ? styles.invertBtnActive : ""}`}
+            onClick={() => setInverted((v) => !v)}
+            title={inverted ? "恢复原始配色" : "反色阅读"}
+          >
+            🌓
+          </button>
         </div>
 
         {/* Snapshot content or loading indicator */}
@@ -354,7 +362,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
             <iframe
               key={iframeKey}
               ref={iframeRef}
-              className={styles.iframe}
+              className={`${styles.iframe} ${inverted ? styles.iframeInverted : ""}`}
               style={iframeLoading ? { visibility: "hidden", position: "absolute", inset: 0 } : undefined}
               src={`${PROTOCOL_BASE}/resource/${resource.id}`}
               title={resource.title}
