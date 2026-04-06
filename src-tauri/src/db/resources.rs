@@ -670,6 +670,37 @@ fn get_tag_ids_for_resource(conn: &Connection, resource_id: &str) -> Result<Vec<
     Ok(ids)
 }
 
+/// Get the plain text content for a resource. Returns None if not yet extracted.
+pub fn get_plain_text(conn: &Connection, resource_id: &str) -> Result<Option<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT plain_text FROM resources WHERE id = ?1 AND deleted_at IS NULL",
+    )?;
+    let text = stmt
+        .query_row(params![resource_id], |row| row.get::<_, Option<String>>(0))
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                DbError::NotFound(format!("resource not found: {}", resource_id))
+            }
+            other => DbError::Sqlite(other),
+        })?;
+    Ok(text)
+}
+
+/// Set the plain text content for a resource.
+pub fn set_plain_text(conn: &Connection, resource_id: &str, text: &str) -> Result<(), DbError> {
+    let rows = conn.execute(
+        "UPDATE resources SET plain_text = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+        params![text, resource_id],
+    )?;
+    if rows == 0 {
+        return Err(DbError::NotFound(format!(
+            "resource not found: {}",
+            resource_id
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -924,5 +955,42 @@ mod tests {
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
         assert_eq!(fetched.selection_meta, None);
+    }
+
+    #[test]
+    fn test_plain_text_get_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let conn = crate::db::init_db(&db_path).unwrap();
+
+        // Create test folder and resource
+        let folder = crate::db::folders::create_folder(&conn, "test", "__root__", None).unwrap();
+        let resource = create_resource(
+            &conn,
+            CreateResourceInput {
+                id: None,
+                title: "Test".to_string(),
+                url: "https://example.com".to_string(),
+                domain: None,
+                author: None,
+                description: None,
+                folder_id: folder.id.clone(),
+                resource_type: "html".to_string(),
+                file_path: "storage/test/snapshot.html".to_string(),
+                captured_at: "2026-01-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            },
+            None,
+        )
+        .unwrap();
+
+        // plain_text should initially be None
+        let text = get_plain_text(&conn, &resource.id).unwrap();
+        assert!(text.is_none());
+
+        // Set and retrieve
+        set_plain_text(&conn, &resource.id, "Hello world").unwrap();
+        let text = get_plain_text(&conn, &resource.id).unwrap();
+        assert_eq!(text, Some("Hello world".to_string()));
     }
 }

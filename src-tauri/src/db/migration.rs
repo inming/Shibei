@@ -35,6 +35,10 @@ const MIGRATIONS: &[Migration] = &[
         version: 5,
         sql: include_str!("../../migrations/005_search_index.sql"),
     },
+    Migration {
+        version: 6,
+        sql: include_str!("../../migrations/006_plain_text.sql"),
+    },
 ];
 
 pub fn run_migrations(conn: &mut Connection) -> Result<(), MigrationError> {
@@ -97,7 +101,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 
     #[test]
@@ -115,7 +119,7 @@ mod tests {
         let after: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(after, 5);
+        assert_eq!(after, 6);
     }
 
     #[test]
