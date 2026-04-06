@@ -162,6 +162,7 @@ pub async fn cmd_list_resources(
     folder_id: String,
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
+    tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     resources::list_resources_by_folder(
@@ -169,6 +170,7 @@ pub async fn cmd_list_resources(
         &folder_id,
         sort_by.unwrap_or(resources::SortBy::CreatedAt),
         sort_order.unwrap_or(resources::SortOrder::Desc),
+        &tag_ids,
     )
     .map_err(Into::into)
 }
@@ -231,12 +233,14 @@ pub async fn cmd_list_all_resources(
     state: tauri::State<'_, Arc<AppState>>,
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
+    tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     resources::list_all_resources(
         &conn,
         sort_by.unwrap_or(resources::SortBy::CreatedAt),
         sort_order.unwrap_or(resources::SortOrder::Desc),
+        &tag_ids,
     )
     .map_err(Into::into)
 }
