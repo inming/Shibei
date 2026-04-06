@@ -27,6 +27,21 @@ function authHeaders(token) {
   };
 }
 
+// De-duplication: prevent duplicate saves within a short window
+const recentSaves = new Map(); // url → timestamp
+const DEDUP_WINDOW_MS = 5000;
+
+function isDuplicate(url) {
+  const now = Date.now();
+  // Clean old entries
+  for (const [key, ts] of recentSaves) {
+    if (now - ts > DEDUP_WINDOW_MS) recentSaves.delete(key);
+  }
+  if (recentSaves.has(url)) return true;
+  recentSaves.set(url, now);
+  return false;
+}
+
 // Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) {
@@ -34,12 +49,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
   if (message.type === "save-page") {
+    const url = message.data?.url || "";
+    if (isDuplicate(url)) {
+      sendResponse({ success: false, error: "Duplicate save ignored" });
+      return false;
+    }
     handleSavePage(message.data)
       .then((result) => sendResponse({ success: true, data: result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   }
   if (message.type === "save-region") {
+    const url = message.data?.url || "";
+    if (isDuplicate(url)) {
+      sendResponse({ success: false, error: "Duplicate save ignored" });
+      return false;
+    }
     handleSaveRegion(message.data)
       .then((result) => sendResponse({ success: true, data: result }))
       .catch((err) => sendResponse({ success: false, error: err.message }));

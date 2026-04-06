@@ -305,6 +305,7 @@ saveBtn.addEventListener("click", async () => {
 
 selectSaveBtn.addEventListener("click", async () => {
   console.log("[shibei] select-save clicked");
+  selectSaveBtn.disabled = true;
 
   if (!pageInfo?.tabId) {
     showMessage("无法获取当前页面信息", "error");

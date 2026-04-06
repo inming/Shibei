@@ -506,6 +506,9 @@
   }
 
   function onConfirm() {
+    confirmBtn.disabled = true;
+    confirmBtn.style.opacity = "0.5";
+    confirmBtn.style.cursor = "default";
     confirmBar.style.display = "none";
     topBar.textContent = "正在保存...";
     doSave(lockedElement);
