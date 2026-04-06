@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -522,6 +523,7 @@ impl SyncEngine {
         let conn = self.pool.get().map_err(DbError::Pool)?;
         conn.execute_batch("PRAGMA foreign_keys = OFF")?;
         let mut applied = 0usize;
+        let mut affected_resource_ids = HashSet::new();
 
         for entry in &entries {
             // Skip entries from self
@@ -549,6 +551,15 @@ impl SyncEngine {
                 "INSERT" | "UPDATE" => {
                     self.upsert_entity(&conn, &entry.entity_type, &entry.entity_id, &payload, &entry.hlc)?;
                     applied += 1;
+                    match entry.entity_type.as_str() {
+                        "resource" => { affected_resource_ids.insert(entry.entity_id.clone()); }
+                        "highlight" | "comment" => {
+                            if let Some(rid) = payload["resource_id"].as_str() {
+                                affected_resource_ids.insert(rid.to_string());
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 "DELETE" => {
                     let now = crate::db::now_iso8601();
@@ -557,6 +568,15 @@ impl SyncEngine {
                         .unwrap_or(&now);
                     self.soft_delete_entity(&conn, &entry.entity_type, &entry.entity_id, deleted_at, &entry.hlc)?;
                     applied += 1;
+                    match entry.entity_type.as_str() {
+                        "resource" => { affected_resource_ids.insert(entry.entity_id.clone()); }
+                        "highlight" | "comment" => {
+                            if let Some(rid) = payload["resource_id"].as_str() {
+                                affected_resource_ids.insert(rid.to_string());
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 _ => {
                     // Unknown operation, skip
@@ -565,6 +585,23 @@ impl SyncEngine {
         }
 
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
+
+        // Rebuild FTS for affected resources
+        for rid in &affected_resource_ids {
+            let is_deleted: bool = conn
+                .query_row(
+                    "SELECT deleted_at IS NOT NULL FROM resources WHERE id = ?1",
+                    rusqlite::params![rid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(true);
+            if is_deleted {
+                let _ = crate::db::search::delete_search_index(&conn, rid);
+            } else {
+                let _ = crate::db::search::rebuild_search_index(&conn, rid);
+            }
+        }
+
         Ok(applied)
     }
 
