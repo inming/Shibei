@@ -959,30 +959,9 @@ mod tests {
 
     #[test]
     fn test_plain_text_get_set() {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("test.db");
-        let conn = crate::db::init_db(&db_path).unwrap();
-
-        // Create test folder and resource
-        let folder = crate::db::folders::create_folder(&conn, "test", "__root__", None).unwrap();
-        let resource = create_resource(
-            &conn,
-            CreateResourceInput {
-                id: None,
-                title: "Test".to_string(),
-                url: "https://example.com".to_string(),
-                domain: None,
-                author: None,
-                description: None,
-                folder_id: folder.id.clone(),
-                resource_type: "html".to_string(),
-                file_path: "storage/test/snapshot.html".to_string(),
-                captured_at: "2026-01-01T00:00:00Z".to_string(),
-                selection_meta: None,
-            },
-            None,
-        )
-        .unwrap();
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "test", "__root__", None).unwrap();
+        let resource = create_test_resource(&conn, &folder.id);
 
         // plain_text should initially be None
         let text = get_plain_text(&conn, &resource.id).unwrap();
@@ -992,5 +971,18 @@ mod tests {
         set_plain_text(&conn, &resource.id, "Hello world").unwrap();
         let text = get_plain_text(&conn, &resource.id).unwrap();
         assert_eq!(text, Some("Hello world".to_string()));
+    }
+
+    #[test]
+    fn test_plain_text_not_found() {
+        let conn = test_db();
+        assert!(matches!(
+            get_plain_text(&conn, "nonexistent"),
+            Err(DbError::NotFound(_))
+        ));
+        assert!(matches!(
+            set_plain_text(&conn, "nonexistent", "text"),
+            Err(DbError::NotFound(_))
+        ));
     }
 }
