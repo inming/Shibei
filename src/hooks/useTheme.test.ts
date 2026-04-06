@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useTheme, type ThemeMode } from "@/hooks/useTheme";
+import { useTheme } from "@/hooks/useTheme";
 
 describe("useTheme", () => {
   let matchMediaListeners: Array<(e: { matches: boolean }) => void>;
