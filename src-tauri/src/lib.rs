@@ -142,6 +142,7 @@ pub fn run() {
             commands::cmd_get_lock_status,
             commands::cmd_set_lock_timeout,
             commands::cmd_disable_lock_pin,
+            commands::cmd_search_resources,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();
@@ -169,6 +170,7 @@ pub fn run() {
             let server_sync_clock = device_id
                 .as_ref()
                 .map(|id| sync::hlc::HlcClock::new(id.clone()));
+            let fts_pool = pool.clone();
             let server_state = Arc::new(server::AppState {
                 pool,
                 base_dir: server_base_dir,
@@ -182,6 +184,24 @@ pub fn run() {
                     eprintln!("[shibei] HTTP server failed: {}", e);
                 }
             });
+            // Initialize FTS search index if not yet done
+            {
+                std::thread::spawn(move || {
+                    if let Ok(conn) = fts_pool.get() {
+                        match db::search::is_fts_initialized(&conn) {
+                            Ok(false) => {
+                                if let Err(e) = db::search::rebuild_all_search_index(&conn) {
+                                    eprintln!("[shibei] FTS index rebuild failed: {}", e);
+                                } else if let Err(e) = db::search::mark_fts_initialized(&conn) {
+                                    eprintln!("[shibei] FTS flag write failed: {}", e);
+                                }
+                            }
+                            Err(e) => eprintln!("[shibei] FTS init check failed: {}", e),
+                            _ => {}
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -343,6 +343,35 @@ pub async fn cmd_get_resources_by_tag(
     tags::get_resources_by_tag(&conn, &tag_id).map_err(Into::into)
 }
 
+#[tauri::command]
+pub async fn cmd_search_resources(
+    state: tauri::State<'_, Arc<AppState>>,
+    query: String,
+    folder_id: Option<String>,
+    tag_ids: Vec<String>,
+    sort_by: Option<resources::SortBy>,
+    sort_order: Option<resources::SortOrder>,
+) -> Result<Vec<resources::Resource>, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let sort_by_str = match sort_by.unwrap_or(resources::SortBy::CreatedAt) {
+        resources::SortBy::CreatedAt => "created_at",
+        resources::SortBy::AnnotatedAt => "annotated_at",
+    };
+    let sort_order_str = match sort_order.unwrap_or(resources::SortOrder::Desc) {
+        resources::SortOrder::Asc => "asc",
+        resources::SortOrder::Desc => "desc",
+    };
+    db::search::search_resources(
+        &conn,
+        &query,
+        folder_id.as_deref(),
+        &tag_ids,
+        sort_by_str,
+        sort_order_str,
+    )
+    .map_err(Into::into)
+}
+
 // ── Highlights ──
 
 #[tauri::command]
