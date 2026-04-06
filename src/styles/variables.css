@@ -36,6 +36,11 @@
   /* Search highlight */
   --color-accent-light: #fff3b0;
 
+  /* Markdown */
+  --color-code-bg: #f0f0f0;
+  --color-blockquote-bg: #f9f9f9;
+  --color-table-border: #e0e0e0;
+
   /* Panel widths */
   --list-panel-width: 340px;
   --annotation-panel-width: 280px;
@@ -90,4 +95,9 @@
 
   /* Search highlight */
   --color-accent-light: #3d3520;
+
+  /* Markdown */
+  --color-code-bg: #2a2a2a;
+  --color-blockquote-bg: #1e1e1e;
+  --color-table-border: #3a3a3a;
 }
