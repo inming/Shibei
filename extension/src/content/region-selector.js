@@ -505,10 +505,10 @@
     confirmBar.style.display = "flex";
   }
 
+  let saving = false;
   function onConfirm() {
-    confirmBtn.disabled = true;
-    confirmBtn.style.opacity = "0.5";
-    confirmBtn.style.cursor = "default";
+    if (saving) return;
+    saving = true;
     confirmBar.style.display = "none";
     topBar.textContent = "正在保存...";
     doSave(lockedElement);
