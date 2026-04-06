@@ -105,10 +105,6 @@ pub fn search_resources(
 
     let fts_query = escape_fts_query(trimmed);
 
-    let order_col = match sort_by {
-        "created_at" => "r.created_at",
-        _ => "r.created_at",
-    };
     let order_dir = match sort_order {
         "asc" | "ASC" => "ASC",
         _ => "DESC",
@@ -133,19 +129,42 @@ pub fn search_resources(
         param_index += 1;
     }
 
-    for tag_id in tag_ids {
+    if !tag_ids.is_empty() {
+        let placeholders: Vec<String> = tag_ids
+            .iter()
+            .enumerate()
+            .map(|_| {
+                let ph = format!("?{}", param_index);
+                param_index += 1;
+                ph
+            })
+            .collect();
         sql.push_str(&format!(
             " AND EXISTS (SELECT 1 FROM resource_tags rt WHERE rt.resource_id = r.id \
-             AND rt.tag_id = ?{} AND rt.deleted_at IS NULL)",
-            param_index
+             AND rt.tag_id IN ({}) AND rt.deleted_at IS NULL)",
+            placeholders.join(", ")
         ));
-        param_values.push(Box::new(tag_id.clone()));
-        param_index += 1;
+        for tag_id in tag_ids {
+            param_values.push(Box::new(tag_id.clone()));
+        }
     }
     // suppress unused assignment warning
     let _ = param_index;
 
-    sql.push_str(&format!(" ORDER BY {} {}", order_col, order_dir));
+    // Sort order
+    let order_clause = match sort_by {
+        "annotated_at" => format!(
+            " ORDER BY COALESCE(\
+               (SELECT MAX(created_at) FROM (\
+                 SELECT created_at FROM highlights WHERE resource_id = r.id AND deleted_at IS NULL \
+                 UNION ALL \
+                 SELECT created_at FROM comments WHERE resource_id = r.id AND deleted_at IS NULL\
+               )), r.created_at) {}",
+            order_dir
+        ),
+        _ => format!(" ORDER BY r.created_at {}", order_dir),
+    };
+    sql.push_str(&order_clause);
 
     let params_refs: Vec<&dyn rusqlite::types::ToSql> =
         param_values.iter().map(|p| p.as_ref()).collect();

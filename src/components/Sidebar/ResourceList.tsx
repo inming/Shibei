@@ -80,8 +80,9 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
   const [inputValue, setInputValue] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Convert Set to stable array for hook
-  const tagIdsArray = useMemo(() => Array.from(selectedTagIds), [selectedTagIds]);
+  // Convert Set to stable array for hook — serialize to key for stable reference
+  const tagIdsKey = Array.from(selectedTagIds).sort().join(",");
+  const tagIdsArray = useMemo(() => Array.from(selectedTagIds), [tagIdsKey]);
 
   // Pass tag filtering to backend via hook
   const { resources, loading } = useResources(
