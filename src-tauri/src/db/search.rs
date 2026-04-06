@@ -103,25 +103,45 @@ pub fn search_resources(
         return Ok(vec![]);
     }
 
-    let fts_query = escape_fts_query(trimmed);
-
     let order_dir = match sort_order {
         "asc" | "ASC" => "ASC",
         _ => "DESC",
     };
 
-    let mut sql = String::from(
-        "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
-         r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
-         FROM resources r \
-         JOIN search_index si ON r.id = si.resource_id \
-         WHERE r.deleted_at IS NULL \
-         AND search_index MATCH ?1",
-    );
+    // Trigram tokenizer requires >= 3 chars for MATCH.
+    // For shorter queries (e.g. 2-char Chinese words), fall back to LIKE on indexed columns.
+    let use_fts = trimmed.chars().count() >= 3;
 
+    let mut sql;
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-    param_values.push(Box::new(fts_query));
-    let mut param_index = 2;
+    let mut param_index;
+
+    if use_fts {
+        let fts_query = escape_fts_query(trimmed);
+        sql = String::from(
+            "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             FROM resources r \
+             JOIN search_index si ON r.id = si.resource_id \
+             WHERE r.deleted_at IS NULL \
+             AND search_index MATCH ?1",
+        );
+        param_values.push(Box::new(fts_query));
+        param_index = 2;
+    } else {
+        let like_pattern = format!("%{}%", trimmed);
+        sql = String::from(
+            "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             FROM resources r \
+             JOIN search_index si ON r.id = si.resource_id \
+             WHERE r.deleted_at IS NULL \
+             AND (si.title LIKE ?1 OR si.url LIKE ?1 OR si.description LIKE ?1 \
+                  OR si.highlights_text LIKE ?1 OR si.comments_text LIKE ?1)",
+        );
+        param_values.push(Box::new(like_pattern));
+        param_index = 2;
+    }
 
     if let Some(fid) = folder_id {
         sql.push_str(&format!(" AND r.folder_id = ?{}", param_index));
@@ -440,6 +460,30 @@ mod tests {
             search_resources(&conn, "AND Rust OR", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, r.id);
+    }
+
+    #[test]
+    fn test_short_query_like_fallback() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let r1 = setup_resource(&conn, &folder.id, "算法导论", "https://a.com");
+        let r2 = setup_resource(&conn, &folder.id, "数据结构", "https://b.com");
+
+        rebuild_search_index(&conn, &r1.id).unwrap();
+        rebuild_search_index(&conn, &r2.id).unwrap();
+
+        // 2-char Chinese query should work via LIKE fallback
+        let results = search_resources(&conn, "算法", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, r1.id);
+
+        // Single char should also work
+        let results = search_resources(&conn, "算", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+
+        // No match
+        let results = search_resources(&conn, "AI", None, &[], "created_at", "desc").unwrap();
+        assert!(results.is_empty());
     }
 
     #[test]

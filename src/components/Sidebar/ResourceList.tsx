@@ -67,10 +67,10 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onD
     >
       <div className={styles.itemTitle}>
         {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
-        {searchQuery.length >= 3 ? highlightMatch(resource.title, searchQuery) : resource.title}
+        {searchQuery.length >= 2 ? highlightMatch(resource.title, searchQuery) : resource.title}
       </div>
       <div className={styles.itemMeta}>
-        <span>{resource.domain ?? new URL(resource.url).hostname} · {new Date(resource.created_at).toLocaleDateString()}</span>
+        <span>{searchQuery.length >= 2 ? highlightMatch(resource.domain ?? new URL(resource.url).hostname, searchQuery) : (resource.domain ?? new URL(resource.url).hostname)} · {new Date(resource.created_at).toLocaleDateString()}</span>
       </div>
     </div>
   );
@@ -79,6 +79,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onD
 export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
   const [inputValue, setInputValue] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const composingRef = useRef(false);
 
   // Convert Set to stable array for hook — serialize to key for stable reference
   const tagIdsKey = Array.from(selectedTagIds).sort().join(",");
@@ -101,16 +102,26 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
 
   const filteredResources = resources;
 
+  const MIN_SEARCH_CHARS = 2;
+
   function handleSearchInput(value: string) {
     setInputValue(value);
+    // Don't trigger search while IME is composing
+    if (composingRef.current) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (value.length >= 3 || value.length === 0) {
+    if (value.length >= MIN_SEARCH_CHARS || value.length === 0) {
       debounceRef.current = setTimeout(() => {
         onSearchChange(value);
       }, 300);
-    } else if (searchQuery.length >= 3) {
+    } else if (searchQuery.length >= MIN_SEARCH_CHARS) {
       onSearchChange("");
     }
+  }
+
+  function handleCompositionEnd(e: React.CompositionEvent<HTMLInputElement>) {
+    composingRef.current = false;
+    // Trigger search with the committed text
+    handleSearchInput(e.currentTarget.value);
   }
 
   useEffect(() => {
@@ -220,6 +231,8 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           placeholder="搜索..."
           value={inputValue}
           onChange={(e) => handleSearchInput(e.target.value)}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={handleCompositionEnd}
         />
         {inputValue && (
           <button
@@ -265,7 +278,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       {loading && <ResourceListSkeleton />}
       {folderId && !loading && filteredResources.length === 0 && (
         <div className={styles.empty}>
-          {searchQuery.length >= 3 ? "无搜索结果" : "该文件夹暂无资料"}
+          {searchQuery.length >= MIN_SEARCH_CHARS ? "无搜索结果" : "该文件夹暂无资料"}
         </div>
       )}
       <div

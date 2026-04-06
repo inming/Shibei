@@ -25,7 +25,7 @@ export function useResources(
     setLoading(true);
     try {
       let list: Resource[];
-      if (searchQuery.length >= 3) {
+      if (searchQuery.length >= 2) {
         list = await cmd.searchResources(
           searchQuery,
           folderId === ALL_RESOURCES_ID ? null : folderId,
@@ -65,7 +65,7 @@ export function useResources(
     const u2 = listen(DataEvents.TAG_CHANGED, () => { refresh(); });
     const u3 = listen(DataEvents.SYNC_COMPLETED, () => { refresh(); });
     const u4 = listen(DataEvents.ANNOTATION_CHANGED, () => {
-      if (searchQuery.length >= 3) refresh();
+      if (searchQuery.length >= 2) refresh();
     });
     return () => {
       u1.then((f) => f());
