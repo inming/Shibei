@@ -150,4 +150,24 @@ mod tests {
             assert!(fk_enabled, "foreign_keys should be enabled on every pool connection");
         }
     }
+
+    #[test]
+    fn test_fts5_trigram_available() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE VIRTUAL TABLE fts_test USING fts5(content, tokenize='trigram')"
+        ).expect("FTS5 trigram tokenizer not available in bundled SQLite");
+        conn.execute(
+            "INSERT INTO fts_test (content) VALUES (?1)",
+            rusqlite::params!["深度学习是机器学习的一个分支"],
+        ).unwrap();
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM fts_test WHERE fts_test MATCH '\"机器学习\"'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "FTS5 trigram should match Chinese substring");
+    }
 }
