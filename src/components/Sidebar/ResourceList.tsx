@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
@@ -10,21 +10,39 @@ import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
 import toast from "react-hot-toast";
 import styles from "./ResourceList.module.css";
 
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const idx = lowerText.indexOf(lowerQuery);
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className={styles.highlight}>{text.slice(idx, idx + query.length)}</mark>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 interface ResourceListProps {
   folderId: string | null;
   selectedResourceIds: Set<string>;
   selectedTagIds: Set<string>;
   sortBy: "created_at" | "annotated_at";
   sortOrder: "asc" | "desc";
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
   onSelectResource: (resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => void;
   onOpen: (resource: Resource) => void;
   onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
 }
 
-function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, onContextMenu }: {
+function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onDoubleClick, onContextMenu }: {
   resource: Resource;
   isSelected: boolean;
+  searchQuery: string;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -49,7 +67,7 @@ function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, o
     >
       <div className={styles.itemTitle}>
         {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
-        {resource.title}
+        {searchQuery.length >= 3 ? highlightMatch(resource.title, searchQuery) : resource.title}
       </div>
       <div className={styles.itemMeta}>
         <span>{resource.domain ?? new URL(resource.url).hostname} · {new Date(resource.created_at).toLocaleDateString()}</span>
@@ -58,8 +76,21 @@ function DraggableResourceItem({ resource, isSelected, onClick, onDoubleClick, o
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
-  const { resources, resourceTags, loading } = useResources(folderId, sortBy, sortOrder);
+export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
+  const [inputValue, setInputValue] = useState(searchQuery);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Convert Set to stable array for hook
+  const tagIdsArray = useMemo(() => Array.from(selectedTagIds), [selectedTagIds]);
+
+  // Pass tag filtering to backend via hook
+  const { resources, loading } = useResources(
+    folderId,
+    sortBy,
+    sortOrder,
+    searchQuery,
+    tagIdsArray,
+  );
   const listRef = useRef<HTMLDivElement>(null);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -67,12 +98,29 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-  const filteredResources = selectedTagIds.size === 0
-    ? resources
-    : resources.filter((r) => {
-        const tags = resourceTags[r.id] || [];
-        return tags.some((t) => selectedTagIds.has(t.id));
-      });
+  const filteredResources = resources;
+
+  function handleSearchInput(value: string) {
+    setInputValue(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.length >= 3 || value.length === 0) {
+      debounceRef.current = setTimeout(() => {
+        onSearchChange(value);
+      }, 300);
+    } else if (searchQuery.length >= 3) {
+      onSearchChange("");
+    }
+  }
+
+  useEffect(() => {
+    setInputValue(searchQuery);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   function handleContextMenu(e: React.MouseEvent, resource: Resource) {
     e.preventDefault();
@@ -163,6 +211,28 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
 
   return (
     <div className={styles.section}>
+      <div className={styles.searchBox}>
+        <span className={styles.searchIcon}>&#128269;</span>
+        <input
+          className={styles.searchInput}
+          type="text"
+          placeholder="搜索..."
+          value={inputValue}
+          onChange={(e) => handleSearchInput(e.target.value)}
+        />
+        {inputValue && (
+          <button
+            className={styles.searchClear}
+            onClick={() => {
+              setInputValue("");
+              onSearchChange("");
+            }}
+            aria-label="清除搜索"
+          >
+            &#10005;
+          </button>
+        )}
+      </div>
       <div className={styles.header}>
         <span className={styles.title}>
           资料
@@ -193,7 +263,9 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       )}
       {loading && <ResourceListSkeleton />}
       {folderId && !loading && filteredResources.length === 0 && (
-        <div className={styles.empty}>该文件夹暂无资料</div>
+        <div className={styles.empty}>
+          {searchQuery.length >= 3 ? "无搜索结果" : "该文件夹暂无资料"}
+        </div>
       )}
       <div
         ref={listRef}
@@ -207,6 +279,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
             key={resource.id}
             resource={resource}
             isSelected={selectedResourceIds.has(resource.id)}
+            searchQuery={searchQuery}
             onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
             onDoubleClick={() => onOpen(resource)}
             onContextMenu={(e) => handleContextMenu(e, resource)}

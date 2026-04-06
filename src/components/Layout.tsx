@@ -29,6 +29,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showTrash, setShowTrash] = useState(false);
   const [trashContextMenu, setTrashContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showClearTrashConfirm, setShowClearTrashConfirm] = useState(false);
@@ -334,6 +335,8 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               selectedTagIds={selectedTagIds}
               sortBy={sortBy}
               sortOrder={sortOrder}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
               onSelectResource={handleResourceSelect}
               onOpen={(resource) => onOpenResource(resource)}
               onSortByChange={setSortBy}
