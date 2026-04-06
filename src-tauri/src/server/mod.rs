@@ -5,7 +5,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -113,6 +113,39 @@ struct ContentResponse {
     has_more: bool,
 }
 
+#[derive(Deserialize)]
+struct UpdateResourceRequest {
+    title: Option<String>,
+    description: Option<String>,
+    folder_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CreateTagRequest {
+    name: String,
+    color: String,
+}
+
+#[derive(Serialize)]
+struct CreateTagResponse {
+    tag_id: String,
+}
+
+#[derive(Deserialize)]
+struct CreateCommentRequest {
+    content: String,
+}
+
+#[derive(Serialize)]
+struct CreateCommentResponse {
+    comment_id: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateCommentRequest {
+    content: String,
+}
+
 /// Start the HTTP server on 127.0.0.1:21519.
 pub async fn start_server(
     state: Arc<AppState>,
@@ -141,14 +174,26 @@ pub async fn start_server(
         .route("/api/ping", get(handle_ping))
         .route("/token", get(handle_token))
         .route("/api/folders", get(handle_folders))
-        .route("/api/tags", get(handle_tags))
+        .route("/api/tags", get(handle_tags).post(handle_create_tag))
         .route("/api/folder-counts", get(handle_folder_counts))
         .route("/api/check-url", get(handle_check_url))
         .route("/api/save", post(handle_save))
         .route("/api/resources", get(handle_list_resources))
-        .route("/api/resources/{id}", get(handle_get_resource))
+        .route(
+            "/api/resources/{id}",
+            get(handle_get_resource).put(handle_update_resource),
+        )
         .route("/api/resources/{id}/annotations", get(handle_get_annotations))
         .route("/api/resources/{id}/content", get(handle_get_content))
+        .route(
+            "/api/resources/{id}/tags/{tag_id}",
+            post(handle_add_tag_to_resource).delete(handle_remove_tag_from_resource),
+        )
+        .route(
+            "/api/resources/{id}/comments",
+            post(handle_create_comment),
+        )
+        .route("/api/comments/{id}", put(handle_update_comment))
         .with_state(state)
         .layer(cors)
         .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024));
@@ -662,4 +707,174 @@ async fn handle_get_content(
         total_length,
         has_more,
     }))
+}
+
+async fn handle_update_resource(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(payload): Json<UpdateResourceRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    // Get current resource (404 if not found)
+    let current = resources::get_resource(&conn, &id).map_err(map_db_error)?;
+
+    // Update title/description if provided
+    if payload.title.is_some() || payload.description.is_some() {
+        let title = payload.title.as_deref().unwrap_or(&current.title);
+        let description = if payload.description.is_some() {
+            payload.description.as_deref()
+        } else {
+            current.description.as_deref()
+        };
+        resources::update_resource(&conn, &id, title, description, sync_ctx.as_ref())
+            .map_err(map_db_error)?;
+    }
+
+    // Move to new folder if provided
+    if let Some(ref folder_id) = payload.folder_id {
+        resources::move_resource(&conn, &id, folder_id, sync_ctx.as_ref())
+            .map_err(map_db_error)?;
+    }
+
+    let _ = state.app_handle.emit(
+        events::DATA_RESOURCE_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "resource_id": id,
+        }),
+    );
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn handle_create_tag(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateTagRequest>,
+) -> Result<Json<CreateTagResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    let tag =
+        tags::create_tag(&conn, &payload.name, &payload.color, sync_ctx.as_ref())
+            .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_TAG_CHANGED,
+        serde_json::json!({
+            "action": "created",
+            "tag_id": tag.id,
+        }),
+    );
+
+    Ok(Json(CreateTagResponse { tag_id: tag.id }))
+}
+
+async fn handle_add_tag_to_resource(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path((resource_id, tag_id)): axum::extract::Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    tags::add_tag_to_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref())
+        .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_TAG_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "resource_id": resource_id,
+            "tag_id": tag_id,
+        }),
+    );
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn handle_remove_tag_from_resource(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path((resource_id, tag_id)): axum::extract::Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    tags::remove_tag_from_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref())
+        .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_TAG_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "resource_id": resource_id,
+            "tag_id": tag_id,
+        }),
+    );
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn handle_create_comment(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(resource_id): axum::extract::Path<String>,
+    Json(payload): Json<CreateCommentRequest>,
+) -> Result<Json<CreateCommentResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    let comment = comments::create_comment(
+        &conn,
+        &resource_id,
+        None,
+        &payload.content,
+        sync_ctx.as_ref(),
+    )
+    .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_ANNOTATION_CHANGED,
+        serde_json::json!({
+            "action": "created",
+            "resource_id": resource_id,
+        }),
+    );
+
+    Ok(Json(CreateCommentResponse {
+        comment_id: comment.id,
+    }))
+}
+
+async fn handle_update_comment(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(payload): Json<UpdateCommentRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    comments::update_comment(&conn, &id, &payload.content, sync_ctx.as_ref())
+        .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_ANNOTATION_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "comment_id": id,
+        }),
+    );
+
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
