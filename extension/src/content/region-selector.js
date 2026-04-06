@@ -483,10 +483,12 @@
 
   function onClick(e) {
     if (isShibeiElement(e.target)) return; // Don't capture clicks on our UI
-    if (lockedElement) return; // Already locked
 
+    // Always block page clicks while selector is active — prevent navigation/reload
     e.preventDefault();
     e.stopPropagation();
+
+    if (lockedElement) return; // Already locked
 
     if (!currentElement) return;
 
