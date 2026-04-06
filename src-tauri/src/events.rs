@@ -2,7 +2,6 @@
 /// Frontend mirrors these in `src/lib/events.ts`.
 ///
 /// Audit: `grep "emit_event\|DATA_" src-tauri/src/` to find all emit sites.
-
 // Domain data events
 pub const DATA_RESOURCE_CHANGED: &str = "data:resource-changed";
 pub const DATA_FOLDER_CHANGED: &str = "data:folder-changed";

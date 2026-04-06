@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use tauri::Emitter;
 
-use crate::db::{self, folders, resources, tags};
+use crate::db::{self, comments, folders, highlights, resources, search, tags};
 use crate::events;
 use crate::plain_text;
 use crate::storage;
@@ -78,6 +78,41 @@ struct ErrorResponse {
     error: String,
 }
 
+#[derive(Deserialize)]
+struct ResourcesQuery {
+    folder_id: Option<String>,
+    tag_ids: Option<String>, // comma-separated
+    sort_by: Option<String>, // "created_at" | "annotated_at"
+    sort_order: Option<String>, // "asc" | "desc"
+    query: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ResourceWithTags {
+    #[serde(flatten)]
+    resource: resources::Resource,
+    tags: Vec<tags::Tag>,
+}
+
+#[derive(Serialize)]
+struct AnnotationsResponse {
+    highlights: Vec<highlights::Highlight>,
+    comments: Vec<comments::Comment>,
+}
+
+#[derive(Deserialize)]
+struct ContentQuery {
+    offset: Option<usize>,
+    max_length: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct ContentResponse {
+    content: String,
+    total_length: usize,
+    has_more: bool,
+}
+
 /// Start the HTTP server on 127.0.0.1:21519.
 pub async fn start_server(
     state: Arc<AppState>,
@@ -93,7 +128,13 @@ pub async fn start_server(
                     || s.starts_with("http://localhost")
             },
         ))
-        .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::OPTIONS])
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
         .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]);
 
     let app = Router::new()
@@ -104,6 +145,10 @@ pub async fn start_server(
         .route("/api/folder-counts", get(handle_folder_counts))
         .route("/api/check-url", get(handle_check_url))
         .route("/api/save", post(handle_save))
+        .route("/api/resources", get(handle_list_resources))
+        .route("/api/resources/{id}", get(handle_get_resource))
+        .route("/api/resources/{id}/annotations", get(handle_get_annotations))
+        .route("/api/resources/{id}/content", get(handle_get_content))
         .with_state(state)
         .layer(cors)
         .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024));
@@ -437,5 +482,184 @@ async fn handle_save(
 
     Ok(Json(SaveResponse {
         resource_id: resource.id,
+    }))
+}
+
+fn map_db_error(e: db::DbError) -> (StatusCode, Json<ErrorResponse>) {
+    match &e {
+        db::DbError::NotFound(_) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        ),
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        ),
+    }
+}
+
+fn get_conn(
+    state: &AppState,
+) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>, (StatusCode, Json<ErrorResponse>)>
+{
+    state.pool.get().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })
+}
+
+async fn handle_list_resources(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Query(q): axum::extract::Query<ResourcesQuery>,
+) -> Result<Json<Vec<resources::Resource>>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+
+    let tag_ids: Vec<String> = q
+        .tag_ids
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let sort_by_str = q.sort_by.as_deref().unwrap_or("created_at");
+    let sort_order_str = q.sort_order.as_deref().unwrap_or("desc");
+
+    let sort_by = match sort_by_str {
+        "annotated_at" => resources::SortBy::AnnotatedAt,
+        _ => resources::SortBy::CreatedAt,
+    };
+    let sort_order = match sort_order_str {
+        "asc" => resources::SortOrder::Asc,
+        _ => resources::SortOrder::Desc,
+    };
+
+    // If query present and >= 2 chars, use search
+    if let Some(ref query) = q.query {
+        if query.chars().count() >= 2 {
+            let results = search::search_resources(
+                &conn,
+                query,
+                q.folder_id.as_deref(),
+                &tag_ids,
+                sort_by_str,
+                sort_order_str,
+            )
+            .map_err(map_db_error)?;
+            return Ok(Json(results));
+        }
+    }
+
+    let results = if let Some(ref folder_id) = q.folder_id {
+        resources::list_resources_by_folder(&conn, folder_id, sort_by, sort_order, &tag_ids)
+            .map_err(map_db_error)?
+    } else {
+        resources::list_all_resources(&conn, sort_by, sort_order, &tag_ids)
+            .map_err(map_db_error)?
+    };
+
+    Ok(Json(results))
+}
+
+async fn handle_get_resource(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<ResourceWithTags>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+
+    let resource = resources::get_resource(&conn, &id).map_err(map_db_error)?;
+    let resource_tags = tags::get_tags_for_resource(&conn, &id).map_err(map_db_error)?;
+
+    Ok(Json(ResourceWithTags {
+        resource,
+        tags: resource_tags,
+    }))
+}
+
+async fn handle_get_annotations(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<AnnotationsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+
+    // Verify resource exists
+    let _ = resources::get_resource(&conn, &id).map_err(map_db_error)?;
+
+    let highlight_list =
+        highlights::get_highlights_for_resource(&conn, &id).map_err(map_db_error)?;
+    let comment_list = comments::get_comments_for_resource(&conn, &id).map_err(map_db_error)?;
+
+    Ok(Json(AnnotationsResponse {
+        highlights: highlight_list,
+        comments: comment_list,
+    }))
+}
+
+async fn handle_get_content(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    axum::extract::Query(q): axum::extract::Query<ContentQuery>,
+) -> Result<Json<ContentResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+
+    // Verify resource exists
+    let _ = resources::get_resource(&conn, &id).map_err(map_db_error)?;
+
+    // Try to get plain_text from DB
+    let mut text = resources::get_plain_text(&conn, &id).map_err(map_db_error)?;
+
+    // If null, try lazy-fill from snapshot file
+    if text.is_none() {
+        let snapshot_path = state.base_dir.join("storage").join(&id).join("snapshot.html");
+        if snapshot_path.exists() {
+            if let Ok(html) = std::fs::read_to_string(&snapshot_path) {
+                let extracted = plain_text::extract_plain_text(&html);
+                if !extracted.is_empty() {
+                    let _ = resources::set_plain_text(&conn, &id, &extracted);
+                    text = Some(extracted);
+                }
+            }
+        }
+    }
+
+    let text = match text {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Content not available. Please open this resource in Shibei app to download the snapshot first.".to_string(),
+                }),
+            ));
+        }
+    };
+
+    let offset = q.offset.unwrap_or(0);
+    let max_length = q.max_length.unwrap_or(50000);
+    let total_length = text.chars().count();
+    let content: String = text.chars().skip(offset).take(max_length).collect();
+    let has_more = offset + max_length < total_length;
+
+    Ok(Json(ContentResponse {
+        content,
+        total_length,
+        has_more,
     }))
 }

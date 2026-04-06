@@ -17,6 +17,7 @@ pub struct AppState {
     pub auth_token: String,
     pub sync_clock: Option<crate::sync::hlc::HlcClock>,
     pub device_id: Option<String>,
+    #[allow(dead_code)]
     pub sync_engine: Option<Arc<crate::sync::engine::SyncEngine>>,
 }
 
