@@ -30,5 +30,5 @@
 }
 
 .danger:hover {
-  background: #fef2f2;
+  background: var(--color-bg-danger-hover);
 }

@@ -17,7 +17,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
   return (
     <>
       {text.slice(0, idx)}
-      <mark style={{ background: "var(--color-accent-light, #fff3b0)", borderRadius: 2, padding: "0 1px" }}>{text.slice(idx, idx + query.length)}</mark>
+      <mark style={{ background: "var(--color-accent-light)", borderRadius: 2, padding: "0 1px" }}>{text.slice(idx, idx + query.length)}</mark>
       {text.slice(idx + query.length)}
     </>
   );

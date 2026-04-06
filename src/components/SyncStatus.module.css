@@ -31,7 +31,7 @@
 }
 
 .idle { color: var(--color-text-muted); }
-.success { color: #16a34a; }
+.success { color: var(--color-success); }
 .error { color: var(--color-danger); }
 .syncing { color: var(--color-accent); }
 

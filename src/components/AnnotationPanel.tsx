@@ -201,7 +201,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
       <div
         ref={ref}
         className={`${styles.highlightItem} ${isActive ? styles.highlightItemActive : ""} ${isFailed ? styles.highlightItemFailed : ""}`}
-        style={{ borderLeftColor: isFailed ? "#ccc" : highlight.color }}
+        style={{ borderLeftColor: isFailed ? "var(--color-text-muted)" : highlight.color }}
         onClick={onClick}
       >
         <div className={styles.highlightText}>{highlight.text_content}</div>

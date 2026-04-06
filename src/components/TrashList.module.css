@@ -87,5 +87,5 @@
 }
 
 .dangerBtn:hover {
-  background: #fef2f2 !important;
+  background: var(--color-bg-danger-hover) !important;
 }
