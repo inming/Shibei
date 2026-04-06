@@ -196,12 +196,15 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     const [commentText, setCommentText] = useState("");
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editText, setEditText] = useState("");
+    const [previewingEdit, setPreviewingEdit] = useState(false);
+    const [previewingNew, setPreviewingNew] = useState(false);
 
     function handleSubmit() {
       if (!commentText.trim()) return;
       onAddComment(commentText.trim());
       setCommentText("");
       setShowInput(false);
+      setPreviewingNew(false);
     }
 
     return (
@@ -233,25 +236,36 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
               <div key={c.id} className={styles.commentItem}>
                 {editingCommentId === c.id ? (
                   <div>
-                    <textarea
-                      ref={autoResize}
-                      className={styles.commentInput}
-                      value={editText}
-                      onChange={(e) => { setEditText(e.target.value); autoResize(e.target); }}
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          if (editText.trim()) {
-                            onEditComment(c.id, editText.trim());
-                            setEditingCommentId(null);
-                          }
-                        }
-                        if (e.key === "Escape") {
-                          setEditingCommentId(null);
-                        }
-                      }}
-                    />
+                    <div className={styles.editContainer}>
+                      <button className={styles.previewToggle} onClick={() => setPreviewingEdit(!previewingEdit)}>
+                        {previewingEdit ? "编辑" : "预览"}
+                      </button>
+                      {previewingEdit ? (
+                        <div className={styles.previewArea}><MarkdownContent content={editText} /></div>
+                      ) : (
+                        <textarea
+                          ref={autoResize}
+                          className={styles.commentInput}
+                          value={editText}
+                          onChange={(e) => { setEditText(e.target.value); autoResize(e.target); }}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              if (editText.trim()) {
+                                onEditComment(c.id, editText.trim());
+                                setEditingCommentId(null);
+                                setPreviewingEdit(false);
+                              }
+                            }
+                            if (e.key === "Escape") {
+                              setEditingCommentId(null);
+                              setPreviewingEdit(false);
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
                     <div className={styles.commentActions}>
                       <button
                         className={styles.submitBtn}
@@ -259,6 +273,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                           if (editText.trim()) {
                             onEditComment(c.id, editText.trim());
                             setEditingCommentId(null);
+                            setPreviewingEdit(false);
                           }
                         }}
                       >
@@ -266,7 +281,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                       </button>
                       <button
                         className={styles.cancelBtn}
-                        onClick={() => setEditingCommentId(null)}
+                        onClick={() => { setEditingCommentId(null); setPreviewingEdit(false); }}
                       >
                         取消
                       </button>
@@ -306,20 +321,31 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
         <div onClick={(e) => e.stopPropagation()}>
           {showInput ? (
             <div className={styles.addCommentWrap}>
-              <textarea
-                ref={autoResize}
-                className={styles.commentInput}
-                value={commentText}
-                onChange={(e) => { setCommentText(e.target.value); autoResize(e.target); }}
-                placeholder="添加评论..."
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit();
-                  }
-                }}
-              />
+              <div className={styles.editContainer}>
+                {commentText.trim() && (
+                  <button className={styles.previewToggle} onClick={() => setPreviewingNew(!previewingNew)}>
+                    {previewingNew ? "编辑" : "预览"}
+                  </button>
+                )}
+                {previewingNew ? (
+                  <div className={styles.previewArea}><MarkdownContent content={commentText} /></div>
+                ) : (
+                  <textarea
+                    ref={autoResize}
+                    className={styles.commentInput}
+                    value={commentText}
+                    onChange={(e) => { setCommentText(e.target.value); autoResize(e.target); }}
+                    placeholder="添加评论..."
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSubmit();
+                      }
+                    }}
+                  />
+                )}
+              </div>
               <div className={styles.commentActions}>
                 <button className={styles.submitBtn} onClick={handleSubmit}>
                   保存
@@ -329,6 +355,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                   onClick={() => {
                     setShowInput(false);
                     setCommentText("");
+                    setPreviewingNew(false);
                   }}
                 >
                   取消
@@ -359,6 +386,7 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
   function NotesList({ notes, onEdit, onDelete }, ref) {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [previewingNoteEdit, setPreviewingNoteEdit] = useState(false);
 
   return (
     <div className={styles.notesSection}>
@@ -368,23 +396,33 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
         <div key={note.id} className={styles.noteItem}>
           {editingNoteId === note.id ? (
             <div>
-              <textarea
-                ref={autoResize}
-                className={styles.noteInput}
-                value={editText}
-                onChange={(e) => { setEditText(e.target.value); autoResize(e.target); }}
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (editText.trim()) {
-                      onEdit(note.id, editText.trim());
-                      setEditingNoteId(null);
-                    }
-                  }
-                  if (e.key === "Escape") setEditingNoteId(null);
-                }}
-              />
+              <div className={styles.editContainer}>
+                <button className={styles.previewToggle} onClick={() => setPreviewingNoteEdit(!previewingNoteEdit)}>
+                  {previewingNoteEdit ? "编辑" : "预览"}
+                </button>
+                {previewingNoteEdit ? (
+                  <div className={styles.previewArea}><MarkdownContent content={editText} /></div>
+                ) : (
+                  <textarea
+                    ref={autoResize}
+                    className={styles.noteInput}
+                    value={editText}
+                    onChange={(e) => { setEditText(e.target.value); autoResize(e.target); }}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (editText.trim()) {
+                          onEdit(note.id, editText.trim());
+                          setEditingNoteId(null);
+                          setPreviewingNoteEdit(false);
+                        }
+                      }
+                      if (e.key === "Escape") { setEditingNoteId(null); setPreviewingNoteEdit(false); }
+                    }}
+                  />
+                )}
+              </div>
               <div className={styles.commentActions}>
                 <button
                   className={styles.submitBtn}
@@ -392,12 +430,13 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
                     if (editText.trim()) {
                       onEdit(note.id, editText.trim());
                       setEditingNoteId(null);
+                      setPreviewingNoteEdit(false);
                     }
                   }}
                 >
                   保存
                 </button>
-                <button className={styles.cancelBtn} onClick={() => setEditingNoteId(null)}>
+                <button className={styles.cancelBtn} onClick={() => { setEditingNoteId(null); setPreviewingNoteEdit(false); }}>
                   取消
                 </button>
               </div>
@@ -432,34 +471,47 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
 
 function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
   const [noteText, setNoteText] = useState("");
+  const [previewing, setPreviewing] = useState(false);
 
   function handleSubmit() {
     if (!noteText.trim()) return;
     onAdd(noteText.trim());
     setNoteText("");
+    setPreviewing(false);
   }
 
   return (
     <div className={styles.noteInputFixed}>
-      <textarea
-        ref={autoResize}
-        className={styles.noteInput}
-        value={noteText}
-        onChange={(e) => { setNoteText(e.target.value); autoResize(e.target); }}
-        placeholder="添加笔记..."
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSubmit();
-          }
-        }}
-      />
+      <div className={styles.editContainer}>
+        {noteText.trim() && (
+          <button className={styles.previewToggle} onClick={() => setPreviewing(!previewing)}>
+            {previewing ? "编辑" : "预览"}
+          </button>
+        )}
+        {previewing ? (
+          <div className={styles.previewArea}><MarkdownContent content={noteText} /></div>
+        ) : (
+          <textarea
+            ref={autoResize}
+            className={styles.noteInput}
+            value={noteText}
+            onChange={(e) => { setNoteText(e.target.value); autoResize(e.target); }}
+            placeholder="添加笔记..."
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
+          />
+        )}
+      </div>
       {noteText.trim() && (
         <div className={styles.commentActions}>
           <button className={styles.submitBtn} onClick={handleSubmit}>
             保存
           </button>
-          <button className={styles.cancelBtn} onClick={() => setNoteText("")}>
+          <button className={styles.cancelBtn} onClick={() => { setNoteText(""); setPreviewing(false); }}>
             取消
           </button>
         </div>

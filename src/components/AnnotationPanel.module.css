@@ -293,3 +293,32 @@
   background: var(--color-bg-tertiary);
   color: var(--color-text-muted);
 }
+
+.editContainer {
+  position: relative;
+}
+
+.previewToggle {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 1;
+}
+
+.previewToggle:hover {
+  color: var(--color-accent);
+  background: var(--color-bg-hover);
+}
+
+.previewArea {
+  min-height: 40px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
