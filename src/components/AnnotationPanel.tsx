@@ -3,6 +3,7 @@ import type { Highlight, Comment, Resource } from "@/types";
 import styles from "./AnnotationPanel.module.css";
 import { Modal } from "@/components/Modal";
 import { ResourceMeta } from "@/components/ResourceMeta";
+import { MarkdownContent } from "@/components/MarkdownContent";
 
 function autoResize(el: HTMLTextAreaElement | null) {
   if (!el) return;
@@ -273,7 +274,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                   </div>
                 ) : (
                   <>
-                    <div className={styles.commentContent}>{c.content}</div>
+                    <div className={styles.commentContent}><MarkdownContent content={c.content} /></div>
                     <div className={styles.commentMeta}>
                       <span>{new Date(c.created_at).toLocaleDateString()}</span>
                       <span>
@@ -403,7 +404,7 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
             </div>
           ) : (
             <>
-              <div className={styles.noteContent}>{note.content}</div>
+              <div className={styles.noteContent}><MarkdownContent content={note.content} /></div>
               <div className={styles.noteMeta}>
                 <span>{new Date(note.created_at).toLocaleDateString()}</span>
                 <span>

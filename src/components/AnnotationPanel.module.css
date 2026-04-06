@@ -215,7 +215,6 @@
 .noteContent {
   font-size: var(--font-size-sm);
   line-height: 1.4;
-  white-space: pre-wrap;
 }
 
 .noteMeta {
