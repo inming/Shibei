@@ -9,6 +9,8 @@ export function useResources(
   folderId: string | null,
   sortBy: "created_at" | "annotated_at" = "created_at",
   sortOrder: "asc" | "desc" = "desc",
+  searchQuery: string = "",
+  selectedTagIds: string[] = [],
 ) {
   const [resources, setResources] = useState<Resource[]>([]);
   const [resourceTags, setResourceTags] = useState<Record<string, Tag[]>>({});
@@ -22,9 +24,20 @@ export function useResources(
     }
     setLoading(true);
     try {
-      const list = folderId === ALL_RESOURCES_ID
-        ? await cmd.listAllResources(sortBy, sortOrder)
-        : await cmd.listResources(folderId, sortBy, sortOrder);
+      let list: Resource[];
+      if (searchQuery.length >= 3) {
+        list = await cmd.searchResources(
+          searchQuery,
+          folderId === ALL_RESOURCES_ID ? null : folderId,
+          selectedTagIds,
+          sortBy,
+          sortOrder,
+        );
+      } else if (folderId === ALL_RESOURCES_ID) {
+        list = await cmd.listAllResources(sortBy, sortOrder, selectedTagIds);
+      } else {
+        list = await cmd.listResources(folderId, sortBy, sortOrder, selectedTagIds);
+      }
       setResources(list);
       // Fetch tags for all resources in parallel
       const tagEntries = await Promise.all(
@@ -40,7 +53,7 @@ export function useResources(
     } finally {
       setLoading(false);
     }
-  }, [folderId, sortBy, sortOrder]);
+  }, [folderId, sortBy, sortOrder, searchQuery, selectedTagIds]);
 
   useEffect(() => {
     refresh();
@@ -51,12 +64,16 @@ export function useResources(
     const u1 = listen(DataEvents.RESOURCE_CHANGED, () => { refresh(); });
     const u2 = listen(DataEvents.TAG_CHANGED, () => { refresh(); });
     const u3 = listen(DataEvents.SYNC_COMPLETED, () => { refresh(); });
+    const u4 = listen(DataEvents.ANNOTATION_CHANGED, () => {
+      if (searchQuery.length >= 3) refresh();
+    });
     return () => {
       u1.then((f) => f());
       u2.then((f) => f());
       u3.then((f) => f());
+      u4.then((f) => f());
     };
-  }, [refresh]);
+  }, [refresh, searchQuery]);
 
   return { resources, resourceTags, loading, refresh };
 }
