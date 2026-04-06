@@ -76,6 +76,8 @@ pub fn create_highlight(
         )?;
     }
 
+    let _ = super::search::rebuild_search_index(conn, resource_id);
+
     Ok(highlight)
 }
 
@@ -115,6 +117,14 @@ pub fn delete_highlight(
     id: &str,
     sync_ctx: Option<&SyncContext>,
 ) -> Result<(), DbError> {
+    let fts_resource_id: Option<String> = conn
+        .query_row(
+            "SELECT resource_id FROM highlights WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok();
+
     // Serialize before soft-delete
     let highlight_before = if sync_ctx.is_some() {
         get_highlight(conn, id).ok()
@@ -151,6 +161,10 @@ pub fn delete_highlight(
                 ctx.device_id,
             )?;
         }
+    }
+
+    if let Some(ref rid) = fts_resource_id {
+        let _ = super::search::rebuild_search_index(conn, rid);
     }
 
     Ok(())

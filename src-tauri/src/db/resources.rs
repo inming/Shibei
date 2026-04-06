@@ -92,6 +92,8 @@ pub fn create_resource(
         )?;
     }
 
+    let _ = super::search::rebuild_search_index(conn, &resource.id);
+
     Ok(resource)
 }
 
@@ -325,6 +327,8 @@ pub fn update_resource(
         )?;
     }
 
+    let _ = super::search::rebuild_search_index(conn, id);
+
     Ok(())
 }
 
@@ -378,6 +382,8 @@ pub fn delete_resource(
             )?;
         }
     }
+
+    let _ = super::search::delete_search_index(conn, id);
 
     Ok(id.to_string())
 }
@@ -479,6 +485,8 @@ pub fn restore_resource(
         )?;
     }
 
+    let _ = super::search::rebuild_search_index(conn, id);
+
     Ok(resource)
 }
 
@@ -494,6 +502,9 @@ pub fn purge_resource(conn: &Connection, id: &str) -> Result<(), DbError> {
     conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![id])?;
     conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![id])?;
     conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![id])?;
+
+    let _ = super::search::delete_search_index(conn, id);
+
     Ok(())
 }
 
@@ -512,6 +523,10 @@ pub fn purge_all_deleted_resources(conn: &Connection) -> Result<Vec<String>, DbE
         conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![rid])?;
     }
     conn.execute("DELETE FROM resources WHERE deleted_at IS NOT NULL", [])?;
+
+    for rid in &ids {
+        let _ = super::search::delete_search_index(conn, rid);
+    }
 
     Ok(ids)
 }

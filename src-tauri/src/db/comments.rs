@@ -54,6 +54,8 @@ pub fn create_comment(
         )?;
     }
 
+    let _ = super::search::rebuild_search_index(conn, resource_id);
+
     Ok(comment)
 }
 
@@ -64,6 +66,13 @@ pub fn update_comment(
     sync_ctx: Option<&SyncContext>,
 ) -> Result<(), DbError> {
     let now = now_iso8601();
+    let fts_resource_id: Option<String> = conn
+        .query_row(
+            "SELECT resource_id FROM comments WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok();
     let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
     let changed = conn.execute(
         "UPDATE comments SET content = ?1, updated_at = ?2, hlc = COALESCE(?3, hlc) WHERE id = ?4 AND deleted_at IS NULL",
@@ -88,6 +97,10 @@ pub fn update_comment(
         )?;
     }
 
+    if let Some(ref rid) = fts_resource_id {
+        let _ = super::search::rebuild_search_index(conn, rid);
+    }
+
     Ok(())
 }
 
@@ -96,6 +109,14 @@ pub fn delete_comment(
     id: &str,
     sync_ctx: Option<&SyncContext>,
 ) -> Result<(), DbError> {
+    let fts_resource_id: Option<String> = conn
+        .query_row(
+            "SELECT resource_id FROM comments WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok();
+
     // Serialize before soft-delete
     let comment_before = if sync_ctx.is_some() {
         get_comment(conn, id).ok()
@@ -127,6 +148,10 @@ pub fn delete_comment(
                 ctx.device_id,
             )?;
         }
+    }
+
+    if let Some(ref rid) = fts_resource_id {
+        let _ = super::search::rebuild_search_index(conn, rid);
     }
 
     Ok(())
