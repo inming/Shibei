@@ -6,6 +6,7 @@ import { DataEvents } from "@/lib/events";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { PreviewPanelSkeleton } from "@/components/Skeleton";
 import { ResourceMeta } from "@/components/ResourceMeta";
+import { MarkdownContent } from "@/components/MarkdownContent";
 import styles from "./PreviewPanel.module.css";
 
 function highlightMatch(text: string, query: string): React.ReactNode {
@@ -86,7 +87,7 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
 
               {comments.length > 0 && (
                 <div className={styles.commentList} onClick={(e) => e.stopPropagation()}>
-                  <div className={styles.commentItem}>{searchQuery ? highlightMatch(comments[0].content, searchQuery) : comments[0].content}</div>
+                  <div className={styles.commentItem}><MarkdownContent content={comments[0].content} searchQuery={searchQuery} /></div>
                   {comments.length > 1 && !isExpanded && (
                     <span
                       className={styles.commentToggle}
@@ -96,7 +97,7 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
                     </span>
                   )}
                   {isExpanded && comments.slice(1).map((c) => (
-                    <div key={c.id} className={styles.commentItem}>{searchQuery ? highlightMatch(c.content, searchQuery) : c.content}</div>
+                    <div key={c.id} className={styles.commentItem}><MarkdownContent content={c.content} searchQuery={searchQuery} /></div>
                   ))}
                   {isExpanded && (
                     <span
@@ -121,7 +122,7 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
             </div>
             {resourceNotes.map((note) => (
               <div key={note.id} className={styles.noteItem}>
-                <div className={styles.noteContent}>{searchQuery ? highlightMatch(note.content, searchQuery) : note.content}</div>
+                <div className={styles.noteContent}><MarkdownContent content={note.content} searchQuery={searchQuery} /></div>
                 <div className={styles.noteMeta}>
                   {new Date(note.created_at).toLocaleDateString()}
                 </div>

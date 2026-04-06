@@ -75,7 +75,6 @@
   padding: var(--spacing-xs) 0;
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
-  line-height: 1.4;
 }
 
 .empty {
@@ -95,7 +94,6 @@
 .noteContent {
   font-size: var(--font-size-sm);
   line-height: 1.4;
-  white-space: pre-wrap;
 }
 
 .noteMeta {
