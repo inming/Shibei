@@ -862,6 +862,14 @@ impl SyncEngine {
         let state_key = format!("snapshot:{}", resource_id);
         sync_state::set(&conn, &state_key, "synced")?;
 
+        // Extract and store plain text (best-effort)
+        if let Ok(html_str) = std::str::from_utf8(&data) {
+            let text = crate::plain_text::extract_plain_text(html_str);
+            if !text.is_empty() {
+                let _ = crate::db::resources::set_plain_text(&conn, resource_id, &text);
+            }
+        }
+
         Ok(())
     }
 }

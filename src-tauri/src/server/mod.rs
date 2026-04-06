@@ -14,6 +14,7 @@ use tauri::Emitter;
 
 use crate::db::{self, folders, resources, tags};
 use crate::events;
+use crate::plain_text;
 use crate::storage;
 
 /// Shared state for the HTTP server.
@@ -417,6 +418,15 @@ async fn handle_save(
             }),
         )
     })?;
+
+    // Extract and store plain text (best-effort, don't fail the save)
+    {
+        let html_str = String::from_utf8_lossy(&content_bytes);
+        let text = plain_text::extract_plain_text(&html_str);
+        if !text.is_empty() {
+            let _ = resources::set_plain_text(&conn, &resource.id, &text);
+        }
+    }
 
     // Notify desktop app that a new resource was saved (best-effort, outside transaction)
     let _ = state.app_handle.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({
