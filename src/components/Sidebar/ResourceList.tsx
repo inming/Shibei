@@ -125,7 +125,11 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
   }
 
   useEffect(() => {
-    setInputValue(searchQuery);
+    // Only sync external resets (X button already handles both directly).
+    // Don't override user's typed input when search clears due to threshold.
+    if (searchQuery !== "" ) {
+      setInputValue(searchQuery);
+    }
   }, [searchQuery]);
 
   useEffect(() => {
