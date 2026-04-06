@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。下一步：v1.7 MCP Server → v1.8 i18n。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成。下一步：v1.8 i18n。**
 
 ---
 
@@ -281,24 +281,34 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 
 
 **复杂度**：中高。需要实现 MCP 协议、设计资源/工具暴露范围、处理认证和安全边界。
 
+- 设计文档：`docs/superpowers/specs/2026-04-06-v1.7-mcp-server-design.md`
+- 实现计划：`docs/superpowers/plans/2026-04-06-v1.7-mcp-server.md`
+
 ### 协议层
-- [ ] **MCP Server 实现** — Tauri 后端启动 MCP Server（stdio 或 SSE），实现 MCP 协议握手
-- [ ] **技术选型** — 评估方案：Rust MCP SDK / 手动实现 JSON-RPC over stdio
+- [x] **MCP Server 实现** — Node.js 独立进程（@modelcontextprotocol/sdk），stdio transport
+- [x] **技术选型** — Node.js + 官方 TypeScript SDK，通过 HTTP 代理访问主应用 axum server
 
-### 资源暴露（Resources）
-- [ ] **资料列表** — 按文件夹/标签/搜索浏览资料库
-- [ ] **资料详情** — 获取资料元信息 + 标注 + 评论
-- [ ] **快照内容** — 提取快照 HTML 纯文本供 AI 阅读
+### 基础设施
+- [x] **纯文本提取** — `scraper` crate 解析 HTML，提取可见文本存入 `plain_text` 字段（Migration 006）
+- [x] **Token 传递** — 主应用启动写 `{data_dir}/mcp-token`，退出删除，MCP 进程读取鉴权
+- [x] **HTTP API 扩展** — 新增 10 个 RESTful 路由（4 读 + 6 写），复用现有 Bearer token 中间件
 
-### 工具暴露（Tools）
-- [ ] **搜索资料** — 关键词搜索资料库
-- [ ] **添加标注** — AI 可为资料添加高亮和评论
-- [ ] **管理标签** — AI 可为资料打标签
-- [ ] **创建笔记** — AI 可添加资料级笔记
+### 读取工具（6 个）
+- [x] **搜索资料** — `search_resources`：关键词搜索 + 文件夹/标签/排序筛选
+- [x] **资料详情** — `get_resource`：元数据 + 标签
+- [x] **标注列表** — `get_annotations`：高亮 + 评论
+- [x] **资料内容** — `get_resource_content`：纯文本分页读取（懒填充）
+- [x] **文件夹树** — `list_folders`：嵌套结构 + 计数
+- [x] **标签列表** — `list_tags`：全部标签
+
+### 写入工具（3 个）
+- [x] **编辑资料** — `update_resource`：标题/描述/移动文件夹
+- [x] **管理标签** — `manage_tags`：创建/添加/移除
+- [x] **管理笔记** — `manage_notes`：创建资料级笔记/编辑评论
 
 ### 安全
-- [ ] **权限控制** — 可配置只读/读写模式
-- [ ] **本地限制** — 仅限本地连接，不暴露到网络
+- [x] **本地限制** — HTTP Server 仅绑定 127.0.0.1，Bearer token 鉴权
+- [ ] ~~**权限控制**~~ — 可配置只读/读写模式（暂不实现，当前默认读写）
 
 ---
 
