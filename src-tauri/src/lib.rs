@@ -77,6 +77,10 @@ pub fn run() {
     let server_token = auth_token.clone();
     let server_base_dir = base_dir.clone();
 
+    let mcp_token_path = base_dir.join("mcp-token");
+    let mcp_token_value = auth_token.clone();
+    let exit_token_path = base_dir.join("mcp-token");
+
     let protocol_base_dir = base_dir.clone();
 
     tauri::Builder::default()
@@ -180,6 +184,18 @@ pub fn run() {
                 sync_clock: server_sync_clock,
                 device_id,
             });
+            // Write MCP token file for external MCP server process
+            if let Err(e) = std::fs::write(&mcp_token_path, &mcp_token_value) {
+                eprintln!("[shibei] Failed to write MCP token file: {}", e);
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &mcp_token_path,
+                    std::fs::Permissions::from_mode(0o600),
+                );
+            }
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = server::start_server(server_state).await {
                     eprintln!("[shibei] HTTP server failed: {}", e);
@@ -205,8 +221,13 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                let _ = std::fs::remove_file(&exit_token_path);
+            }
+        });
 }
 
 fn not_found(msg: &str) -> tauri::http::Response<Vec<u8>> {
