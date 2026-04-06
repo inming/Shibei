@@ -3,6 +3,7 @@ pub mod folders;
 pub mod highlights;
 pub mod migration;
 pub mod resources;
+pub mod search;
 pub mod tags;
 
 use std::path::Path;
@@ -93,7 +94,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
 
         let fk_enabled: bool = conn
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))
@@ -113,7 +114,7 @@ mod tests {
         let version: u32 = conn2
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
     }
 
     #[test]
@@ -127,7 +128,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
 
         let fk_enabled: bool = conn
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))
