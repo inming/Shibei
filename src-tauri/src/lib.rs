@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod events;
 mod server;
+mod plain_text;
 mod storage;
 pub mod sync;
 
