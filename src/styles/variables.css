@@ -40,6 +40,8 @@
   --color-code-bg: #f0f0f0;
   --color-blockquote-bg: #f9f9f9;
   --color-table-border: #e0e0e0;
+  --color-table-header-bg: #f0f0f0;
+  --color-table-stripe-bg: #f8f8f8;
 
   /* Panel widths */
   --list-panel-width: 340px;
@@ -94,10 +96,12 @@
   --color-bg-danger-hover: #3b1c1c;
 
   /* Search highlight */
-  --color-accent-light: #3d3520;
+  --color-accent-light: #5c4a00;
 
   /* Markdown */
   --color-code-bg: #2a2a2a;
   --color-blockquote-bg: #1e1e1e;
-  --color-table-border: #3a3a3a;
+  --color-table-border: #505050;
+  --color-table-header-bg: #333333;
+  --color-table-stripe-bg: #1f1f1f;
 }

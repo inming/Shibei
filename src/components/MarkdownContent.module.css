@@ -134,7 +134,11 @@
 
 .markdown th {
   font-weight: 600;
-  background: var(--color-code-bg);
+  background: var(--color-table-header-bg);
+}
+
+.markdown tr:nth-child(even) td {
+  background: var(--color-table-stripe-bg);
 }
 
 /* Horizontal rule */
