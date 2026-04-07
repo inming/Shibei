@@ -181,8 +181,10 @@ impl SyncEngine {
         Ok(true)
     }
 
-    /// Phase 0: On first sync, upload a full state snapshot + all existing snapshots.
-    /// This ensures pre-existing data (created before sync was enabled) gets uploaded.
+    /// Phase 0: On first sync (or after sync state reset), upload a full state snapshot
+    /// + all existing resource snapshots. Each device uploads its own snapshot when
+    /// last_sync_at is unset, even if other devices' snapshots exist on S3. This ensures
+    /// no data is lost when different devices have different subsets of data.
     async fn ensure_initial_snapshot(&self) -> Result<(), SyncError> {
         // Check if we've ever synced
         {
@@ -190,12 +192,6 @@ impl SyncEngine {
             if sync_state::get(&conn, "last_sync_at")?.is_some() {
                 return Ok(());
             }
-        }
-
-        // Check if snapshot already exists on S3
-        let existing = self.backend.list("state/snapshot-").await?;
-        if !existing.is_empty() {
-            return Ok(());
         }
 
         eprintln!("[sync] First-time sync: uploading full state snapshot");
@@ -307,28 +303,54 @@ impl SyncEngine {
             }
         }
 
-        // Find the latest snapshot on S3
+        // Find all snapshots on S3 and import each (merge from all devices)
         let snapshots = self.backend.list("state/snapshot-").await?;
         if snapshots.is_empty() {
             return Ok(0);
         }
 
-        // Pick the latest by key (lexicographic = chronological due to timestamp format)
-        let latest_key = snapshots.iter()
-            .map(|o| &o.key)
-            .max()
-            .unwrap()
-            .clone();
-
-        eprintln!("[sync] Importing full snapshot: {}", latest_key);
-
-        let data = self.backend.download(&latest_key).await?;
-        let snapshot: super::export::FullSnapshot = serde_json::from_slice(&data)?;
+        // Sort by key so we import oldest first (LWW resolves conflicts for newer)
+        let mut snapshot_keys: Vec<String> = snapshots.iter().map(|o| o.key.clone()).collect();
+        snapshot_keys.sort();
 
         let conn = self.pool.get().map_err(DbError::Pool)?;
         // Temporarily disable FK checks — snapshot import is in topo order but
         // some cross-references may not resolve until the full import completes
         conn.execute_batch("PRAGMA foreign_keys = OFF")?;
+
+        let mut imported = 0usize;
+        for snapshot_key in &snapshot_keys {
+            eprintln!("[sync] Importing snapshot: {}", snapshot_key);
+            let data = match self.backend.download(snapshot_key).await {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("[sync] Warning: failed to download snapshot {}: {}", snapshot_key, e);
+                    continue;
+                }
+            };
+            let snapshot: super::export::FullSnapshot = match serde_json::from_slice(&data) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[sync] Warning: failed to parse snapshot {}: {}", snapshot_key, e);
+                    continue;
+                }
+            };
+            imported += self.import_snapshot_data(&conn, &snapshot)?;
+        }
+
+        // Re-enable FK checks
+        conn.execute_batch("PRAGMA foreign_keys = ON")?;
+
+        eprintln!("[sync] Snapshots imported: {} entities from {} snapshots", imported, snapshot_keys.len());
+        Ok(imported)
+    }
+
+    /// Import entities from a single snapshot, returns count of imported entities.
+    fn import_snapshot_data(
+        &self,
+        conn: &rusqlite::Connection,
+        snapshot: &super::export::FullSnapshot,
+    ) -> Result<usize, SyncError> {
         let mut imported = 0usize;
 
         // Import in topo order: folders → tags → resources (with tags) → highlights → comments
@@ -399,10 +421,6 @@ impl SyncEngine {
             imported += 1;
         }
 
-        // Re-enable FK checks
-        conn.execute_batch("PRAGMA foreign_keys = ON")?;
-
-        eprintln!("[sync] Snapshot imported: {} entities", imported);
         Ok(imported)
     }
 
