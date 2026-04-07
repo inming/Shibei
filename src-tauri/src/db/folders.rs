@@ -125,21 +125,19 @@ pub fn delete_folder(
     // Collect resource IDs before any soft-delete (rows still visible)
     let resource_ids = collect_resource_ids(conn, id)?;
 
+    // Generate HLC before soft-delete so cascaded entities also get it
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+
     // Recursively soft-delete the folder tree and cascaded entities
-    soft_delete_folder_tree(conn, id)?;
+    soft_delete_folder_tree(conn, id, hlc_str.as_deref())?;
 
     if let Some(ctx) = sync_ctx {
-        let hlc_str = ctx.clock.tick().to_string();
-        // Update hlc on the soft-deleted folder
-        conn.execute(
-            "UPDATE folders SET hlc = ?1 WHERE id = ?2",
-            params![hlc_str, id],
-        )?;
+        let hlc_ref = hlc_str.as_deref().unwrap_or("");
         if let Some(folder) = folder_before {
             let payload = serde_json::to_string(&folder)
                 .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
             sync::sync_log::append(
-                conn, "folder", id, "DELETE", &payload, &hlc_str, ctx.device_id,
+                conn, "folder", id, "DELETE", &payload, hlc_ref, ctx.device_id,
             )?;
         }
     }
@@ -219,7 +217,7 @@ fn collect_resource_ids(conn: &Connection, folder_id: &str) -> Result<Vec<String
 }
 
 /// Recursively soft-delete a folder, its child folders, and all cascaded entities.
-fn soft_delete_folder_tree(conn: &Connection, folder_id: &str) -> Result<(), DbError> {
+fn soft_delete_folder_tree(conn: &Connection, folder_id: &str, hlc: Option<&str>) -> Result<(), DbError> {
     let now = now_iso8601();
 
     // Find child folders (before soft-deleting anything)
@@ -231,7 +229,7 @@ fn soft_delete_folder_tree(conn: &Connection, folder_id: &str) -> Result<(), DbE
 
     // Recurse into children first
     for child_id in child_ids {
-        soft_delete_folder_tree(conn, &child_id)?;
+        soft_delete_folder_tree(conn, &child_id, hlc)?;
     }
 
     // Soft-delete cascaded entities for resources in this folder
@@ -244,29 +242,29 @@ fn soft_delete_folder_tree(conn: &Connection, folder_id: &str) -> Result<(), DbE
 
     for rid in &resource_ids {
         conn.execute(
-            "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-            params![now, rid],
+            "UPDATE resource_tags SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE resource_id = ?3 AND deleted_at IS NULL",
+            params![now, hlc, rid],
         )?;
         conn.execute(
-            "UPDATE highlights SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-            params![now, rid],
+            "UPDATE highlights SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE resource_id = ?3 AND deleted_at IS NULL",
+            params![now, hlc, rid],
         )?;
         conn.execute(
-            "UPDATE comments SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-            params![now, rid],
+            "UPDATE comments SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE resource_id = ?3 AND deleted_at IS NULL",
+            params![now, hlc, rid],
         )?;
     }
 
     // Soft-delete resources in this folder
     conn.execute(
-        "UPDATE resources SET deleted_at = ?1 WHERE folder_id = ?2 AND deleted_at IS NULL",
-        params![now, folder_id],
+        "UPDATE resources SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE folder_id = ?3 AND deleted_at IS NULL",
+        params![now, hlc, folder_id],
     )?;
 
     // Soft-delete the folder itself
     conn.execute(
-        "UPDATE folders SET deleted_at = ?1 WHERE id = ?2",
-        params![now, folder_id],
+        "UPDATE folders SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3",
+        params![now, hlc, folder_id],
     )?;
 
     Ok(())

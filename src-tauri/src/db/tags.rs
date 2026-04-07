@@ -107,10 +107,10 @@ pub fn delete_tag(
     if changed == 0 {
         return Err(DbError::NotFound(format!("tag {}", id)));
     }
-    // Cascade soft-delete to resource_tags
+    // Cascade soft-delete to resource_tags (with HLC update)
     conn.execute(
-        "UPDATE resource_tags SET deleted_at = ?1 WHERE tag_id = ?2 AND deleted_at IS NULL",
-        params![now, id],
+        "UPDATE resource_tags SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE tag_id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, id],
     )?;
 
     if let Some(ctx) = sync_ctx {
@@ -173,7 +173,8 @@ pub fn add_tag_to_resource(
     let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
     conn.execute(
         "INSERT INTO resource_tags (resource_id, tag_id, hlc) VALUES (?1, ?2, ?3)
-         ON CONFLICT(resource_id, tag_id) DO UPDATE SET deleted_at = NULL, hlc = COALESCE(?3, hlc)",
+         ON CONFLICT(resource_id, tag_id) DO UPDATE SET deleted_at = NULL, hlc = COALESCE(?3, hlc)
+         WHERE ?3 IS NULL OR COALESCE(resource_tags.hlc, '') < ?3",
         params![resource_id, tag_id, hlc_str],
     )?;
 

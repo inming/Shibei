@@ -410,18 +410,18 @@ pub fn delete_resource(
     if changed == 0 {
         return Err(DbError::NotFound(format!("resource {}", id)));
     }
-    // Cascade soft-delete to highlights, comments, resource_tags
+    // Cascade soft-delete to highlights, comments, resource_tags (with HLC update)
     conn.execute(
-        "UPDATE highlights SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-        params![now, id],
+        "UPDATE highlights SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE resource_id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, id],
     )?;
     conn.execute(
-        "UPDATE comments SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-        params![now, id],
+        "UPDATE comments SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE resource_id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, id],
     )?;
     conn.execute(
-        "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-        params![now, id],
+        "UPDATE resource_tags SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE resource_id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, id],
     )?;
 
     if let Some(ctx) = sync_ctx {

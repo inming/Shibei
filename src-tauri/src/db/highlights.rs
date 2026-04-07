@@ -141,10 +141,10 @@ pub fn delete_highlight(
     if changed == 0 {
         return Err(DbError::NotFound(format!("highlight {}", id)));
     }
-    // Cascade soft-delete to comments on this highlight
+    // Cascade soft-delete to comments on this highlight (with HLC update)
     conn.execute(
-        "UPDATE comments SET deleted_at = ?1 WHERE highlight_id = ?2 AND deleted_at IS NULL",
-        params![now, id],
+        "UPDATE comments SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE highlight_id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, id],
     )?;
 
     if let Some(ctx) = sync_ctx {

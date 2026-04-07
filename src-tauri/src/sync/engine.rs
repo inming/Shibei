@@ -152,6 +152,21 @@ impl SyncEngine {
         let snapshot_key = format!("state/snapshot-{}.json", ts);
         self.backend.upload(&snapshot_key, &snapshot_json).await?;
 
+        // 1b. Delete older snapshots from this device (keep only the one just uploaded)
+        let all_snapshots = self.backend.list("state/snapshot-").await?;
+        for obj in &all_snapshots {
+            if obj.key == snapshot_key { continue; }
+            // Only delete snapshots belonging to this device — parse to check device_id
+            if let Ok(data) = self.backend.download(&obj.key).await {
+                if let Ok(old_snap) = serde_json::from_slice::<super::export::FullSnapshot>(&data) {
+                    if old_snap.device_id == self.device_id {
+                        eprintln!("[sync] Compaction: removing old snapshot {}", obj.key);
+                        let _ = self.backend.delete(&obj.key).await;
+                    }
+                }
+            }
+        }
+
         // 2. Delete previously-pending files (two-phase cleanup)
         let pending_key = "state/compaction-pending.json";
         if let Ok(pending_data) = self.backend.download(pending_key).await {
@@ -169,6 +184,16 @@ impl SyncEngine {
 
         // 4. Physical cleanup: hard-delete soft-deleted rows older than 90 days
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(90)).to_rfc3339();
+        // Collect resource IDs being purged so we can clean up their snapshot markers
+        let purged_resource_ids: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM resources WHERE deleted_at IS NOT NULL AND deleted_at < ?1"
+            )?;
+            let ids = stmt.query_map(rusqlite::params![cutoff], |row| row.get::<_, String>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            ids
+        };
         for table in &["folders", "resources", "tags", "highlights", "comments", "resource_tags"] {
             conn.execute(
                 &format!(
@@ -177,6 +202,11 @@ impl SyncEngine {
                 ),
                 rusqlite::params![cutoff],
             )?;
+        }
+        // Clean up snapshot pending/synced markers for purged resources
+        for rid in &purged_resource_ids {
+            let key = format!("snapshot:{}", rid);
+            let _ = sync_state::delete(&conn, &key);
         }
 
         // 5. Clean up uploaded sync_log entries
@@ -314,25 +344,21 @@ impl SyncEngine {
             }
         }
 
-        // Find all snapshots on S3 and import each (merge from all devices)
+        // Find all snapshots on S3 and import only the latest per foreign device.
+        // Older snapshots are subsets of newer ones (each is a full state export),
+        // so importing them all wastes time and can cause stale-data interference.
         let snapshots = self.backend.list("state/snapshot-").await?;
         if snapshots.is_empty() {
             return Ok(0);
         }
 
-        // Sort by key so we import oldest first (LWW resolves conflicts for newer)
+        // Download and parse all snapshots, keeping only the latest per device_id
+        let mut latest_per_device: std::collections::HashMap<String, (String, super::export::FullSnapshot)> =
+            std::collections::HashMap::new();
         let mut snapshot_keys: Vec<String> = snapshots.iter().map(|o| o.key.clone()).collect();
-        snapshot_keys.sort();
+        snapshot_keys.sort(); // oldest first, so later entries overwrite earlier ones
 
-        let conn = self.pool.get().map_err(DbError::Pool)?;
-        // Temporarily disable FK checks — snapshot import is in topo order but
-        // some cross-references may not resolve until the full import completes
-        conn.execute_batch("PRAGMA foreign_keys = OFF")?;
-
-        let mut imported = 0usize;
-        let mut imported_foreign_snapshot = false;
         for snapshot_key in &snapshot_keys {
-            eprintln!("[sync] Importing snapshot: {}", snapshot_key);
             let data = match self.backend.download(snapshot_key).await {
                 Ok(d) => d,
                 Err(e) => {
@@ -348,14 +374,25 @@ impl SyncEngine {
                 }
             };
             // Skip own snapshots — we already have our own data locally.
-            // Importing our own snapshot last would override foreign data
-            // (e.g. restoring deleted resources that are active on other devices).
             if snapshot.device_id == self.device_id {
                 eprintln!("[sync] Skipping own snapshot (device {})", self.device_id);
                 continue;
             }
+            // Keep latest per device (sort order ensures last = newest)
+            latest_per_device.insert(snapshot.device_id.clone(), (snapshot_key.clone(), snapshot));
+        }
+
+        let conn = self.pool.get().map_err(DbError::Pool)?;
+        // Temporarily disable FK checks — snapshot import is in topo order but
+        // some cross-references may not resolve until the full import completes
+        conn.execute_batch("PRAGMA foreign_keys = OFF")?;
+
+        let mut imported = 0usize;
+        let mut imported_foreign_snapshot = false;
+        for (device_id, (key, snapshot)) in &latest_per_device {
+            eprintln!("[sync] Importing latest snapshot for device {}: {}", device_id, key);
             imported_foreign_snapshot = true;
-            imported += self.import_snapshot_data(&conn, &snapshot)?;
+            imported += self.import_snapshot_data(&conn, snapshot)?;
         }
 
         // Re-enable FK checks
@@ -439,7 +476,10 @@ impl SyncEngine {
             if !rid.is_empty() && !tid.is_empty() {
                 let rt_hlc = rt["hlc"].as_str().unwrap_or("");
                 conn.execute(
-                    "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc) VALUES (?1, ?2, ?3)",
+                    "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc)
+                     SELECT ?1, ?2, ?3
+                     WHERE EXISTS (SELECT 1 FROM tags WHERE id = ?2)
+                       AND EXISTS (SELECT 1 FROM resources WHERE id = ?1)",
                     params![rid, tid, rt_hlc],
                 )?;
             }
@@ -858,12 +898,12 @@ impl SyncEngine {
                 params![id],
             )?;
 
-            // Re-insert all tag associations
+            // Re-insert tag associations (only if tag exists, to avoid orphans)
             for tag_val in tag_ids {
                 if let Some(tag_id) = tag_val.as_str() {
                     conn.execute(
                         "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc)
-                         VALUES (?1, ?2, ?3)",
+                         SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM tags WHERE id = ?2)",
                         params![id, tag_id, hlc],
                     )?;
                 }
@@ -1049,6 +1089,9 @@ impl SyncEngine {
                 conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![entity_id])?;
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![entity_id])?;
                 let _ = crate::db::search::delete_search_index(conn, entity_id);
+                // Clean up snapshot pending marker
+                let snapshot_key = format!("snapshot:{}", entity_id);
+                let _ = sync_state::delete(conn, &snapshot_key);
             }
             "folder" => {
                 let is_deleted: bool = conn.query_row(
@@ -1096,7 +1139,27 @@ impl SyncEngine {
         eprintln!("[sync] Phase 4: downloading {} pending resource snapshot(s)", total);
         for (i, resource_id) in pending_ids.iter().enumerate() {
             if let Err(e) = self.download_snapshot(resource_id).await {
-                eprintln!("[sync] Warning: snapshot download failed for {}: {}", resource_id, e);
+                // If the resource no longer exists locally, clear the stale pending marker
+                let should_clear = match self.pool.get() {
+                    Ok(conn) => {
+                        let exists: bool = conn.query_row(
+                            "SELECT COUNT(*) > 0 FROM resources WHERE id = ?1 AND deleted_at IS NULL",
+                            rusqlite::params![resource_id],
+                            |row| row.get(0),
+                        ).unwrap_or(false);
+                        !exists
+                    }
+                    Err(_) => false,
+                };
+                if should_clear {
+                    eprintln!("[sync] Clearing stale pending marker for deleted resource {}", resource_id);
+                    if let Ok(conn) = self.pool.get() {
+                        let key = format!("snapshot:{}", resource_id);
+                        let _ = sync_state::delete(&conn, &key);
+                    }
+                } else {
+                    eprintln!("[sync] Warning: snapshot download failed for {}: {}", resource_id, e);
+                }
             }
             if let Some(cb) = on_progress {
                 cb("downloading_snapshots", i + 1, total);
