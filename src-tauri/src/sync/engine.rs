@@ -113,6 +113,10 @@ impl SyncEngine {
             // Don't fail the sync for compaction errors
         }
 
+        eprintln!(
+            "[sync] Done: uploaded={}, downloaded={}, applied={} (snapshot={})",
+            uploaded, downloaded, applied, snapshot_imported
+        );
         Ok(SyncResult::Success {
             uploaded,
             downloaded,
@@ -245,10 +249,12 @@ impl SyncEngine {
         };
 
         if pending.is_empty() {
+            eprintln!("[sync] Phase 1: no pending changes to upload");
             return Ok(0);
         }
 
         let count = pending.len();
+        eprintln!("[sync] Phase 1: uploading {} pending changes", count);
 
         // Serialize to JSONL
         let mut jsonl = String::new();
@@ -271,12 +277,17 @@ impl SyncEngine {
             sync_state::set(&conn, "last_uploaded_log_id", &max_id.to_string())?;
         }
 
+        eprintln!("[sync] Phase 1: JSONL uploaded ({} bytes)", jsonl.len());
+
         // Upload snapshots for new resources
         let snapshot_entries: Vec<_> = pending
             .iter()
             .filter(|e| e.entity_type == "resource" && e.operation == "INSERT")
             .collect();
         let snapshot_total = snapshot_entries.len();
+        if snapshot_total > 0 {
+            eprintln!("[sync] Phase 1: uploading {} resource snapshots", snapshot_total);
+        }
 
         for (i, entry) in snapshot_entries.iter().enumerate() {
             if let Err(e) = self.upload_snapshot(&entry.entity_id).await {
@@ -446,6 +457,7 @@ impl SyncEngine {
 
         // Skip self
         remote_devices.retain(|d| d != &self.device_id);
+        eprintln!("[sync] Phase 2: found {} remote device(s)", remote_devices.len());
 
         // Pre-collect per-device file lists for progress counting
         struct DeviceFiles {
@@ -483,6 +495,9 @@ impl SyncEngine {
                 });
             }
 
+            if !files.is_empty() {
+                eprintln!("[sync] Phase 2: device {} has {} new file(s)", device, files.len());
+            }
             total_files += files.len();
             device_file_list.push(DeviceFiles {
                 last_seq_key,
@@ -528,7 +543,9 @@ impl SyncEngine {
         }
 
         // Phase 3: Apply with topo-sort
+        eprintln!("[sync] Phase 3: applying {} remote entries", all_entries.len());
         let applied = self.apply_entries(all_entries)?;
+        eprintln!("[sync] Phase 3: applied {} entries (rest skipped by LWW)", applied);
 
         Ok((total_downloaded, applied))
     }
@@ -938,6 +955,7 @@ impl SyncEngine {
         }
 
         let total = pending_ids.len();
+        eprintln!("[sync] Phase 4: downloading {} pending resource snapshot(s)", total);
         for (i, resource_id) in pending_ids.iter().enumerate() {
             if let Err(e) = self.download_snapshot(resource_id).await {
                 eprintln!("[sync] Warning: snapshot download failed for {}: {}", resource_id, e);
