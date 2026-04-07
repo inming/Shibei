@@ -38,6 +38,22 @@ pub fn list_by_prefix(conn: &Connection, prefix: &str) -> Result<Vec<(String, St
     Ok(results)
 }
 
+/// Return all resource IDs that have pending snapshot downloads.
+pub fn get_pending_snapshot_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT key FROM sync_state WHERE key LIKE 'snapshot:%' AND value = 'pending'"
+    )?;
+    let ids = stmt
+        .query_map([], |row| {
+            let key: String = row.get(0)?;
+            Ok(key.strip_prefix("snapshot:").unwrap_or("").to_string())
+        })?
+        .filter_map(|r| r.ok())
+        .filter(|id| !id.is_empty())
+        .collect();
+    Ok(ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

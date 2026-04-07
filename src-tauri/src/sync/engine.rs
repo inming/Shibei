@@ -104,6 +104,9 @@ impl SyncEngine {
             sync_state::set(&conn, "last_sync_at", &crate::db::now_iso8601())?;
         }
 
+        // Phase 4: Download pending resource snapshots
+        self.download_pending_snapshots(on_progress).await;
+
         // Phase 5: Compaction check
         if let Err(e) = self.maybe_compact().await {
             eprintln!("[sync] Compaction failed: {}", e);
@@ -901,6 +904,32 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// Phase 4: Download all resource snapshots that are marked as pending.
+    /// Best-effort: failures are logged but don't abort sync.
+    async fn download_pending_snapshots(&self, on_progress: Option<&ProgressCallback>) {
+        let pending_ids = {
+            let conn = match self.pool.get() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            sync_state::get_pending_snapshot_ids(&conn).unwrap_or_default()
+        };
+
+        if pending_ids.is_empty() {
+            return;
+        }
+
+        let total = pending_ids.len();
+        for (i, resource_id) in pending_ids.iter().enumerate() {
+            if let Err(e) = self.download_snapshot(resource_id).await {
+                eprintln!("[sync] Warning: snapshot download failed for {}: {}", resource_id, e);
+            }
+            if let Some(cb) = on_progress {
+                cb("downloading_snapshots", i + 1, total);
+            }
+        }
+    }
+
     /// Upload a local snapshot.html to the backend.
     pub async fn upload_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
         let snapshot_path = self.base_dir.join("storage").join(resource_id).join("snapshot.html");
@@ -1534,6 +1563,55 @@ mod tests {
                 deleted_at.is_some(),
                 "resource r1 should be cascade soft-deleted when its folder f1 is deleted"
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sync_auto_downloads_snapshots() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create resource with snapshot, sync
+        let dir_a = tempfile::tempdir().unwrap();
+        let (_db_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", dir_a.path().to_path_buf());
+
+        // Create snapshot file locally on device A
+        let snap_dir = dir_a.path().join("storage").join("res-1");
+        std::fs::create_dir_all(&snap_dir).unwrap();
+        std::fs::write(snap_dir.join("snapshot.html"), b"<html>hello</html>").unwrap();
+
+        {
+            let conn = pool_a.get().unwrap();
+            let payload = serde_json::json!({
+                "id": "res-1", "title": "Test", "url": "https://example.com",
+                "folder_id": "__root__", "resource_type": "webpage",
+                "file_path": "res-1/snapshot.html",
+                "created_at": "2026-04-01T00:00:00Z", "captured_at": "2026-04-01T00:00:00Z"
+            });
+            sync_log::append(&conn, "resource", "res-1", "INSERT",
+                &payload.to_string(), "1711987200000-0000-dev-a", "dev-a").unwrap();
+        }
+        engine_a.sync(None).await.unwrap();
+
+        // Device B: sync — should auto-download the snapshot
+        let dir_b = tempfile::tempdir().unwrap();
+        let (_db_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", dir_b.path().to_path_buf());
+
+        engine_b.sync(None).await.unwrap();
+
+        // Verify: snapshot file exists locally on Device B
+        let local_snapshot = dir_b.path().join("storage").join("res-1").join("snapshot.html");
+        assert!(local_snapshot.exists(), "snapshot should be auto-downloaded");
+        let content = std::fs::read_to_string(&local_snapshot).unwrap();
+        assert_eq!(content, "<html>hello</html>");
+
+        // Verify: sync_state shows "synced" not "pending"
+        {
+            let conn = pool_b.get().unwrap();
+            let status = sync_state::get(&conn, "snapshot:res-1").unwrap();
+            assert_eq!(status, Some("synced".to_string()));
         }
     }
 }
