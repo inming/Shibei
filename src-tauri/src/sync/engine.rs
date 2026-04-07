@@ -669,6 +669,13 @@ impl SyncEngine {
         let name = payload["name"].as_str().unwrap_or("");
         let color = payload["color"].as_str().unwrap_or("#808080");
 
+        // Remove any local tag with the same name but different id,
+        // to avoid UNIQUE constraint violation during cross-device sync.
+        conn.execute(
+            "DELETE FROM tags WHERE name = ?1 AND id != ?2 AND deleted_at IS NULL",
+            params![name, id],
+        )?;
+
         conn.execute(
             "INSERT INTO tags (id, name, color, hlc, deleted_at)
              VALUES (?1, ?2, ?3, ?4, NULL)
@@ -1277,6 +1284,68 @@ mod tests {
 
         // All INSERT/UPDATE before DELETE
         assert!(topo_order("INSERT", "comment") < topo_order("DELETE", "comment"));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_tag_name_conflict() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create tag "reading" with id "tag-a" (newer HLC), sync to backend
+        let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+
+        {
+            let conn = pool_a.get().unwrap();
+            let payload = serde_json::json!({
+                "name": "reading",
+                "color": "#808080"
+            });
+            sync_log::append(
+                &conn,
+                "tag",
+                "tag-a",
+                "INSERT",
+                &payload.to_string(),
+                "1711987200000-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+
+        engine_a.sync(None).await.unwrap();
+
+        // Device B: has a local tag "reading" with id "tag-b" (older HLC)
+        let (_dir_b, pool_b) = test_pool();
+        mark_synced(&pool_b);
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+
+        {
+            let conn = pool_b.get().unwrap();
+            // Insert local tag "reading" with id "tag-b" (older HLC)
+            conn.execute(
+                "INSERT INTO tags (id, name, color, hlc, deleted_at) VALUES ('tag-b', 'reading', '#808080', '1711987100000-0000-dev-b', NULL)",
+                [],
+            ).unwrap();
+        }
+
+        // Device B syncs → should succeed without UNIQUE constraint violation
+        let result_b = engine_b.sync(None).await;
+        assert!(result_b.is_ok(), "sync failed: {:?}", result_b);
+
+        // Verify Device A's tag (newer HLC) replaced Device B's local tag
+        {
+            let conn = pool_b.get().unwrap();
+            let (id, name): (String, String) = conn
+                .query_row(
+                    "SELECT id, name FROM tags WHERE name = 'reading' AND deleted_at IS NULL",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(id, "tag-a", "Device A's tag should have won (newer HLC)");
+            assert_eq!(name, "reading");
+        }
     }
 
     #[tokio::test]
