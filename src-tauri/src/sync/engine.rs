@@ -330,6 +330,7 @@ impl SyncEngine {
         conn.execute_batch("PRAGMA foreign_keys = OFF")?;
 
         let mut imported = 0usize;
+        let mut imported_foreign_snapshot = false;
         for snapshot_key in &snapshot_keys {
             eprintln!("[sync] Importing snapshot: {}", snapshot_key);
             let data = match self.backend.download(snapshot_key).await {
@@ -346,11 +347,43 @@ impl SyncEngine {
                     continue;
                 }
             };
+            if snapshot.device_id != self.device_id {
+                imported_foreign_snapshot = true;
+            }
             imported += self.import_snapshot_data(&conn, &snapshot)?;
         }
 
         // Re-enable FK checks
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
+
+        // If we imported snapshots from other devices, mark all existing JSONL files
+        // as "already processed" so Phase 3 won't re-apply old entries that are
+        // already covered by the snapshots. Without this, old INSERT/DELETE entries
+        // would override the snapshot state (e.g. resurrecting purged resources,
+        // or re-deleting restored resources).
+        if imported_foreign_snapshot {
+            let jsonl_objects = self.backend.list("sync/").await?;
+            let mut device_latest: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            for obj in &jsonl_objects {
+                let parts: Vec<&str> = obj.key.split('/').collect();
+                if parts.len() >= 3 && parts[2].ends_with(".jsonl") {
+                    let device_id = parts[1].to_string();
+                    let fname = parts[2].to_string();
+                    let entry = device_latest.entry(device_id).or_default();
+                    if fname > *entry {
+                        *entry = fname;
+                    }
+                }
+            }
+            let seq_conn = self.pool.get().map_err(DbError::Pool)?;
+            for (device_id, latest_fname) in &device_latest {
+                if device_id != &self.device_id {
+                    let key = format!("remote:{}:last_seq", device_id);
+                    sync_state::set(&seq_conn, &key, latest_fname)?;
+                    eprintln!("[sync] Marked device {} JSONL as processed up to {}", device_id, latest_fname);
+                }
+            }
+        }
 
         eprintln!("[sync] Snapshots imported: {} entities from {} snapshots", imported, snapshot_keys.len());
         Ok(imported)
