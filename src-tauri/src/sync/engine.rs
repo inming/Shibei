@@ -366,9 +366,10 @@ impl SyncEngine {
             let rid = rt["resource_id"].as_str().unwrap_or_default();
             let tid = rt["tag_id"].as_str().unwrap_or_default();
             if rt["deleted_at"].is_null() && !rid.is_empty() && !tid.is_empty() {
+                let rt_hlc = rt["hlc"].as_str().unwrap_or("");
                 conn.execute(
-                    "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id) VALUES (?1, ?2)",
-                    params![rid, tid],
+                    "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc) VALUES (?1, ?2, ?3)",
+                    params![rid, tid, rt_hlc],
                 )?;
             }
         }
