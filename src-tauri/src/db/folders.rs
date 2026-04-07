@@ -453,6 +453,16 @@ pub fn purge_all_deleted_folders(conn: &Connection) -> Result<Vec<String>, DbErr
     Ok(resource_ids)
 }
 
+/// Return IDs of all soft-deleted folders.
+pub fn list_deleted_folder_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare("SELECT id FROM folders WHERE deleted_at IS NOT NULL")?;
+    let ids = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(ids)
+}
+
 pub fn move_folder(
     conn: &Connection,
     id: &str,

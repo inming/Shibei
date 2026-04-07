@@ -646,6 +646,15 @@ impl SyncEngine {
                         _ => {}
                     }
                 }
+                "PURGE" => {
+                    // Hard-delete: only if entity is already soft-deleted locally.
+                    // If it's still active locally, skip — the DELETE must arrive first.
+                    self.purge_entity(&conn, &entry.entity_type, &entry.entity_id)?;
+                    applied += 1;
+                    if entry.entity_type == "resource" {
+                        affected_resource_ids.insert(entry.entity_id.clone());
+                    }
+                }
                 _ => {
                     // Unknown operation, skip
                 }
@@ -1019,6 +1028,55 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// Hard-delete an entity that is already soft-deleted.
+    /// If the entity is still active (deleted_at IS NULL), skip — the DELETE must arrive first.
+    fn purge_entity(
+        &self,
+        conn: &rusqlite::Connection,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Result<(), SyncError> {
+        match entity_type {
+            "resource" => {
+                // Only purge if already soft-deleted
+                let is_deleted: bool = conn.query_row(
+                    "SELECT deleted_at IS NOT NULL FROM resources WHERE id = ?1",
+                    params![entity_id], |row| row.get(0),
+                ).unwrap_or(false);
+                if !is_deleted { return Ok(()); }
+                conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![entity_id])?;
+                conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![entity_id])?;
+                conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![entity_id])?;
+                conn.execute("DELETE FROM resources WHERE id = ?1", params![entity_id])?;
+                let _ = crate::db::search::delete_search_index(conn, entity_id);
+            }
+            "folder" => {
+                let is_deleted: bool = conn.query_row(
+                    "SELECT deleted_at IS NOT NULL FROM folders WHERE id = ?1",
+                    params![entity_id], |row| row.get(0),
+                ).unwrap_or(false);
+                if !is_deleted { return Ok(()); }
+                // Purge resources in this folder first
+                let mut stmt = conn.prepare("SELECT id FROM resources WHERE folder_id = ?1")?;
+                let rids: Vec<String> = stmt.query_map(params![entity_id], |row| row.get::<_, String>(0))?
+                    .filter_map(|r| r.ok()).collect();
+                for rid in &rids {
+                    conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![rid])?;
+                    conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![rid])?;
+                    conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![rid])?;
+                }
+                conn.execute("DELETE FROM resources WHERE folder_id = ?1", params![entity_id])?;
+                conn.execute("DELETE FROM folders WHERE id = ?1", params![entity_id])?;
+            }
+            "tag" => {
+                conn.execute("DELETE FROM resource_tags WHERE tag_id = ?1", params![entity_id])?;
+                conn.execute("DELETE FROM tags WHERE id = ?1 AND deleted_at IS NOT NULL", params![entity_id])?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Phase 4: Download all resource snapshots that are marked as pending.
     /// Best-effort: failures are logged but don't abort sync.
     async fn download_pending_snapshots(&self, on_progress: Option<&ProgressCallback>) {
@@ -1108,7 +1166,16 @@ fn topo_order(operation: &str, entity_type: &str) -> u8 {
             "folder" => 10,
             _ => 11,
         },
-        _ => 12,
+        // PURGE runs after DELETE (entity must be soft-deleted first)
+        "PURGE" => match entity_type {
+            "comment" => 12,
+            "highlight" => 13,
+            "resource" => 14,
+            "tag" => 15,
+            "folder" => 16,
+            _ => 17,
+        },
+        _ => 18,
     }
 }
 

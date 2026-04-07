@@ -588,6 +588,16 @@ pub fn purge_all_deleted_resources(conn: &Connection) -> Result<Vec<String>, DbE
     Ok(ids)
 }
 
+/// Return IDs of all soft-deleted resources.
+pub fn list_deleted_resource_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare("SELECT id FROM resources WHERE deleted_at IS NOT NULL")?;
+    let ids = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(ids)
+}
+
 pub fn count_by_folder(conn: &Connection) -> Result<std::collections::HashMap<String, i64>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT folder_id, COUNT(*) FROM resources WHERE deleted_at IS NULL GROUP BY folder_id",

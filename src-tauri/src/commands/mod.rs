@@ -1136,6 +1136,12 @@ pub async fn cmd_purge_resource(
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     resources::purge_resource(&conn, &id)?;
+    // Write PURGE to sync_log so other devices also hard-delete
+    if let Some(ctx) = state.sync_context() {
+        let hlc_str = ctx.clock.tick().to_string();
+        let payload = serde_json::json!({ "id": id }).to_string();
+        let _ = crate::sync::sync_log::append(&conn, "resource", &id, "PURGE", &payload, &hlc_str, ctx.device_id);
+    }
     let dir = storage::resource_dir(&state.base_dir, &id);
     let _ = std::fs::remove_dir_all(dir);
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": id }));
@@ -1150,6 +1156,16 @@ pub async fn cmd_purge_folder(
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let resource_ids = folders::purge_folder(&conn, &id)?;
+    // Write PURGE to sync_log for folder and its resources
+    if let Some(ctx) = state.sync_context() {
+        let hlc_str = ctx.clock.tick().to_string();
+        for rid in &resource_ids {
+            let payload = serde_json::json!({ "id": rid }).to_string();
+            let _ = crate::sync::sync_log::append(&conn, "resource", rid, "PURGE", &payload, &hlc_str, ctx.device_id);
+        }
+        let payload = serde_json::json!({ "id": id }).to_string();
+        let _ = crate::sync::sync_log::append(&conn, "folder", &id, "PURGE", &payload, &hlc_str, ctx.device_id);
+    }
     for rid in &resource_ids {
         let dir = storage::resource_dir(&state.base_dir, rid);
         let _ = std::fs::remove_dir_all(dir);
@@ -1165,11 +1181,28 @@ pub async fn cmd_purge_all_deleted(
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
 
+    // Collect IDs before purging (need them for sync_log)
+    let deleted_folder_ids: Vec<String> = folders::list_deleted_folder_ids(&conn)?;
+    let deleted_resource_ids: Vec<String> = resources::list_deleted_resource_ids(&conn)?;
+
     // Purge deleted folders (and resources inside them) first
     let mut all_resource_ids = folders::purge_all_deleted_folders(&conn)?;
     // Then purge standalone soft-deleted resources
     let resource_ids = resources::purge_all_deleted_resources(&conn)?;
     all_resource_ids.extend(resource_ids);
+
+    // Write PURGE entries to sync_log
+    if let Some(ctx) = state.sync_context() {
+        let hlc_str = ctx.clock.tick().to_string();
+        for rid in &deleted_resource_ids {
+            let payload = serde_json::json!({ "id": rid }).to_string();
+            let _ = crate::sync::sync_log::append(&conn, "resource", rid, "PURGE", &payload, &hlc_str, ctx.device_id);
+        }
+        for fid in &deleted_folder_ids {
+            let payload = serde_json::json!({ "id": fid }).to_string();
+            let _ = crate::sync::sync_log::append(&conn, "folder", fid, "PURGE", &payload, &hlc_str, ctx.device_id);
+        }
+    }
 
     drop(conn);
 
