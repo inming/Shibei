@@ -730,7 +730,8 @@ impl SyncEngine {
                sort_order = excluded.sort_order,
                updated_at = excluded.updated_at,
                hlc = excluded.hlc,
-               deleted_at = NULL",
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(folders.hlc, '')",
             params![id, name, parent_id, sort_order, created_at, updated_at, hlc],
         )?;
         Ok(())
@@ -760,7 +761,8 @@ impl SyncEngine {
                name = excluded.name,
                color = excluded.color,
                hlc = excluded.hlc,
-               deleted_at = NULL",
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(tags.hlc, '')",
             params![id, name, color, hlc],
         )?;
         Ok(())
@@ -799,7 +801,8 @@ impl SyncEngine {
                file_path = excluded.file_path,
                selection_meta = excluded.selection_meta,
                hlc = excluded.hlc,
-               deleted_at = NULL",
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(resources.hlc, '')",
             params![id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, hlc],
         )?;
 
@@ -857,7 +860,8 @@ impl SyncEngine {
                anchor = excluded.anchor,
                color = excluded.color,
                hlc = excluded.hlc,
-               deleted_at = NULL",
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(highlights.hlc, '')",
             params![id, resource_id, text_content, anchor, color, created_at, hlc],
         )?;
         Ok(())
@@ -885,7 +889,8 @@ impl SyncEngine {
                content = excluded.content,
                updated_at = excluded.updated_at,
                hlc = excluded.hlc,
-               deleted_at = NULL",
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(comments.hlc, '')",
             params![id, highlight_id, resource_id, content, created_at, updated_at, hlc],
         )?;
         Ok(())
@@ -909,8 +914,10 @@ impl SyncEngine {
             _ => return Ok(()),
         };
 
+        // LWW: only soft-delete if remote hlc is newer than local hlc.
+        // This prevents stale snapshots from overriding newer local state.
         let sql = format!(
-            "UPDATE {} SET deleted_at = ?1, hlc = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+            "UPDATE {} SET deleted_at = ?1, hlc = ?2 WHERE id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
             table
         );
         conn.execute(&sql, params![deleted_at, hlc, entity_id])?;
