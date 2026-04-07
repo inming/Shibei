@@ -395,6 +395,11 @@ impl SyncEngine {
     }
 
     /// Import entities from a single snapshot, returns count of imported entities.
+    ///
+    /// Only imports **active** entities (deleted_at IS NULL). Deleted records in snapshots
+    /// are skipped — deletion must propagate through JSONL incremental entries (which have
+    /// proper LWW in apply_entries) or through remote cascade (cascade_folder_delete).
+    /// This prevents stale delete states in old snapshots from overriding newer active data.
     fn import_snapshot_data(
         &self,
         conn: &rusqlite::Connection,
@@ -403,43 +408,35 @@ impl SyncEngine {
         let mut imported = 0usize;
 
         // Import in topo order: folders → tags → resources (with tags) → highlights → comments
+        // Only active entities — skip anything with deleted_at set.
         for folder in &snapshot.folders {
+            if !folder["deleted_at"].is_null() { continue; }
             let hlc = folder["hlc"].as_str().unwrap_or("");
-            if let Some(deleted_at) = folder["deleted_at"].as_str() {
-                let id = folder["id"].as_str().unwrap_or_default();
-                self.soft_delete_entity(&conn, "folder", id, deleted_at, hlc)?;
-            } else {
-                self.upsert_entity(&conn, "folder", folder["id"].as_str().unwrap_or_default(), folder, hlc)?;
-            }
+            self.upsert_entity(conn, "folder", folder["id"].as_str().unwrap_or_default(), folder, hlc)?;
             imported += 1;
         }
 
         for tag in &snapshot.tags {
+            if !tag["deleted_at"].is_null() { continue; }
             let hlc = tag["hlc"].as_str().unwrap_or("");
-            if let Some(deleted_at) = tag["deleted_at"].as_str() {
-                self.soft_delete_entity(&conn, "tag", tag["id"].as_str().unwrap_or_default(), deleted_at, hlc)?;
-            } else {
-                self.upsert_entity(&conn, "tag", tag["id"].as_str().unwrap_or_default(), tag, hlc)?;
-            }
+            self.upsert_entity(conn, "tag", tag["id"].as_str().unwrap_or_default(), tag, hlc)?;
             imported += 1;
         }
 
         for resource in &snapshot.resources {
+            if !resource["deleted_at"].is_null() { continue; }
             let hlc = resource["hlc"].as_str().unwrap_or("");
             let id = resource["id"].as_str().unwrap_or_default();
-            if let Some(deleted_at) = resource["deleted_at"].as_str() {
-                self.soft_delete_entity(&conn, "resource", id, deleted_at, hlc)?;
-            } else {
-                self.upsert_entity(&conn, "resource", id, resource, hlc)?;
-            }
+            self.upsert_entity(conn, "resource", id, resource, hlc)?;
             imported += 1;
         }
 
-        // Import resource_tags
+        // Import resource_tags (already filtered to deleted_at IS NULL)
         for rt in &snapshot.resource_tags {
+            if !rt["deleted_at"].is_null() { continue; }
             let rid = rt["resource_id"].as_str().unwrap_or_default();
             let tid = rt["tag_id"].as_str().unwrap_or_default();
-            if rt["deleted_at"].is_null() && !rid.is_empty() && !tid.is_empty() {
+            if !rid.is_empty() && !tid.is_empty() {
                 let rt_hlc = rt["hlc"].as_str().unwrap_or("");
                 conn.execute(
                     "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc) VALUES (?1, ?2, ?3)",
@@ -449,24 +446,18 @@ impl SyncEngine {
         }
 
         for highlight in &snapshot.highlights {
+            if !highlight["deleted_at"].is_null() { continue; }
             let hlc = highlight["hlc"].as_str().unwrap_or("");
             let id = highlight["id"].as_str().unwrap_or_default();
-            if let Some(deleted_at) = highlight["deleted_at"].as_str() {
-                self.soft_delete_entity(&conn, "highlight", id, deleted_at, hlc)?;
-            } else {
-                self.upsert_entity(&conn, "highlight", id, highlight, hlc)?;
-            }
+            self.upsert_entity(conn, "highlight", id, highlight, hlc)?;
             imported += 1;
         }
 
         for comment in &snapshot.comments {
+            if !comment["deleted_at"].is_null() { continue; }
             let hlc = comment["hlc"].as_str().unwrap_or("");
             let id = comment["id"].as_str().unwrap_or_default();
-            if let Some(deleted_at) = comment["deleted_at"].as_str() {
-                self.soft_delete_entity(&conn, "comment", id, deleted_at, hlc)?;
-            } else {
-                self.upsert_entity(&conn, "comment", id, comment, hlc)?;
-            }
+            self.upsert_entity(conn, "comment", id, comment, hlc)?;
             imported += 1;
         }
 
