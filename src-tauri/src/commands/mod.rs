@@ -565,8 +565,9 @@ async fn build_sync_engine(
             .map(|meta| meta.is_some())
             .unwrap_or(false);
         if remote_has_keyring {
-            // Another device enabled encryption — mark locally
-            crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
+            // Don't persist here — let cmd_unlock_encryption set this flag
+            // so that is_first_unlock correctly detects the first unlock and
+            // resets sync state (last_sync_at, remote:* progress, sync_log).
             true
         } else {
             false
