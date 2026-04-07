@@ -556,6 +556,20 @@ pub async fn cmd_sync_now(
     Ok(format!("{:?}", result))
 }
 
+#[tauri::command]
+pub async fn cmd_force_compact(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+) -> Result<String, CommandError> {
+    let engine = build_sync_engine(&state, &encryption_state).await?;
+    let ran = engine.force_compact().await.map_err(|e| CommandError { message: e.to_string() })?;
+    if ran {
+        Ok("compaction completed".to_string())
+    } else {
+        Ok("compaction completed (no files to clean)".to_string())
+    }
+}
+
 /// Build a SyncEngine from current config. Called on each sync to pick up latest settings.
 /// If encryption is enabled, wraps the backend with EncryptedBackend.
 /// Multi-device detection: if local doesn't know about encryption, check remote keyring.json.

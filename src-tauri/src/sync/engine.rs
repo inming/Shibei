@@ -143,6 +143,18 @@ impl SyncEngine {
             return Ok(false); // No compaction needed
         }
 
+        self.run_compaction(files).await
+    }
+
+    /// Force compaction regardless of thresholds.
+    pub async fn force_compact(&self) -> Result<bool, SyncError> {
+        let prefix = format!("sync/{}/", self.device_id);
+        let files = self.backend.list(&prefix).await?;
+        self.run_compaction(files).await
+    }
+
+    async fn run_compaction(&self, files: Vec<super::backend::ObjectInfo>) -> Result<bool, SyncError> {
+
         let conn = self.pool.get().map_err(|e| SyncError::Db(DbError::Pool(e)))?;
 
         // 1. Export full state and upload as snapshot

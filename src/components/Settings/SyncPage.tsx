@@ -25,6 +25,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
   const [secretKey, setSecretKey] = useState("");
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [compacting, setCompacting] = useState(false);
   const [interval, setInterval_] = useState(intervalMinutes);
 
   const loadConfig = useCallback(async () => {
@@ -198,6 +199,31 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
           {saving ? "保存中…" : "保存配置"}
         </button>
       </div>
+
+      {hasCredentials && (
+        <>
+          <h3 className={styles.subheading}>维护</h3>
+          <div className={styles.actions}>
+            <button
+              className={styles.secondary}
+              onClick={async () => {
+                setCompacting(true);
+                try {
+                  const result = await cmd.forceCompact();
+                  toast.success(result);
+                } catch (err) {
+                  toast.error(`压缩失败：${formatError(err)}`);
+                } finally {
+                  setCompacting(false);
+                }
+              }}
+              disabled={compacting}
+            >
+              {compacting ? "压缩中…" : "强制压缩"}
+            </button>
+          </div>
+        </>
+      )}
     </>
   );
 }

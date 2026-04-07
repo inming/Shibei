@@ -184,6 +184,10 @@ export function syncNow(): Promise<string> {
   return invoke("cmd_sync_now");
 }
 
+export function forceCompact(): Promise<string> {
+  return invoke("cmd_force_compact");
+}
+
 export function saveSyncConfig(
   endpoint: string, region: string, bucket: string,
   accessKey: string, secretKey: string,

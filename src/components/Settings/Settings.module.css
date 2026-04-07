@@ -5,6 +5,13 @@
   margin: 0 0 var(--spacing-lg);
 }
 
+.subheading {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: var(--spacing-lg) 0 var(--spacing-sm);
+}
+
 .form {
   display: flex;
   flex-direction: column;
