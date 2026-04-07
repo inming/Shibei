@@ -502,6 +502,28 @@ pub async fn cmd_sync_now(
     app: tauri::AppHandle,
 ) -> Result<String, CommandError> {
     let _ = app.emit(events::SYNC_STARTED, ());
+
+    // Self-heal: if encryption is enabled but first post-encryption sync never completed,
+    // reset sync state to force full snapshot import. This repairs devices that went
+    // through the buggy unlock flow where sync state was not properly reset.
+    {
+        let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+        let encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+            .map(|v| v == "true").unwrap_or(false);
+        let sync_completed = crate::sync::sync_state::get(&conn, "config:encryption_sync_completed")?
+            .map(|v| v == "true").unwrap_or(false);
+        if encryption_enabled && !sync_completed {
+            eprintln!("[sync] Encryption enabled but first sync not completed — resetting sync state");
+            conn.execute("UPDATE sync_log SET uploaded = 0", [])
+                .map_err(|e| CommandError { message: e.to_string() })?;
+            let remote_keys = crate::sync::sync_state::list_by_prefix(&conn, "remote:")?;
+            for (key, _) in &remote_keys {
+                crate::sync::sync_state::delete(&conn, key)?;
+            }
+            crate::sync::sync_state::delete(&conn, "last_sync_at")?;
+        }
+    }
+
     let engine = build_sync_engine(&state, &encryption_state).await.inspect_err(|e| {
         let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": e.message }));
     })?;
@@ -519,6 +541,17 @@ pub async fn cmd_sync_now(
         let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": msg }));
         CommandError { message: e.to_string() }
     })?;
+
+    // Mark first post-encryption sync as completed
+    {
+        let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+        if crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+            .map(|v| v == "true").unwrap_or(false)
+        {
+            crate::sync::sync_state::set(&conn, "config:encryption_sync_completed", "true")?;
+        }
+    }
+
     let _ = app.emit(events::DATA_SYNC_COMPLETED, ());
     Ok(format!("{:?}", result))
 }
@@ -669,6 +702,8 @@ pub async fn cmd_setup_encryption(
     // 5. Store MK and mark encryption enabled
     encryption_state.set_key(mk);
     crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
+    // Reset completion flag so next sync does full re-sync
+    crate::sync::sync_state::delete(&conn, "config:encryption_sync_completed")?;
 
     let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));
     Ok(())
@@ -704,8 +739,10 @@ pub async fn cmd_unlock_encryption(
 
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
 
-    // Only reset sync progress on first unlock (new device joining)
-    let is_first_unlock = !crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+    // Reset sync progress if first post-encryption sync was never completed.
+    // Uses a dedicated flag instead of config:encryption_enabled, which could
+    // be set prematurely by build_sync_engine's auto-detection.
+    let is_first_unlock = !crate::sync::sync_state::get(&conn, "config:encryption_sync_completed")?
         .map(|v| v == "true")
         .unwrap_or(false);
 
