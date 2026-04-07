@@ -705,12 +705,34 @@ impl SyncEngine {
         let created_at = payload["created_at"].as_str().unwrap_or("");
         let updated_at = payload["updated_at"].as_str().unwrap_or("");
 
-        // Remove any local folder with the same (parent_id, name) but different id,
-        // to avoid UNIQUE constraint violation during cross-device sync.
-        conn.execute(
-            "DELETE FROM folders WHERE parent_id = ?1 AND name = ?2 AND id != ?3",
-            params![parent_id, name, id],
-        )?;
+        // Handle UNIQUE(parent_id, name) conflict: if a local folder has the same
+        // parent and name but a different id, merge its children into the incoming
+        // folder and soft-delete the conflicting local folder. Never hard-delete —
+        // that would CASCADE-delete all resources underneath.
+        let conflicting_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM folders WHERE parent_id = ?1 AND name = ?2 AND id != ?3 AND deleted_at IS NULL",
+                params![parent_id, name, id],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(ref conflict_id) = conflicting_id {
+            // Move child folders to the incoming folder
+            conn.execute(
+                "UPDATE folders SET parent_id = ?1 WHERE parent_id = ?2 AND deleted_at IS NULL",
+                params![id, conflict_id],
+            )?;
+            // Move resources to the incoming folder
+            conn.execute(
+                "UPDATE resources SET folder_id = ?1 WHERE folder_id = ?2 AND deleted_at IS NULL",
+                params![id, conflict_id],
+            )?;
+            // Soft-delete the conflicting folder (not hard-delete, avoids CASCADE)
+            conn.execute(
+                "UPDATE folders SET deleted_at = ?1 WHERE id = ?2",
+                params![updated_at, conflict_id],
+            )?;
+        }
 
         conn.execute(
             "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at, hlc, deleted_at)
@@ -738,12 +760,34 @@ impl SyncEngine {
         let name = payload["name"].as_str().unwrap_or("");
         let color = payload["color"].as_str().unwrap_or("#808080");
 
-        // Remove any local tag with the same name but different id,
-        // to avoid UNIQUE constraint violation during cross-device sync.
-        conn.execute(
-            "DELETE FROM tags WHERE name = ?1 AND id != ?2 AND deleted_at IS NULL",
-            params![name, id],
-        )?;
+        // Handle UNIQUE(name) conflict: if a local tag has the same name but
+        // different id, migrate its resource associations and soft-delete it.
+        // Never hard-delete — ON DELETE CASCADE would drop resource_tags rows.
+        let conflicting_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM tags WHERE name = ?1 AND id != ?2 AND deleted_at IS NULL",
+                params![name, id],
+                |row| row.get(0),
+            )
+            .ok();
+        if let Some(ref conflict_id) = conflicting_id {
+            // Re-point resource_tags from old tag to incoming tag
+            // Use OR IGNORE in case the (resource_id, tag_id) pair already exists
+            conn.execute(
+                "UPDATE OR IGNORE resource_tags SET tag_id = ?1 WHERE tag_id = ?2",
+                params![id, conflict_id],
+            )?;
+            // Clean up any leftover resource_tags still pointing to old tag
+            conn.execute(
+                "DELETE FROM resource_tags WHERE tag_id = ?1",
+                params![conflict_id],
+            )?;
+            // Soft-delete the conflicting tag
+            conn.execute(
+                "UPDATE tags SET deleted_at = datetime('now') WHERE id = ?1",
+                params![conflict_id],
+            )?;
+        }
 
         conn.execute(
             "INSERT INTO tags (id, name, color, hlc, deleted_at)
