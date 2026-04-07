@@ -347,9 +347,14 @@ impl SyncEngine {
                     continue;
                 }
             };
-            if snapshot.device_id != self.device_id {
-                imported_foreign_snapshot = true;
+            // Skip own snapshots — we already have our own data locally.
+            // Importing our own snapshot last would override foreign data
+            // (e.g. restoring deleted resources that are active on other devices).
+            if snapshot.device_id == self.device_id {
+                eprintln!("[sync] Skipping own snapshot (device {})", self.device_id);
+                continue;
             }
+            imported_foreign_snapshot = true;
             imported += self.import_snapshot_data(&conn, &snapshot)?;
         }
 
