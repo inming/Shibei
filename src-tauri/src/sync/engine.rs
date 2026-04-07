@@ -837,6 +837,66 @@ impl SyncEngine {
             table
         );
         conn.execute(&sql, params![deleted_at, hlc, entity_id])?;
+
+        if entity_type == "folder" {
+            self.cascade_folder_delete(conn, entity_id, deleted_at)?;
+        }
+
+        Ok(())
+    }
+
+    /// Cascade soft-delete all resources (and their annotations) in a folder,
+    /// then recurse into child folders.
+    fn cascade_folder_delete(
+        &self,
+        conn: &rusqlite::Connection,
+        folder_id: &str,
+        deleted_at: &str,
+    ) -> Result<(), SyncError> {
+        // Get resource IDs in this folder
+        let mut stmt =
+            conn.prepare("SELECT id FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL")?;
+        let resource_ids: Vec<String> = stmt
+            .query_map(params![folder_id], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for rid in &resource_ids {
+            conn.execute(
+                "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+                params![deleted_at, rid],
+            )?;
+            conn.execute(
+                "UPDATE highlights SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+                params![deleted_at, rid],
+            )?;
+            conn.execute(
+                "UPDATE comments SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
+                params![deleted_at, rid],
+            )?;
+        }
+
+        conn.execute(
+            "UPDATE resources SET deleted_at = ?1 WHERE folder_id = ?2 AND deleted_at IS NULL",
+            params![deleted_at, folder_id],
+        )?;
+
+        // Recurse into child folders
+        let mut stmt =
+            conn.prepare("SELECT id FROM folders WHERE parent_id = ?1 AND deleted_at IS NULL")?;
+        let child_ids: Vec<String> = stmt
+            .query_map(params![folder_id], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for child_id in &child_ids {
+            conn.execute(
+                "UPDATE folders SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
+                params![deleted_at, child_id],
+            )?;
+            self.cascade_folder_delete(conn, child_id, deleted_at)?;
+        }
+
         Ok(())
     }
 
@@ -1360,5 +1420,119 @@ mod tests {
         // Trying to sync should return AlreadyRunning
         let result = engine.sync(None).await;
         assert!(matches!(result, Err(SyncError::AlreadyRunning)));
+    }
+
+    #[tokio::test]
+    async fn test_sync_folder_delete_cascades() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create folder f1 and resource r1 (in f1), sync, then delete f1, sync again
+        let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+
+        {
+            let conn = pool_a.get().unwrap();
+
+            // Create folder f1
+            let folder_payload = serde_json::json!({
+                "id": "f1",
+                "name": "Folder",
+                "parent_id": "__root__",
+                "sort_order": 1,
+                "created_at": "2026-04-01T00:00:00Z",
+                "updated_at": "2026-04-01T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "folder",
+                "f1",
+                "INSERT",
+                &folder_payload.to_string(),
+                "1711987200000-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+
+            // Create resource r1 in folder f1
+            let resource_payload = serde_json::json!({
+                "id": "r1",
+                "title": "Page",
+                "url": "https://example.com",
+                "folder_id": "f1",
+                "resource_type": "webpage",
+                "file_path": "r1/snapshot.html",
+                "created_at": "2026-04-01T00:00:00Z",
+                "captured_at": "2026-04-01T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "resource",
+                "r1",
+                "INSERT",
+                &resource_payload.to_string(),
+                "1711987200001-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+
+        engine_a.sync(None).await.unwrap();
+
+        // Delete folder f1 and sync again
+        {
+            let conn = pool_a.get().unwrap();
+            let delete_payload = serde_json::json!({
+                "id": "f1",
+                "deleted_at": "2026-04-02T00:00:00Z"
+            });
+            sync_log::append(
+                &conn,
+                "folder",
+                "f1",
+                "DELETE",
+                &delete_payload.to_string(),
+                "1711987200002-0000-dev-a",
+                "dev-a",
+            )
+            .unwrap();
+        }
+
+        engine_a.sync(None).await.unwrap();
+
+        // Device B: sync all changes
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+
+        engine_b.sync(None).await.unwrap();
+
+        // Verify folder f1 is soft-deleted on Device B
+        {
+            let conn = pool_b.get().unwrap();
+            let deleted_at: Option<String> = conn
+                .query_row(
+                    "SELECT deleted_at FROM folders WHERE id = 'f1'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(deleted_at.is_some(), "folder f1 should be soft-deleted on Device B");
+        }
+
+        // Verify resource r1 is also cascade soft-deleted on Device B
+        {
+            let conn = pool_b.get().unwrap();
+            let deleted_at: Option<String> = conn
+                .query_row(
+                    "SELECT deleted_at FROM resources WHERE id = 'r1'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(
+                deleted_at.is_some(),
+                "resource r1 should be cascade soft-deleted when its folder f1 is deleted"
+            );
+        }
     }
 }
