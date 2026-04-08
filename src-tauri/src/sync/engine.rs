@@ -279,6 +279,35 @@ impl SyncEngine {
             }
         }
 
+        // 1c. Upload missing HTML snapshots for active resources
+        let active_ids: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM resources WHERE deleted_at IS NULL"
+            )?;
+            let ids = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            ids
+        };
+        {
+            let mut uploaded_count = 0usize;
+            for id in &active_ids {
+                let s3_key = format!("snapshots/{}/snapshot.html", id);
+                let exists = self.backend.head(&s3_key).await?.is_some();
+                if !exists {
+                    if let Err(e) = self.upload_snapshot(id).await {
+                        eprintln!("[sync] Compaction: failed to upload missing snapshot for {}: {}", id, e);
+                    } else {
+                        uploaded_count += 1;
+                    }
+                }
+            }
+            if uploaded_count > 0 {
+                eprintln!("[sync] Compaction: uploaded {} missing HTML snapshot(s)", uploaded_count);
+            }
+        }
+
         // 2. Delete previously-pending files (two-phase cleanup)
         let pending_key = "state/compaction-pending.json";
         if let Ok(pending_data) = self.backend.download(pending_key).await {
