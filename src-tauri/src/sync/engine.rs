@@ -728,6 +728,19 @@ impl SyncEngine {
                     if let Err(e) = self.import_device_snapshot(device).await {
                         eprintln!("[sync] Warning: snapshot fallback failed for device {}: {}", device, e);
                     }
+                    // After snapshot recovery, clear last_seq so we don't re-detect
+                    // the same gap on next sync. All available JSONL will be processed
+                    // below (files is unfiltered when last_seq is effectively cleared).
+                    let conn = self.pool.get().map_err(DbError::Pool)?;
+                    if let Some(latest) = files.last().and_then(|f| f.key.rsplit('/').next()) {
+                        // Set last_seq to the latest available JSONL — they'll be
+                        // processed below and we won't re-detect a gap next time.
+                        sync_state::set(&conn, &last_seq_key, latest)?;
+                    } else {
+                        // No JSONL files at all — delete last_seq entirely so next
+                        // sync treats this as a fresh device (no gap detection).
+                        sync_state::delete(&conn, &last_seq_key)?;
+                    }
                 }
 
                 files.retain(|f| {
