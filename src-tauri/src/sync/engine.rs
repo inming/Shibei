@@ -300,7 +300,14 @@ impl SyncEngine {
                         eprintln!("[sync] Compaction: failed to upload missing snapshot for {}: {}", id, e);
                     } else {
                         uploaded_count += 1;
+                        // Clear retry marker on successful upload
+                        let marker = format!("snapshot_upload:{}", id);
+                        let _ = sync_state::delete(&conn, &marker);
                     }
+                } else {
+                    // Already on S3, clear any stale retry marker
+                    let marker = format!("snapshot_upload:{}", id);
+                    let _ = sync_state::delete(&conn, &marker);
                 }
             }
             if uploaded_count > 0 {
@@ -399,6 +406,9 @@ impl SyncEngine {
         for resource_id in &resource_ids {
             if let Err(e) = self.upload_snapshot(resource_id).await {
                 eprintln!("[sync] Warning: failed to upload snapshot for {}: {}", resource_id, e);
+                let conn = self.pool.get().map_err(DbError::Pool)?;
+                let marker = format!("snapshot_upload:{}", resource_id);
+                sync_state::set(&conn, &marker, "retry")?;
             }
         }
 
@@ -414,6 +424,29 @@ impl SyncEngine {
 
     /// Phase 1: Upload pending sync_log entries and associated snapshots.
     async fn upload_local_changes(&self, on_progress: Option<&ProgressCallback>) -> Result<usize, SyncError> {
+        // Retry previously failed snapshot uploads
+        {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let retry_list = sync_state::list_by_prefix(&conn, "snapshot_upload:")?;
+            if !retry_list.is_empty() {
+                eprintln!("[sync] Phase 1: retrying {} failed snapshot upload(s)", retry_list.len());
+                for (key, _) in &retry_list {
+                    let resource_id = key.strip_prefix("snapshot_upload:").unwrap_or("");
+                    if resource_id.is_empty() { continue; }
+                    match self.upload_snapshot(resource_id).await {
+                        Ok(()) => {
+                            let conn = self.pool.get().map_err(DbError::Pool)?;
+                            sync_state::delete(&conn, key)?;
+                            eprintln!("[sync] Phase 1: retry upload succeeded for {}", resource_id);
+                        }
+                        Err(e) => {
+                            eprintln!("[sync] Phase 1: retry upload still failing for {}: {}", resource_id, e);
+                        }
+                    }
+                }
+            }
+        }
+
         let pending = {
             let conn = self.pool.get().map_err(DbError::Pool)?;
             sync_log::get_pending(&conn)?
@@ -466,6 +499,9 @@ impl SyncEngine {
                     "warning: failed to upload snapshot for {}: {}",
                     entry.entity_id, e
                 );
+                let conn = self.pool.get().map_err(DbError::Pool)?;
+                let marker = format!("snapshot_upload:{}", entry.entity_id);
+                sync_state::set(&conn, &marker, "retry")?;
             }
             if let Some(cb) = on_progress {
                 cb("uploading", i + 1, snapshot_total);
