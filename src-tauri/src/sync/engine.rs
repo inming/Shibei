@@ -212,6 +212,47 @@ impl SyncEngine {
         Ok((deleted, freed))
     }
 
+    /// Import the latest snapshot from a specific remote device.
+    /// Used as fallback when JSONL gap is detected (files cleaned by compaction).
+    async fn import_device_snapshot(&self, device_id: &str) -> Result<usize, SyncError> {
+        let snapshots = self.backend.list("state/snapshot-").await?;
+        let mut snapshot_keys: Vec<String> = snapshots.iter().map(|o| o.key.clone()).collect();
+        snapshot_keys.sort();
+
+        // Find the latest snapshot from this device (iterate newest-first)
+        let mut target_snapshot: Option<super::export::FullSnapshot> = None;
+        for key in snapshot_keys.iter().rev() {
+            let data = match self.backend.download(key).await {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let snapshot: super::export::FullSnapshot = match serde_json::from_slice(&data) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+            if snapshot.device_id == device_id {
+                eprintln!("[sync] Found snapshot for device {}: {}", device_id, key);
+                target_snapshot = Some(snapshot);
+                break;
+            }
+        }
+
+        let snapshot = match target_snapshot {
+            Some(s) => s,
+            None => {
+                eprintln!("[sync] No snapshot found for device {}, gap cannot be recovered", device_id);
+                return Ok(0);
+            }
+        };
+
+        let conn = self.pool.get().map_err(DbError::Pool)?;
+        conn.execute_batch("PRAGMA foreign_keys = OFF")?;
+        let imported = self.import_snapshot_data(&conn, &snapshot)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON")?;
+        eprintln!("[sync] Snapshot fallback: imported {} entities from device {}", imported, device_id);
+        Ok(imported)
+    }
+
     async fn run_compaction(&self, files: Vec<super::backend::ObjectInfo>) -> Result<bool, SyncError> {
 
         let conn = self.pool.get().map_err(|e| SyncError::Db(DbError::Pool(e)))?;
@@ -625,7 +666,26 @@ impl SyncEngine {
                 .collect();
             files.sort_by(|a, b| a.key.cmp(&b.key));
 
+            // Detect JSONL gap: last_seq has a value but the oldest available file
+            // is newer (or no files exist at all), meaning intermediate files were
+            // cleaned up by compaction. Fall back to snapshot import to recover.
             if let Some(ref seq) = last_seq {
+                let oldest_available = files.first().and_then(|f| f.key.rsplit('/').next());
+                let has_gap = match oldest_available {
+                    Some(oldest) => oldest > seq.as_str(),
+                    None => true, // all JSONL cleaned up
+                };
+
+                if has_gap {
+                    eprintln!(
+                        "[sync] Phase 2: JSONL gap detected for device {} (last_seq={}, oldest_available={:?}), falling back to snapshot import",
+                        device, seq, oldest_available
+                    );
+                    if let Err(e) = self.import_device_snapshot(device).await {
+                        eprintln!("[sync] Warning: snapshot fallback failed for device {}: {}", device, e);
+                    }
+                }
+
                 files.retain(|f| {
                     if let Some(fname) = f.key.rsplit('/').next() {
                         fname > seq.as_str()
