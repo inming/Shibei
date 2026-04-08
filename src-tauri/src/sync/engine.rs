@@ -633,6 +633,21 @@ impl SyncEngine {
                 }
             })
             .collect();
+
+        // Also include devices we have last_seq records for — their JSONL
+        // directory may be empty (all files cleaned by compaction), but we
+        // still need to check for gaps and fall back to snapshot import.
+        {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let known = sync_state::list_by_prefix(&conn, "remote:")?;
+            for (key, _) in &known {
+                // key format: "remote:{device_id}:last_seq"
+                if let Some(device_id) = key.strip_prefix("remote:").and_then(|s| s.strip_suffix(":last_seq")) {
+                    remote_devices.push(device_id.to_string());
+                }
+            }
+        }
+
         remote_devices.sort();
         remote_devices.dedup();
 
