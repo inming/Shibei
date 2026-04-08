@@ -508,21 +508,47 @@ pub fn purge_folder(conn: &Connection, id: &str) -> Result<Vec<String>, DbError>
         return Err(DbError::InvalidOperation(format!("folder {} is not deleted", id)));
     }
 
-    let mut stmt = conn.prepare("SELECT id FROM resources WHERE folder_id = ?1")?;
-    let resource_ids: Vec<String> = stmt
-        .query_map(params![id], |row| row.get::<_, String>(0))?
+    let mut all_resource_ids = Vec::new();
+    purge_folder_recursive(conn, id, &mut all_resource_ids)?;
+
+    Ok(all_resource_ids)
+}
+
+fn purge_folder_recursive(
+    conn: &Connection,
+    folder_id: &str,
+    resource_ids: &mut Vec<String>,
+) -> Result<(), DbError> {
+    // Recurse into child folders first
+    let mut stmt = conn.prepare("SELECT id FROM folders WHERE parent_id = ?1")?;
+    let child_ids: Vec<String> = stmt
+        .query_map(params![folder_id], |row| row.get::<_, String>(0))?
         .filter_map(|r| r.ok())
         .collect();
 
-    for rid in &resource_ids {
+    for child_id in &child_ids {
+        purge_folder_recursive(conn, child_id, resource_ids)?;
+    }
+
+    // Collect and purge resources in this folder
+    let mut stmt = conn.prepare("SELECT id FROM resources WHERE folder_id = ?1")?;
+    let rids: Vec<String> = stmt
+        .query_map(params![folder_id], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for rid in &rids {
         conn.execute("DELETE FROM comments WHERE resource_id = ?1", params![rid])?;
         conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![rid])?;
         conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![rid])?;
+        let _ = super::search::delete_search_index(conn, rid);
     }
-    conn.execute("DELETE FROM resources WHERE folder_id = ?1", params![id])?;
-    conn.execute("DELETE FROM folders WHERE id = ?1", params![id])?;
+    conn.execute("DELETE FROM resources WHERE folder_id = ?1", params![folder_id])?;
+    conn.execute("DELETE FROM folders WHERE id = ?1", params![folder_id])?;
 
-    Ok(resource_ids)
+    resource_ids.extend(rids);
+
+    Ok(())
 }
 
 /// Permanently delete all soft-deleted folders and the resources inside them.
@@ -918,5 +944,42 @@ mod tests {
 
         let h_hlc: String = conn.query_row("SELECT hlc FROM highlights WHERE id = 'h1'", [], |row| row.get(0)).unwrap();
         assert_eq!(h_hlc, "0000000000200-0000-dev-new");
+    }
+
+    #[test]
+    fn test_purge_folder_recursive() {
+        let conn = test_db();
+        let parent = create_folder(&conn, "parent", "__root__", None).unwrap();
+        let child = create_folder(&conn, "child", &parent.id, None).unwrap();
+
+        // Insert resource in child folder
+        conn.execute(
+            "INSERT INTO resources (id, title, url, folder_id, resource_type, file_path, created_at, captured_at)
+             VALUES ('r1', 'test', 'http://x', ?1, 'webpage', 'x', '2026-01-01', '2026-01-01')",
+            params![child.id],
+        ).unwrap();
+
+        // Insert resource in parent folder
+        conn.execute(
+            "INSERT INTO resources (id, title, url, folder_id, resource_type, file_path, created_at, captured_at)
+             VALUES ('r2', 'test2', 'http://y', ?1, 'webpage', 'y', '2026-01-01', '2026-01-01')",
+            params![parent.id],
+        ).unwrap();
+
+        // Soft-delete parent (cascades)
+        delete_folder(&conn, &parent.id, None).unwrap();
+
+        // Purge parent
+        let resource_ids = purge_folder(&conn, &parent.id).unwrap();
+
+        // Should include resources from both parent and child folders
+        assert!(resource_ids.contains(&"r1".to_string()), "should include child folder resource");
+        assert!(resource_ids.contains(&"r2".to_string()), "should include parent folder resource");
+
+        // Child folder should be gone
+        let child_exists: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM folders WHERE id = ?1", params![child.id], |row| row.get(0),
+        ).unwrap();
+        assert!(!child_exists, "child folder should be purged");
     }
 }
