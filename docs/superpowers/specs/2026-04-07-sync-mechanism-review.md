@@ -318,6 +318,30 @@ HLC 格式: `{wall_ms:013}-{counter:04}-{device_id}`
 **修复**: Phase 4 下载失败时检查资源是否存在，不存在则清除标记。Compaction 和 `purge_entity` 也同步清理。
 **提交**: `6eef79c`
 
+### 问题 13: Engine cascade_folder_delete 不传播 HLC ✅
+
+**场景**: 远端 folder DELETE 级联删除子实体时不更新 HLC，导致子实体保留旧 HLC。后续较新的 UPDATE 会在 LWW 判定中胜出，意外复活已删除的子实体，造成跨设备数据不一致。
+**修复**: `cascade_folder_delete` 接收并传播 `hlc` 参数到所有子实体的 UPDATE 语句，与本地 `soft_delete_folder_tree` 行为一致。
+**提交**: `6a84351`
+
+### 问题 14: restore_resource 子实体不同步到远端 ✅
+
+**场景**: 恢复资料时本地级联恢复了 highlights/comments/resource_tags，但不更新子实体 HLC，且不写 sync_log 条目。远端设备不知道子实体已恢复，导致跨设备不一致。
+**修复**: `restore_resource` 恢复子实体时更新 HLC（`COALESCE(?2, hlc)`），并为每个恢复的 highlight/comment 写 UPDATE sync_log 条目。
+**提交**: `e9b49c0`
+
+### 问题 15: restore_folder 不级联恢复子内容 ✅
+
+**场景**: 删除文件夹时通过 `soft_delete_folder_tree` 级联删除所有子文件夹和资料，但恢复文件夹时只恢复文件夹自身，子内容保持删除状态。
+**修复**: 新增 `restore_folder_tree` 递归恢复子文件夹、资料及标注，更新 HLC 并写 sync_log 条目，与删除操作对称。
+**提交**: `5b38d6d`
+
+### 问题 16: purge_folder 不递归处理子文件夹 ✅
+
+**场景**: `purge_folder` 只硬删直接子资料，不处理嵌套的子文件夹。子文件夹及其资料变成孤儿行，等 90 天 compaction 才清理。
+**修复**: `purge_folder` 改为递归实现（`purge_folder_recursive`），先深度遍历子文件夹，再依次清理资料和文件夹本身。
+**提交**: `9708df3`
+
 ## 八、维护工具
 
 ### 强制压缩
