@@ -512,34 +512,51 @@ pub fn restore_resource(
         params![target_folder, hlc_str, id],
     )?;
 
-    // Also restore associated highlights, comments, resource_tags
+    // Collect deleted child IDs before restoring (for sync_log)
+    let deleted_highlight_ids = super::highlights::list_deleted_highlight_ids_for_resource(conn, id)?;
+    let deleted_comment_ids = super::comments::list_deleted_comment_ids_for_resource(conn, id)?;
+
+    // Also restore associated highlights, comments, resource_tags (with HLC update)
     conn.execute(
-        "UPDATE highlights SET deleted_at = NULL WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
-        params![id],
+        "UPDATE highlights SET deleted_at = NULL, hlc = COALESCE(?2, hlc) WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+        params![id, hlc_str],
     )?;
     conn.execute(
-        "UPDATE comments SET deleted_at = NULL WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
-        params![id],
+        "UPDATE comments SET deleted_at = NULL, hlc = COALESCE(?2, hlc) WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+        params![id, hlc_str],
     )?;
     conn.execute(
-        "UPDATE resource_tags SET deleted_at = NULL WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
-        params![id],
+        "UPDATE resource_tags SET deleted_at = NULL, hlc = COALESCE(?2, hlc) WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+        params![id, hlc_str],
     )?;
 
     let resource = get_resource(conn, id)?;
 
     if let Some(ctx) = sync_ctx {
+        let hlc_ref = hlc_str.as_deref().unwrap_or("");
+
+        // Write resource UPDATE
         let payload = serde_json::to_string(&resource)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
-            conn,
-            "resource",
-            id,
-            "UPDATE",
-            &payload,
-            hlc_str.as_deref().unwrap_or(""),
-            ctx.device_id,
-        )?;
+        sync::sync_log::append(conn, "resource", id, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+
+        // Write highlight UPDATEs for restored children
+        for hid in &deleted_highlight_ids {
+            if let Ok(h) = super::highlights::get_highlight_by_id(conn, hid) {
+                let h_payload = serde_json::to_string(&h)
+                    .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+                sync::sync_log::append(conn, "highlight", hid, "UPDATE", &h_payload, hlc_ref, ctx.device_id)?;
+            }
+        }
+
+        // Write comment UPDATEs for restored children
+        for cid in &deleted_comment_ids {
+            if let Ok(c) = super::comments::get_comment_by_id(conn, cid) {
+                let c_payload = serde_json::to_string(&c)
+                    .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+                sync::sync_log::append(conn, "comment", cid, "UPDATE", &c_payload, hlc_ref, ctx.device_id)?;
+            }
+        }
     }
 
     let _ = super::search::rebuild_search_index(conn, id);
@@ -733,6 +750,27 @@ mod tests {
                 selection_meta: None,
             },
             None,
+        )
+        .unwrap()
+    }
+
+    fn create_test_resource_with_ctx(conn: &Connection, folder_id: &str, sync_ctx: Option<&crate::sync::SyncContext>) -> Resource {
+        create_resource(
+            conn,
+            CreateResourceInput {
+                id: None,
+                title: "Test Page".to_string(),
+                url: "https://example.com/article".to_string(),
+                domain: Some("example.com".to_string()),
+                author: None,
+                description: None,
+                folder_id: folder_id.to_string(),
+                resource_type: "webpage".to_string(),
+                file_path: "storage/test/snapshot.html".to_string(),
+                captured_at: "2026-01-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            },
+            sync_ctx,
         )
         .unwrap()
     }
@@ -994,5 +1032,54 @@ mod tests {
             set_plain_text(&conn, "nonexistent", "text"),
             Err(DbError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn test_restore_resource_updates_child_hlc_and_writes_sync_log() {
+        let conn = test_db();
+        let clock = crate::sync::hlc::HlcClock::new("test-device".to_string());
+        let ctx = crate::sync::SyncContext { clock: &clock, device_id: "test-device" };
+
+        let folder = folders::create_folder(&conn, "docs", "__root__", Some(&ctx)).unwrap();
+        let resource = create_test_resource_with_ctx(&conn, &folder.id, Some(&ctx));
+
+        // Create a highlight and comment
+        let anchor = crate::db::highlights::Anchor {
+            text_position: crate::db::highlights::TextPosition { start: 0, end: 5 },
+            text_quote: crate::db::highlights::TextQuote {
+                exact: "hello".to_string(),
+                prefix: "".to_string(),
+                suffix: "".to_string(),
+            },
+        };
+        let h = crate::db::highlights::create_highlight(
+            &conn, &resource.id, "hello", &anchor, "#FFEB3B", Some(&ctx),
+        ).unwrap();
+        let _c = crate::db::comments::create_comment(&conn, &resource.id, Some(&h.id), "note", Some(&ctx)).unwrap();
+
+        // Delete resource (cascades to children)
+        delete_resource(&conn, &resource.id, Some(&ctx)).unwrap();
+
+        // Clear sync_log so we can check what restore writes
+        conn.execute("DELETE FROM sync_log", []).unwrap();
+
+        // Restore
+        restore_resource(&conn, &resource.id, Some(&ctx)).unwrap();
+
+        // Verify child HLCs were updated
+        let h_hlc: String = conn.query_row(
+            "SELECT hlc FROM highlights WHERE id = ?1", params![h.id], |row| row.get(0),
+        ).unwrap();
+        let r_hlc: String = conn.query_row(
+            "SELECT hlc FROM resources WHERE id = ?1", params![resource.id], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(h_hlc, r_hlc, "child HLC should match resource restore HLC");
+
+        // Verify sync_log has entries for children
+        let entries = crate::sync::sync_log::get_pending(&conn).unwrap();
+        let entity_types: Vec<&str> = entries.iter().map(|e| e.entity_type.as_str()).collect();
+        assert!(entity_types.contains(&"resource"), "should have resource UPDATE");
+        assert!(entity_types.contains(&"highlight"), "should have highlight UPDATE");
+        assert!(entity_types.contains(&"comment"), "should have comment UPDATE");
     }
 }

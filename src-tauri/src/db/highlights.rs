@@ -112,6 +112,20 @@ pub fn get_highlights_for_resource(
     Ok(highlights)
 }
 
+/// List highlight IDs that were soft-deleted for a resource (for restore sync).
+pub fn list_deleted_highlight_ids_for_resource(
+    conn: &Connection,
+    resource_id: &str,
+) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM highlights WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+    )?;
+    let ids = stmt
+        .query_map(params![resource_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
 pub fn delete_highlight(
     conn: &Connection,
     id: &str,
@@ -127,7 +141,7 @@ pub fn delete_highlight(
 
     // Serialize before soft-delete
     let highlight_before = if sync_ctx.is_some() {
-        get_highlight(conn, id).ok()
+        get_highlight_by_id(conn, id).ok()
     } else {
         None
     };
@@ -170,7 +184,7 @@ pub fn delete_highlight(
     Ok(())
 }
 
-fn get_highlight(conn: &Connection, id: &str) -> Result<Highlight, DbError> {
+pub fn get_highlight_by_id(conn: &Connection, id: &str) -> Result<Highlight, DbError> {
     conn.query_row(
         "SELECT id, resource_id, text_content, anchor, color, created_at
          FROM highlights WHERE id = ?1 AND deleted_at IS NULL",

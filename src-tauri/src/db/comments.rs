@@ -83,7 +83,7 @@ pub fn update_comment(
     }
 
     if let Some(ctx) = sync_ctx {
-        let comment = get_comment(conn, id)?;
+        let comment = get_comment_by_id(conn, id)?;
         let payload = serde_json::to_string(&comment)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
         sync::sync_log::append(
@@ -119,7 +119,7 @@ pub fn delete_comment(
 
     // Serialize before soft-delete
     let comment_before = if sync_ctx.is_some() {
-        get_comment(conn, id).ok()
+        get_comment_by_id(conn, id).ok()
     } else {
         None
     };
@@ -157,7 +157,7 @@ pub fn delete_comment(
     Ok(())
 }
 
-fn get_comment(conn: &Connection, id: &str) -> Result<Comment, DbError> {
+pub fn get_comment_by_id(conn: &Connection, id: &str) -> Result<Comment, DbError> {
     conn.query_row(
         "SELECT id, highlight_id, resource_id, content, created_at, updated_at
          FROM comments WHERE id = ?1 AND deleted_at IS NULL",
@@ -201,6 +201,20 @@ pub fn get_comments_for_resource(
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(comments)
+}
+
+/// List comment IDs that were soft-deleted for a resource (for restore sync).
+pub fn list_deleted_comment_ids_for_resource(
+    conn: &Connection,
+    resource_id: &str,
+) -> Result<Vec<String>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM comments WHERE resource_id = ?1 AND deleted_at IS NOT NULL",
+    )?;
+    let ids = stmt
+        .query_map(params![resource_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
 }
 
 #[allow(dead_code)]
