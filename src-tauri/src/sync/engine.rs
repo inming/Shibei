@@ -1195,7 +1195,7 @@ impl SyncEngine {
         conn.execute(&sql, params![deleted_at, hlc, entity_id])?;
 
         if entity_type == "folder" {
-            self.cascade_folder_delete(conn, entity_id, deleted_at)?;
+            self.cascade_folder_delete(conn, entity_id, deleted_at, hlc)?;
         }
 
         Ok(())
@@ -1208,6 +1208,7 @@ impl SyncEngine {
         conn: &rusqlite::Connection,
         folder_id: &str,
         deleted_at: &str,
+        hlc: &str,
     ) -> Result<(), SyncError> {
         // Get resource IDs in this folder
         let mut stmt =
@@ -1219,22 +1220,22 @@ impl SyncEngine {
 
         for rid in &resource_ids {
             conn.execute(
-                "UPDATE resource_tags SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-                params![deleted_at, rid],
+                "UPDATE resource_tags SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL",
+                params![deleted_at, hlc, rid],
             )?;
             conn.execute(
-                "UPDATE highlights SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-                params![deleted_at, rid],
+                "UPDATE highlights SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL",
+                params![deleted_at, hlc, rid],
             )?;
             conn.execute(
-                "UPDATE comments SET deleted_at = ?1 WHERE resource_id = ?2 AND deleted_at IS NULL",
-                params![deleted_at, rid],
+                "UPDATE comments SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL",
+                params![deleted_at, hlc, rid],
             )?;
         }
 
         conn.execute(
-            "UPDATE resources SET deleted_at = ?1 WHERE folder_id = ?2 AND deleted_at IS NULL",
-            params![deleted_at, folder_id],
+            "UPDATE resources SET deleted_at = ?1, hlc = ?2 WHERE folder_id = ?3 AND deleted_at IS NULL",
+            params![deleted_at, hlc, folder_id],
         )?;
 
         // Recurse into child folders
@@ -1247,10 +1248,10 @@ impl SyncEngine {
 
         for child_id in &child_ids {
             conn.execute(
-                "UPDATE folders SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
-                params![deleted_at, child_id],
+                "UPDATE folders SET deleted_at = ?1, hlc = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                params![deleted_at, hlc, child_id],
             )?;
-            self.cascade_folder_delete(conn, child_id, deleted_at)?;
+            self.cascade_folder_delete(conn, child_id, deleted_at, hlc)?;
         }
 
         Ok(())

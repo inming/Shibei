@@ -747,4 +747,30 @@ mod tests {
         assert_eq!(children[0].name, "second");
         assert_eq!(children[1].name, "first");
     }
+
+    #[test]
+    fn test_soft_delete_folder_tree_updates_child_hlc() {
+        let conn = test_db();
+        let folder = create_folder(&conn, "parent", "__root__", None).unwrap();
+
+        conn.execute(
+            "INSERT INTO resources (id, title, url, folder_id, resource_type, file_path, created_at, captured_at, hlc)
+             VALUES ('r1', 'test', 'http://x', ?1, 'webpage', 'x', '2026-01-01', '2026-01-01', '0000000000100-0000-dev-old')",
+            params![folder.id],
+        ).unwrap();
+
+        conn.execute(
+            "INSERT INTO highlights (id, resource_id, text_content, anchor, color, created_at, hlc)
+             VALUES ('h1', 'r1', 'hello', '{\"text_position\":{\"start\":0,\"end\":5},\"text_quote\":{\"exact\":\"hello\",\"prefix\":\"\",\"suffix\":\"\"}}', '#FFEB3B', '2026-01-01', '0000000000100-0000-dev-old')",
+            [],
+        ).unwrap();
+
+        soft_delete_folder_tree(&conn, &folder.id, Some("0000000000200-0000-dev-new")).unwrap();
+
+        let r_hlc: String = conn.query_row("SELECT hlc FROM resources WHERE id = 'r1'", [], |row| row.get(0)).unwrap();
+        assert_eq!(r_hlc, "0000000000200-0000-dev-new");
+
+        let h_hlc: String = conn.query_row("SELECT hlc FROM highlights WHERE id = 'h1'", [], |row| row.get(0)).unwrap();
+        assert_eq!(h_hlc, "0000000000200-0000-dev-new");
+    }
 }
