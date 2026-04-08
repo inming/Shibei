@@ -497,7 +497,13 @@ pub fn restore_folder(
     Ok(folder)
 }
 
-pub fn purge_folder(conn: &Connection, id: &str) -> Result<Vec<String>, DbError> {
+/// Result of purging a folder tree: resource IDs and child folder IDs that were purged.
+pub struct PurgeFolderResult {
+    pub resource_ids: Vec<String>,
+    pub child_folder_ids: Vec<String>,
+}
+
+pub fn purge_folder(conn: &Connection, id: &str) -> Result<PurgeFolderResult, DbError> {
     // Guard: only purge folders that are already soft-deleted
     let is_deleted: bool = conn.query_row(
         "SELECT deleted_at IS NOT NULL FROM folders WHERE id = ?1",
@@ -508,16 +514,19 @@ pub fn purge_folder(conn: &Connection, id: &str) -> Result<Vec<String>, DbError>
         return Err(DbError::InvalidOperation(format!("folder {} is not deleted", id)));
     }
 
-    let mut all_resource_ids = Vec::new();
-    purge_folder_recursive(conn, id, &mut all_resource_ids)?;
+    let mut result = PurgeFolderResult {
+        resource_ids: Vec::new(),
+        child_folder_ids: Vec::new(),
+    };
+    purge_folder_recursive(conn, id, &mut result)?;
 
-    Ok(all_resource_ids)
+    Ok(result)
 }
 
 fn purge_folder_recursive(
     conn: &Connection,
     folder_id: &str,
-    resource_ids: &mut Vec<String>,
+    result: &mut PurgeFolderResult,
 ) -> Result<(), DbError> {
     // Recurse into child folders first
     let mut stmt = conn.prepare("SELECT id FROM folders WHERE parent_id = ?1")?;
@@ -527,7 +536,8 @@ fn purge_folder_recursive(
         .collect();
 
     for child_id in &child_ids {
-        purge_folder_recursive(conn, child_id, resource_ids)?;
+        result.child_folder_ids.push(child_id.clone());
+        purge_folder_recursive(conn, child_id, result)?;
     }
 
     // Collect and purge resources in this folder
@@ -546,7 +556,7 @@ fn purge_folder_recursive(
     conn.execute("DELETE FROM resources WHERE folder_id = ?1", params![folder_id])?;
     conn.execute("DELETE FROM folders WHERE id = ?1", params![folder_id])?;
 
-    resource_ids.extend(rids);
+    result.resource_ids.extend(rids);
 
     Ok(())
 }
@@ -970,11 +980,14 @@ mod tests {
         delete_folder(&conn, &parent.id, None).unwrap();
 
         // Purge parent
-        let resource_ids = purge_folder(&conn, &parent.id).unwrap();
+        let result = purge_folder(&conn, &parent.id).unwrap();
 
         // Should include resources from both parent and child folders
-        assert!(resource_ids.contains(&"r1".to_string()), "should include child folder resource");
-        assert!(resource_ids.contains(&"r2".to_string()), "should include parent folder resource");
+        assert!(result.resource_ids.contains(&"r1".to_string()), "should include child folder resource");
+        assert!(result.resource_ids.contains(&"r2".to_string()), "should include parent folder resource");
+
+        // Should include child folder ID
+        assert!(result.child_folder_ids.contains(&child.id), "should include child folder id");
 
         // Child folder should be gone
         let child_exists: bool = conn.query_row(

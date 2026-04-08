@@ -1196,18 +1196,22 @@ pub async fn cmd_purge_folder(
     id: String,
 ) -> Result<(), CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
-    let resource_ids = folders::purge_folder(&conn, &id)?;
-    // Write PURGE to sync_log for folder and its resources
+    let result = folders::purge_folder(&conn, &id)?;
+    // Write PURGE to sync_log for folder, child folders, and resources
     if let Some(ctx) = state.sync_context() {
         let hlc_str = ctx.clock.tick().to_string();
-        for rid in &resource_ids {
+        for rid in &result.resource_ids {
             let payload = serde_json::json!({ "id": rid }).to_string();
             let _ = crate::sync::sync_log::append(&conn, "resource", rid, "PURGE", &payload, &hlc_str, ctx.device_id);
+        }
+        for fid in &result.child_folder_ids {
+            let payload = serde_json::json!({ "id": fid }).to_string();
+            let _ = crate::sync::sync_log::append(&conn, "folder", fid, "PURGE", &payload, &hlc_str, ctx.device_id);
         }
         let payload = serde_json::json!({ "id": id }).to_string();
         let _ = crate::sync::sync_log::append(&conn, "folder", &id, "PURGE", &payload, &hlc_str, ctx.device_id);
     }
-    for rid in &resource_ids {
+    for rid in &result.resource_ids {
         let dir = storage::resource_dir(&state.base_dir, rid);
         let _ = std::fs::remove_dir_all(dir);
     }
