@@ -99,11 +99,7 @@ pub async fn cmd_delete_folder(
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sync_ctx = state.sync_context();
     let resource_ids = folders::delete_folder(&conn, &id, sync_ctx.as_ref())?;
-    // Clean up filesystem (best-effort)
-    for rid in &resource_ids {
-        let dir = storage::resource_dir(&state.base_dir, rid);
-        let _ = std::fs::remove_dir_all(dir);
-    }
+    // Snapshot files are kept until purge, so restore can still access them.
     let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "deleted", "folder_id": id }));
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "deleted" }));
     Ok(resource_ids)
