@@ -270,6 +270,104 @@ fn soft_delete_folder_tree(conn: &Connection, folder_id: &str, hlc: Option<&str>
     Ok(())
 }
 
+/// Recursively restore a folder tree and all cascaded entities.
+/// Symmetric with `soft_delete_folder_tree`.
+fn restore_folder_tree(
+    conn: &Connection,
+    folder_id: &str,
+    hlc: Option<&str>,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<(), DbError> {
+    // Restore child folders first
+    let mut stmt = conn.prepare(
+        "SELECT id FROM folders WHERE parent_id = ?1 AND deleted_at IS NOT NULL",
+    )?;
+    let child_ids: Vec<String> = stmt
+        .query_map(params![folder_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for child_id in &child_ids {
+        conn.execute(
+            "UPDATE folders SET deleted_at = NULL, hlc = COALESCE(?1, hlc) WHERE id = ?2",
+            params![hlc, child_id],
+        )?;
+
+        if let Some(ctx) = sync_ctx {
+            if let Ok(folder) = get_folder(conn, child_id) {
+                let payload = serde_json::to_string(&folder)
+                    .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+                sync::sync_log::append(
+                    conn, "folder", child_id, "UPDATE", &payload,
+                    hlc.unwrap_or(""), ctx.device_id,
+                )?;
+            }
+        }
+
+        restore_folder_tree(conn, child_id, hlc, sync_ctx)?;
+    }
+
+    // Restore resources in this folder
+    let mut stmt = conn.prepare(
+        "SELECT id FROM resources WHERE folder_id = ?1 AND deleted_at IS NOT NULL",
+    )?;
+    let resource_ids: Vec<String> = stmt
+        .query_map(params![folder_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for rid in &resource_ids {
+        // Collect deleted child IDs before restoring
+        let deleted_highlight_ids = super::highlights::list_deleted_highlight_ids_for_resource(conn, rid)?;
+        let deleted_comment_ids = super::comments::list_deleted_comment_ids_for_resource(conn, rid)?;
+
+        conn.execute(
+            "UPDATE resources SET deleted_at = NULL, hlc = COALESCE(?1, hlc) WHERE id = ?2",
+            params![hlc, rid],
+        )?;
+        conn.execute(
+            "UPDATE highlights SET deleted_at = NULL, hlc = COALESCE(?1, hlc) WHERE resource_id = ?2 AND deleted_at IS NOT NULL",
+            params![hlc, rid],
+        )?;
+        conn.execute(
+            "UPDATE comments SET deleted_at = NULL, hlc = COALESCE(?1, hlc) WHERE resource_id = ?2 AND deleted_at IS NOT NULL",
+            params![hlc, rid],
+        )?;
+        conn.execute(
+            "UPDATE resource_tags SET deleted_at = NULL, hlc = COALESCE(?1, hlc) WHERE resource_id = ?2 AND deleted_at IS NOT NULL",
+            params![hlc, rid],
+        )?;
+
+        if let Some(ctx) = sync_ctx {
+            let hlc_ref = hlc.unwrap_or("");
+
+            if let Ok(resource) = super::resources::get_resource(conn, rid) {
+                let payload = serde_json::to_string(&resource)
+                    .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+                sync::sync_log::append(conn, "resource", rid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+            }
+
+            for hid in &deleted_highlight_ids {
+                if let Ok(h) = super::highlights::get_highlight_by_id(conn, hid) {
+                    let payload = serde_json::to_string(&h)
+                        .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+                    sync::sync_log::append(conn, "highlight", hid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+                }
+            }
+
+            for cid in &deleted_comment_ids {
+                if let Ok(c) = super::comments::get_comment_by_id(conn, cid) {
+                    let payload = serde_json::to_string(&c)
+                        .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+                    sync::sync_log::append(conn, "comment", cid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+                }
+            }
+        }
+
+        let _ = super::search::rebuild_search_index(conn, rid);
+    }
+
+    Ok(())
+}
+
 /// The well-known ID for the inbox virtual folder.
 pub const INBOX_FOLDER_ID: &str = "__inbox__";
 
@@ -376,6 +474,9 @@ pub fn restore_folder(
         "UPDATE folders SET deleted_at = NULL, parent_id = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3",
         params![target_parent, hlc_str, id],
     )?;
+
+    // Cascade restore to child folders, resources, and annotations
+    restore_folder_tree(conn, id, hlc_str.as_deref(), sync_ctx)?;
 
     let folder = get_folder(conn, id)?;
 
@@ -746,6 +847,51 @@ mod tests {
         let children = list_children(&conn, "__root__").unwrap();
         assert_eq!(children[0].name, "second");
         assert_eq!(children[1].name, "first");
+    }
+
+    #[test]
+    fn test_restore_folder_cascades_to_children() {
+        let conn = test_db();
+        let clock = crate::sync::hlc::HlcClock::new("test-device".to_string());
+        let ctx = crate::sync::SyncContext { clock: &clock, device_id: "test-device" };
+
+        let parent = create_folder(&conn, "parent", "__root__", Some(&ctx)).unwrap();
+        let child = create_folder(&conn, "child", &parent.id, Some(&ctx)).unwrap();
+
+        // Insert a resource in the child folder
+        conn.execute(
+            "INSERT INTO resources (id, title, url, folder_id, resource_type, file_path, created_at, captured_at, hlc)
+             VALUES ('r1', 'test', 'http://x', ?1, 'webpage', 'x', '2026-01-01', '2026-01-01', '0000000000001-0000-dev')",
+            params![child.id],
+        ).unwrap();
+
+        // Delete parent folder (cascades to child folder and resource)
+        delete_folder(&conn, &parent.id, Some(&ctx)).unwrap();
+
+        // Verify child folder and resource are deleted
+        let child_deleted: bool = conn.query_row(
+            "SELECT deleted_at IS NOT NULL FROM folders WHERE id = ?1", params![child.id], |row| row.get(0),
+        ).unwrap();
+        assert!(child_deleted);
+        let r_deleted: bool = conn.query_row(
+            "SELECT deleted_at IS NOT NULL FROM resources WHERE id = 'r1'", [], |row| row.get(0),
+        ).unwrap();
+        assert!(r_deleted);
+
+        // Restore parent folder
+        restore_folder(&conn, &parent.id, Some(&ctx)).unwrap();
+
+        // Verify child folder is restored
+        let child_deleted_after: Option<String> = conn.query_row(
+            "SELECT deleted_at FROM folders WHERE id = ?1", params![child.id], |row| row.get(0),
+        ).unwrap();
+        assert!(child_deleted_after.is_none(), "child folder should be restored");
+
+        // Verify resource is restored
+        let r_deleted_after: Option<String> = conn.query_row(
+            "SELECT deleted_at FROM resources WHERE id = 'r1'", [], |row| row.get(0),
+        ).unwrap();
+        assert!(r_deleted_after.is_none(), "resource should be restored");
     }
 
     #[test]
