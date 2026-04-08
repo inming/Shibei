@@ -570,6 +570,37 @@ pub async fn cmd_force_compact(
     }
 }
 
+#[tauri::command]
+pub async fn cmd_list_orphan_snapshots(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+) -> Result<serde_json::Value, CommandError> {
+    let engine = build_sync_engine(&state, &encryption_state).await?;
+    let orphans = engine.list_orphan_snapshots().await.map_err(|e| CommandError { message: e.to_string() })?;
+    let total_size: u64 = orphans.iter().map(|(_, s)| s).sum();
+    let items: Vec<serde_json::Value> = orphans.iter().map(|(id, size)| {
+        serde_json::json!({ "resource_id": id, "size": size })
+    }).collect();
+    Ok(serde_json::json!({
+        "count": orphans.len(),
+        "total_size": total_size,
+        "items": items,
+    }))
+}
+
+#[tauri::command]
+pub async fn cmd_purge_orphan_snapshots(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+) -> Result<serde_json::Value, CommandError> {
+    let engine = build_sync_engine(&state, &encryption_state).await?;
+    let (deleted, freed) = engine.purge_orphan_snapshots().await.map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(serde_json::json!({
+        "deleted": deleted,
+        "freed_bytes": freed,
+    }))
+}
+
 /// Build a SyncEngine from current config. Called on each sync to pick up latest settings.
 /// If encryption is enabled, wraps the backend with EncryptedBackend.
 /// Multi-device detection: if local doesn't know about encryption, check remote keyring.json.

@@ -153,6 +153,65 @@ impl SyncEngine {
         self.run_compaction(files).await
     }
 
+    /// Scan S3 for orphan snapshot HTML files (exist on S3 but not in local DB).
+    pub async fn list_orphan_snapshots(&self) -> Result<Vec<(String, u64)>, SyncError> {
+        let objects = self.backend.list("snapshots/").await?;
+
+        // Extract resource IDs from S3 keys like "snapshots/{id}/snapshot.html"
+        let mut s3_entries: Vec<(String, u64)> = Vec::new();
+        for obj in &objects {
+            let parts: Vec<&str> = obj.key.split('/').collect();
+            if parts.len() >= 2 && !parts[1].is_empty() {
+                s3_entries.push((parts[1].to_string(), obj.size));
+            }
+        }
+
+        // Deduplicate by resource_id, summing sizes
+        let mut size_map: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        for (id, size) in &s3_entries {
+            *size_map.entry(id.clone()).or_default() += size;
+        }
+
+        // Query DB for all existing resources (including soft-deleted)
+        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let mut stmt = conn.prepare("SELECT id FROM resources")?;
+        let db_ids: std::collections::HashSet<String> = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Orphans = on S3 but not in DB
+        let orphans: Vec<(String, u64)> = size_map
+            .into_iter()
+            .filter(|(id, _)| !db_ids.contains(id))
+            .collect();
+
+        Ok(orphans)
+    }
+
+    /// Delete orphan snapshot HTML files from S3.
+    pub async fn purge_orphan_snapshots(&self) -> Result<(usize, u64), SyncError> {
+        let orphans = self.list_orphan_snapshots().await?;
+        let mut deleted = 0usize;
+        let mut freed = 0u64;
+
+        for (resource_id, size) in &orphans {
+            let key = format!("snapshots/{}/snapshot.html", resource_id);
+            match self.backend.delete(&key).await {
+                Ok(()) => {
+                    deleted += 1;
+                    freed += size;
+                    eprintln!("[sync] Deleted orphan snapshot: {}", key);
+                }
+                Err(e) => {
+                    eprintln!("[sync] Warning: failed to delete orphan {}: {}", key, e);
+                }
+            }
+        }
+
+        Ok((deleted, freed))
+    }
+
     async fn run_compaction(&self, files: Vec<super::backend::ObjectInfo>) -> Result<bool, SyncError> {
 
         let conn = self.pool.get().map_err(|e| SyncError::Db(DbError::Pool(e)))?;

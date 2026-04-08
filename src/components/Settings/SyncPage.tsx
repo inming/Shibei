@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import * as cmd from "@/lib/commands";
 import type { SyncConfig } from "@/types";
+import type { OrphanScanResult } from "@/lib/commands";
 import toast from "react-hot-toast";
+import { Modal } from "@/components/Modal";
 import styles from "./Settings.module.css";
 
 function formatError(err: unknown): string {
@@ -9,6 +11,12 @@ function formatError(err: unknown): string {
     return String((err as { message: string }).message);
   }
   return String(err);
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 interface SyncPageProps {
@@ -27,6 +35,13 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
   const [saving, setSaving] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [interval, setInterval_] = useState(intervalMinutes);
+
+  // Orphan cleanup state
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<OrphanScanResult | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmInput, setConfirmInput] = useState("");
+  const [purging, setPurging] = useState(false);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -89,6 +104,34 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
       toast.error(`保存失败：${formatError(err)}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleScanOrphans() {
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const result = await cmd.listOrphanSnapshots();
+      setScanResult(result);
+    } catch (err) {
+      toast.error(`扫描失败：${formatError(err)}`);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function handlePurgeOrphans() {
+    setPurging(true);
+    try {
+      const result = await cmd.purgeOrphanSnapshots();
+      toast.success(`已删除 ${result.deleted} 个文件，释放 ${formatSize(result.freed_bytes)}`);
+      setScanResult(null);
+      setShowConfirmModal(false);
+      setConfirmInput("");
+    } catch (err) {
+      toast.error(`清理失败：${formatError(err)}`);
+    } finally {
+      setPurging(false);
     }
   }
 
@@ -221,8 +264,105 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
             >
               {compacting ? "压缩中…" : "强制压缩"}
             </button>
+            <button
+              className={styles.secondary}
+              onClick={handleScanOrphans}
+              disabled={scanning}
+            >
+              {scanning ? "扫描中…" : "清理孤儿文件"}
+            </button>
           </div>
+
+          {/* Scan result panel */}
+          {scanResult && (
+            <div className={styles.info} style={{ marginTop: "var(--spacing-md)" }}>
+              {scanResult.count === 0 ? (
+                <span>未发现孤儿文件</span>
+              ) : (
+                <>
+                  <div>
+                    发现 <strong>{scanResult.count}</strong> 个孤儿文件（共 {formatSize(scanResult.total_size)}）
+                  </div>
+                  <div className={styles.orphanList}>
+                    {scanResult.items.map((item) => (
+                      <div key={item.resource_id}>
+                        {item.resource_id}  {formatSize(item.size)}
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles.modalActions}>
+                    <button
+                      className={styles.secondary}
+                      onClick={() => setScanResult(null)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      className={styles.danger}
+                      onClick={() => {
+                        setConfirmInput("");
+                        setShowConfirmModal(true);
+                      }}
+                    >
+                      开始清理
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </>
+      )}
+
+      {/* Confirm modal */}
+      {showConfirmModal && scanResult && scanResult.count > 0 && (
+        <Modal
+          title="清理孤儿文件"
+          onClose={() => {
+            setShowConfirmModal(false);
+            setConfirmInput("");
+          }}
+        >
+          <p style={{ margin: "0 0 var(--spacing-sm)", fontSize: "var(--font-size-sm)" }}>
+            即将永久删除 <strong>{scanResult.count}</strong> 个文件（共 {formatSize(scanResult.total_size)}）
+          </p>
+          <div className={styles.warning}>
+            <ul className={styles.warningList}>
+              <li>删除后不可恢复</li>
+              <li>如果有其他设备尚未同步，可能导致数据丢失</li>
+              <li>请确保所有设备已完成至少一次同步</li>
+            </ul>
+          </div>
+          <p style={{ margin: "var(--spacing-md) 0 0", fontSize: "var(--font-size-sm)" }}>
+            请输入 <strong>{scanResult.count}</strong> 以确认：
+          </p>
+          <input
+            type="text"
+            className={styles.confirmInput}
+            value={confirmInput}
+            onChange={(e) => setConfirmInput(e.target.value)}
+            placeholder={String(scanResult.count)}
+            autoFocus
+          />
+          <div className={styles.modalActions}>
+            <button
+              className={styles.secondary}
+              onClick={() => {
+                setShowConfirmModal(false);
+                setConfirmInput("");
+              }}
+            >
+              取消
+            </button>
+            <button
+              className={styles.danger}
+              disabled={confirmInput !== String(scanResult.count) || purging}
+              onClick={handlePurgeOrphans}
+            >
+              {purging ? "删除中…" : "永久删除"}
+            </button>
+          </div>
+        </Modal>
       )}
     </>
   );

@@ -123,6 +123,8 @@ pub fn run() {
             commands::cmd_debug_log,
             commands::cmd_sync_now,
             commands::cmd_force_compact,
+            commands::cmd_list_orphan_snapshots,
+            commands::cmd_purge_orphan_snapshots,
             commands::cmd_save_sync_config,
             commands::cmd_get_sync_config,
             commands::cmd_test_s3_connection,

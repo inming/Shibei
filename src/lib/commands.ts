@@ -188,6 +188,30 @@ export function forceCompact(): Promise<string> {
   return invoke("cmd_force_compact");
 }
 
+export interface OrphanItem {
+  resource_id: string;
+  size: number;
+}
+
+export interface OrphanScanResult {
+  count: number;
+  total_size: number;
+  items: OrphanItem[];
+}
+
+export interface PurgeResult {
+  deleted: number;
+  freed_bytes: number;
+}
+
+export function listOrphanSnapshots(): Promise<OrphanScanResult> {
+  return invoke("cmd_list_orphan_snapshots");
+}
+
+export function purgeOrphanSnapshots(): Promise<PurgeResult> {
+  return invoke("cmd_purge_orphan_snapshots");
+}
+
 export function saveSyncConfig(
   endpoint: string, region: string, bucket: string,
   accessKey: string, secretKey: string,
