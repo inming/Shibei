@@ -28,9 +28,11 @@ export function TrashList() {
   useEffect(() => {
     const u1 = listen(DataEvents.RESOURCE_CHANGED, refresh);
     const u2 = listen(DataEvents.FOLDER_CHANGED, refresh);
+    const u3 = listen(DataEvents.SYNC_COMPLETED, refresh);
     return () => {
       u1.then((f) => f());
       u2.then((f) => f());
+      u3.then((f) => f());
     };
   }, [refresh]);
 
