@@ -37,6 +37,7 @@ sha2 = "0.10"
 rand = "0.8"
 zeroize = { version = "1", features = ["derive"] }
 scraper = "0.22"
+flate2 = "1.1"
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 tauri-plugin-deep-link = "2.4.8"
 urlencoding = "2.1.3"
