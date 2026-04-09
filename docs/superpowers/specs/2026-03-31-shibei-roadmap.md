@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成。下一步：v1.8 i18n。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成。v1.8 全部完成。下一步：v2.0 能力扩展。**
 
 ---
 
@@ -318,10 +318,31 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 
 
 **复杂度**：中低。无新功能，主要是文案抽取的体力活，但涉及面广（所有组件）。
 
-- [ ] **i18n 框架** — 引入轻量 i18n 方案（如 react-i18next），抽取所有 UI 文案为语言包
-- [ ] **中文语言包** — 默认中文
-- [ ] **英文语言包** — 完整英文翻译
-- [ ] **语言切换** — 设置页语言选择，持久化到 localStorage
+- 设计文档：`docs/superpowers/specs/2026-04-09-v1.8-i18n-design.md`
+- 实现计划：`docs/superpowers/plans/2026-04-09-v1.8-i18n.md`
+
+### i18n 框架
+- [x] **react-i18next** — i18next + react-i18next + i18next-browser-languagedetector，9 个命名空间
+- [x] **TypeScript 类型安全** — `CustomTypeOptions` 类型增强，`t()` 调用编译时检查 key
+
+### 语言包
+- [x] **中文语言包** — 296 条字符串，按模块拆分（common/sidebar/reader/annotation/settings/sync/encryption/lock/search）
+- [x] **英文语言包** — 完整英文翻译，中英文 key 完全对齐
+
+### 前端迁移
+- [x] **组件迁移** — 25+ React 组件/hooks 的硬编码中文 → `useTranslation()` + `t()` 调用
+- [x] **alert() → toast** — FolderTree/FolderEditDialog 中的 alert() 改为 toast.error()
+- [x] **日期格式化** — `toLocaleString("zh-CN")` 改为跟随 app 语言设置
+
+### 后端
+- [x] **错误消息 i18n** — 20 条 Rust 手写错误消息改为 i18n key，前端 `translateError()` 翻译层
+
+### Chrome 插件
+- [x] **chrome.i18n API** — `_locales/` 目录 + `chrome.i18n.getMessage()`
+- [x] **MAIN world 处理** — region-selector.js 通过注入参数接收翻译后字符串
+
+### 设置页
+- [x] **语言切换** — 设置 → 外观，中文/English 切换，持久化 `localStorage: shibei-language`
 
 ---
 
