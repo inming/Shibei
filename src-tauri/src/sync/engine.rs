@@ -200,17 +200,21 @@ impl SyncEngine {
         let mut freed = 0u64;
 
         for (resource_id, size) in &orphans {
-            let key = format!("snapshots/{}/snapshot.html.gz", resource_id);
-            match self.backend.delete(&key).await {
+            let key_gz = format!("snapshots/{}/snapshot.html.gz", resource_id);
+            let key_html = format!("snapshots/{}/snapshot.html", resource_id);
+            // Delete both possible keys (best-effort)
+            match self.backend.delete(&key_gz).await {
                 Ok(()) => {
                     deleted += 1;
                     freed += size;
-                    eprintln!("[sync] Deleted orphan snapshot: {}", key);
+                    eprintln!("[sync] Deleted orphan snapshot: {}", key_gz);
                 }
                 Err(e) => {
-                    eprintln!("[sync] Warning: failed to delete orphan {}: {}", key, e);
+                    eprintln!("[sync] Warning: failed to delete orphan {}: {}", key_gz, e);
                 }
             }
+            // Also clean up any leftover uncompressed key
+            let _ = self.backend.delete(&key_html).await;
         }
 
         Ok((deleted, freed))
