@@ -361,10 +361,7 @@ saveBtn.addEventListener("click", async () => {
     }
 
     showMessage("保存成功！", "success");
-    setTimeout(() => {
-      chrome.runtime.sendMessage({ type: "close-panel", tabId: pageInfo.tabId });
-      window.close();
-    }, 1000);
+    setTimeout(() => window.close(), 1000);
   } catch (err) {
     console.error("[shibei] error:", err);
     const msg = err.message || String(err);
@@ -383,6 +380,7 @@ saveBtn.addEventListener("click", async () => {
 
 selectSaveBtn.addEventListener("click", async () => {
   selectSaveBtn.disabled = true;
+  saveBtn.disabled = true; // Disable full-page save during region selection
 
   if (!pageInfo?.tabId) {
     showMessage("无法获取当前页面信息", "error");
@@ -410,12 +408,14 @@ selectSaveBtn.addEventListener("click", async () => {
     tags,
   };
 
+  // Set a result flag that we'll poll for completion
   try {
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
       world: "MAIN",
       func: (params) => {
         window.__shibeiSaveParams = params;
+        window.__shibeiRegionSaveResult = null; // reset
       },
       args: [saveParams],
     });
@@ -455,6 +455,30 @@ selectSaveBtn.addEventListener("click", async () => {
   }
 
   showMessage("请在页面中选择要保存的区域", "loading");
+
+  // Poll for region save result (set by region-selector.js)
+  const pollInterval = setInterval(async () => {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: pageInfo.tabId },
+        world: "MAIN",
+        func: () => window.__shibeiRegionSaveResult,
+      });
+      const result = results?.[0]?.result;
+      if (result === "success") {
+        clearInterval(pollInterval);
+        showMessage("保存成功！", "success");
+        setTimeout(() => window.close(), 1000);
+      } else if (result === "cancelled") {
+        clearInterval(pollInterval);
+        selectSaveBtn.disabled = false;
+        if (captureReady) saveBtn.disabled = false;
+        messageEl.style.display = "none";
+      }
+    } catch {
+      clearInterval(pollInterval);
+    }
+  }, 500);
 });
 
 init();

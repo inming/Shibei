@@ -433,6 +433,7 @@
       if (event.data.success) {
         showToast("保存成功!", "#16a34a");
         delete window.__shibeiSaveParams;
+        window.__shibeiRegionSaveResult = "success";
         setTimeout(cleanup, 1500);
       } else {
         showToast("保存失败: " + (event.data.error || "未知错误"), "#dc2626");
@@ -584,6 +585,11 @@
 
     // Remove UI elements
     document.querySelectorAll("[" + ATTR + "]").forEach((el) => el.remove());
+
+    // Signal cancellation to popup (if not already signaled success)
+    if (!window.__shibeiRegionSaveResult) {
+      window.__shibeiRegionSaveResult = "cancelled";
+    }
 
     // Reset state
     window.__shibeiRegionSelector = false;
