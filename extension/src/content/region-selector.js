@@ -1,5 +1,7 @@
 // Region Selector for Shibei — injected into MAIN world
 // Allows user to hover-select a DOM element, then saves the clipped subtree via SingleFile.
+// NOTE: MAIN world scripts CANNOT use chrome.* APIs including chrome.i18n.
+// Translated strings are passed via window.__shibeiRegionI18n (set by popup.js before injection).
 
 (function () {
   "use strict";
@@ -10,6 +12,23 @@
 
   const ATTR = "data-shibei-selector";
   const Z = 2147483647;
+
+  // ── i18n ──
+  // Pre-translated strings injected by popup.js into window.__shibeiRegionI18n.
+  // Strings with "$1" placeholders are replaced at call site via i18nReplace().
+  const i18n = window.__shibeiRegionI18n || {};
+
+  function t(key, fallback) {
+    return i18n[key] || fallback || key;
+  }
+
+  function tReplace(key, fallback, ...subs) {
+    let text = i18n[key] || fallback || key;
+    subs.forEach((val, idx) => {
+      text = text.replace("$" + (idx + 1), val);
+    });
+    return text;
+  }
 
   // ── State ──
   let currentElement = null; // The element under the cursor (or navigated to)
@@ -69,7 +88,7 @@
       zIndex: Z,
       boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
     });
-    el.textContent = "选择要保存的区域 — 滚轮或方向键调整层级 — ESC 退出";
+    el.textContent = t("regionTopBarGuide", "Select region to save — Scroll or arrow keys to adjust level — ESC to exit");
     document.body.appendChild(el);
     return el;
   }
@@ -94,7 +113,7 @@
     });
 
     const confirmBtn = document.createElement("button");
-    confirmBtn.textContent = "\u2713 确认保存";
+    confirmBtn.textContent = t("regionConfirmBtn", "\u2713 Confirm");
     confirmBtn.setAttribute(ATTR, "btn");
     Object.assign(confirmBtn.style, {
       padding: "6px 16px",
@@ -109,7 +128,7 @@
     confirmBtn.addEventListener("click", onConfirm);
 
     const reselectBtn = document.createElement("button");
-    reselectBtn.textContent = "\u2717 重新选择";
+    reselectBtn.textContent = t("regionReselectBtn", "\u2717 Reselect");
     reselectBtn.setAttribute(ATTR, "btn");
     Object.assign(reselectBtn.style, {
       padding: "6px 16px",
@@ -328,7 +347,7 @@
   // ═══════════════════════════════════════════
 
   async function doSave(element) {
-    showToast("正在抓取页面...", "#1e40af");
+    showToast(t("capturingPage", "Capturing page..."), "#1e40af");
 
     const selector = generateSelector(element);
     const textPreview = (element.textContent || "").trim().slice(0, 50);
@@ -337,7 +356,7 @@
     // Get save parameters from global variable (set by popup via executeScript)
     const params = window.__shibeiSaveParams;
     if (!params) {
-      showToast("保存参数丢失，请重新操作", "#dc2626");
+      showToast(t("regionParamsLost", "Save parameters lost, please try again"), "#dc2626");
       setTimeout(cleanup, 2000);
       return;
     }
@@ -348,7 +367,7 @@
       fullHtml = window.__shibeiCapturedHtml;
     } else {
       // Wait for auto-capture to finish (poll every 200ms, max 60s)
-      showToast("等待页面抓取完成...", "#1e40af");
+      showToast(t("regionWaitingCaptureToast", "Waiting for page capture..."), "#1e40af");
       const waitStart = Date.now();
       while (!window.__shibeiCapturedHtml && Date.now() - waitStart < 60000) {
         await new Promise((r) => setTimeout(r, 200));
@@ -376,7 +395,7 @@
           fullHtml = fullHtml.replace(/<audio[\s>][\s\S]*?<\/audio>/gi, "");
           fullHtml = fullHtml.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, "");
         } catch (err) {
-          showToast("页面抓取失败: " + err.message, "#dc2626");
+          showToast(tReplace("regionCaptureFailed", "Page capture failed: $1", err.message), "#dc2626");
           setTimeout(cleanup, 2000);
           return;
         }
@@ -384,18 +403,18 @@
     }
 
     // Clip HTML to selected subtree
-    showToast("正在裁剪选区...", "#1e40af");
+    showToast(t("regionClipping", "Clipping selected region..."), "#1e40af");
     const clippedHtml = clipHtml(fullHtml, selector);
 
     if (!clippedHtml) {
-      showToast("裁剪失败 — 未找到选区元素", "#dc2626");
+      showToast(t("regionClipFailed", "Clip failed — selected element not found"), "#dc2626");
       setTimeout(cleanup, 2000);
       return;
     }
 
     // Send to relay via DOM element (avoids postMessage IPC size limits).
     // MAIN and ISOLATED worlds share the DOM, so this bypasses the 64MiB limit.
-    showToast("正在保存...", "#1e40af");
+    showToast(t("saving", "Saving..."), "#1e40af");
 
     // Write clipped content to a uniquely-ID'd DOM element (avoids postMessage IPC limits).
     // Unique ID prevents stale relay handlers from consuming the wrong element.
@@ -430,12 +449,12 @@
       window.removeEventListener("message", resultHandler);
 
       if (event.data.success) {
-        showToast("保存成功!", "#16a34a");
+        showToast(t("saveSuccess", "Saved successfully!"), "#16a34a");
         delete window.__shibeiSaveParams;
         window.__shibeiRegionSaveResult = "success";
         setTimeout(cleanup, 1500);
       } else {
-        showToast("保存失败: " + (event.data.error || "未知错误"), "#dc2626");
+        showToast(tReplace("regionSaveFailed", "Save failed: $1", event.data.error || t("unknownError", "Unknown error")), "#dc2626");
         setTimeout(cleanup, 3000);
       }
     };
@@ -532,8 +551,10 @@
     overlay.style.backgroundColor = "rgba(37, 99, 235, 0.12)";
     overlay.style.borderWidth = "3px";
 
+    const tag = lockedElement.tagName.toLowerCase();
+
     // Update top bar
-    topBar.textContent = "已选择: <" + lockedElement.tagName.toLowerCase() + "> — 确认保存或重新选择";
+    topBar.textContent = tReplace("regionSelected", "Selected: <$1> — Confirm save or reselect", tag);
 
     // Show confirm bar
     confirmBar.style.display = "flex";
@@ -544,14 +565,14 @@
       confirmBtnEl.disabled = true;
       confirmBtnEl.style.opacity = "0.5";
       confirmBtnEl.style.cursor = "not-allowed";
-      topBar.textContent = "已选择: <" + lockedElement.tagName.toLowerCase() + "> — 等待页面抓取完成...";
+      topBar.textContent = tReplace("regionWaitingCapture", "Selected: <$1> — Waiting for page capture...", tag);
       const waitInterval = setInterval(() => {
         if (window.__shibeiCapturedHtml) {
           clearInterval(waitInterval);
           confirmBtnEl.disabled = false;
           confirmBtnEl.style.opacity = "1";
           confirmBtnEl.style.cursor = "pointer";
-          topBar.textContent = "已选择: <" + lockedElement.tagName.toLowerCase() + "> — 确认保存或重新选择";
+          topBar.textContent = tReplace("regionSelected", "Selected: <$1> — Confirm save or reselect", lockedElement.tagName.toLowerCase());
         }
       }, 200);
     }
@@ -562,14 +583,14 @@
     if (saving) return;
     saving = true;
     confirmBar.style.display = "none";
-    topBar.textContent = "正在保存...";
+    topBar.textContent = t("regionSaving", "Saving...");
     doSave(lockedElement);
   }
 
   function onReselect() {
     lockedElement = null;
     confirmBar.style.display = "none";
-    topBar.textContent = "选择要保存的区域 — 滚轮或方向键调整层级 — ESC 退出";
+    topBar.textContent = t("regionTopBarGuide", "Select region to save — Scroll or arrow keys to adjust level — ESC to exit");
 
     // Reset overlay style
     overlay.style.borderColor = "#3b82f6";

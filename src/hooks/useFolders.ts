@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 
 export function useFolders(parentId: string) {
+  const { t } = useTranslation('lock');
   const [folders, setFolders] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -16,7 +18,7 @@ export function useFolders(parentId: string) {
       setFolders(data);
     } catch (err) {
       console.error("Failed to load folders:", err);
-      toast.error("加载文件夹失败");
+      toast.error(t('loadFoldersFailed'));
     } finally {
       setLoading(false);
     }

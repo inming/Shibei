@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Highlight, Comment } from "@/types";
@@ -6,6 +7,7 @@ import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 
 export function useAnnotations(resourceId: string) {
+  const { t } = useTranslation('annotation');
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +23,7 @@ export function useAnnotations(resourceId: string) {
       setComments(cm);
     } catch (err) {
       console.error("Failed to load annotations:", err);
-      toast.error("加载标注失败");
+      toast.error(t('loadAnnotationsFailed'));
     } finally {
       setLoading(false);
     }
@@ -58,7 +60,7 @@ export function useAnnotations(resourceId: string) {
         return updated;
       } catch (err) {
         console.error("Failed to update highlight color:", err);
-        toast.error("修改颜色失败");
+        toast.error(t('updateColorFailed'));
         return null;
       }
     },
@@ -71,7 +73,7 @@ export function useAnnotations(resourceId: string) {
         await cmd.deleteHighlight(id, resourceId);
       } catch (err) {
         console.error("Failed to delete highlight:", err);
-        toast.error("删除高亮失败");
+        toast.error(t('deleteHighlightFailed'));
       }
     },
     [resourceId],
@@ -84,7 +86,7 @@ export function useAnnotations(resourceId: string) {
         return comment;
       } catch (err) {
         console.error("Failed to create comment:", err);
-        toast.error("创建评论失败");
+        toast.error(t('createCommentFailed'));
         return null;
       }
     },
@@ -97,7 +99,7 @@ export function useAnnotations(resourceId: string) {
         await cmd.deleteComment(id, resourceId);
       } catch (err) {
         console.error("Failed to delete comment:", err);
-        toast.error("删除评论失败");
+        toast.error(t('deleteCommentFailed'));
       }
     },
     [resourceId],
@@ -109,7 +111,7 @@ export function useAnnotations(resourceId: string) {
         await cmd.updateComment(id, content, resourceId);
       } catch (err) {
         console.error("Failed to update comment:", err);
-        toast.error("编辑评论失败");
+        toast.error(t('editCommentFailed'));
       }
     },
     [resourceId],

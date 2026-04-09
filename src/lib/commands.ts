@@ -337,3 +337,28 @@ export async function debugLog(label: string, data?: unknown): Promise<void> {
   const msg = data !== undefined ? `[${label}] ${JSON.stringify(data)}` : `[${label}]`;
   return invoke("cmd_debug_log", { msg });
 }
+
+// ── i18n Error Translation ──
+
+import i18n from "@/i18n";
+
+/**
+ * Translate a backend error message. If the message is an i18n key (e.g. "error.wrongPassword"),
+ * returns the translated string. If the key contains ": " (e.g. "error.keyGenFailed: details"),
+ * translates the key part and appends the detail. Otherwise returns the message as-is.
+ */
+export function translateError(message: string): string {
+  // Handle "key: detail" format from backend format!() calls
+  const colonIdx = message.indexOf(": ");
+  if (colonIdx > 0) {
+    const key = message.substring(0, colonIdx);
+    const detail = message.substring(colonIdx + 2);
+    if (i18n.exists(key)) {
+      return `${String(i18n.t(key as never))}: ${detail}`;
+    }
+  }
+  if (i18n.exists(message)) {
+    return String(i18n.t(message as never));
+  }
+  return message;
+}

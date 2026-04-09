@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 import * as cmd from "@/lib/commands";
 import toast from "react-hot-toast";
 import { DataEvents, SyncEvents } from "@/lib/events";
@@ -14,6 +15,7 @@ export interface SyncProgress {
 }
 
 export function useSync() {
+  const { t } = useTranslation('sync');
   const [status, setStatus] = useState<SyncStatusType>("idle");
   const [lastSyncAt, setLastSyncAt] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -66,10 +68,10 @@ export function useSync() {
               tryInitialSync();
               break;
             case "keychain_error":
-              toast("系统钥匙串不可用，请手动输入密码", { icon: "ℹ️" });
+              toast(t('keychainUnavailable'), { icon: "ℹ️" });
               break;
             case "key_mismatch":
-              toast("加密密钥已变更，请重新输入密码", { icon: "⚠️" });
+              toast(t('keyMismatch'), { icon: "⚠️" });
               break;
             case "no_stored_key":
               break;
@@ -83,7 +85,7 @@ export function useSync() {
         tryInitialSync();
       }
     }).catch(() => {});
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for sync and config events
   useEffect(() => {
@@ -133,10 +135,10 @@ export function useSync() {
       const msg = err && typeof err === "object" && "message" in err
         ? String((err as { message: string }).message)
         : String(err);
-      toast.error(`同步失败: ${msg}`);
+      toast.error(t('syncFailed', { error: msg }));
       syncingRef.current = false;
     }
-  }, []);
+  }, [t]);
 
   // Auto-sync timer
   useEffect(() => {

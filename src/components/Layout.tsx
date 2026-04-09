@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { Resource } from "@/types";
 import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
@@ -24,6 +25,7 @@ interface LibraryViewProps {
 }
 
 export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLock }: LibraryViewProps) {
+  const { t } = useTranslation('sidebar');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
   const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
@@ -165,7 +167,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
         setSelectedResource(null);
       } catch (err) {
         console.error("Failed to move resource:", err);
-        toast.error("移动资料失败");
+        toast.error(t('moveResourceFailed'));
       }
       return;
     }
@@ -180,9 +182,9 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
         console.error("Failed to move folder:", err);
         const msg = String(err);
         if (msg.includes("own subtree")) {
-          toast.error("不能将文件夹移入自身的子文件夹中");
+          toast.error(t('moveFolderToSubtree'));
         } else {
-          toast.error("移动文件夹失败");
+          toast.error(t('moveFolderFailed'));
         }
       }
       return;
@@ -279,15 +281,15 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     setShowClearTrashConfirm(false);
     try {
       await cmd.purgeAllDeleted();
-      toast.success("回收站已清空");
+      toast.success(t('trashCleared'));
     } catch {
-      toast.error("清空回收站失败");
+      toast.error(t('clearTrashFailed'));
     }
   }, []);
 
   const trashMenuItems: MenuItem[] = [
     {
-      label: "清空回收站",
+      label: t('clearTrash'),
       danger: true,
       onClick: () => {
         setTrashContextMenu(null);
@@ -320,7 +322,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               onContextMenu={handleTrashContextMenu}
             >
               <span className={styles.trashIcon}>🗑️</span>
-              回收站
+              {t('trash')}
             </button>
             {trashContextMenu && (
               <ContextMenu
@@ -386,7 +388,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
             />
           ) : (
             <div className={styles.mainPlaceholder}>
-              双击资料在新标签页中打开阅读
+              {t('previewPlaceholder')}
             </div>
           )}
         </div>
@@ -395,28 +397,28 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
         {activeDrag && (
           <div className={styles.dragOverlay}>
             {activeDrag.type === "resource" && selectedResourceIds.has(activeDrag.id) && selectedResourceIds.size > 1
-              ? `${activeDrag.title} 等 ${selectedResourceIds.size} 项`
+              ? t('dragMultiple', { title: activeDrag.title, count: selectedResourceIds.size })
               : activeDrag.title}
           </div>
         )}
       </DragOverlay>
       {showClearTrashConfirm && (
-        <Modal title="确认清空回收站" onClose={() => setShowClearTrashConfirm(false)}>
+        <Modal title={t('clearTrashTitle')} onClose={() => setShowClearTrashConfirm(false)}>
           <p style={{ marginBottom: "16px" }}>
-            确定要清空回收站吗？此操作将彻底删除所有已删除的资料和文件夹，无法撤销。
+            {t('clearTrashConfirm')}
           </p>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
             <button
               style={{ padding: "6px 16px", borderRadius: "4px", border: "1px solid var(--color-border)", background: "transparent", cursor: "pointer" }}
               onClick={() => setShowClearTrashConfirm(false)}
             >
-              取消
+              {t('cancel', { ns: 'common' })}
             </button>
             <button
               style={{ padding: "6px 16px", borderRadius: "4px", border: "none", background: "var(--color-danger)", color: "white", cursor: "pointer" }}
               onClick={handleClearTrash}
             >
-              清空
+              {t('clearTrashBtn')}
             </button>
           </div>
         </Modal>

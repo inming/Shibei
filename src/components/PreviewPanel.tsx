@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -32,6 +33,7 @@ interface PreviewPanelProps {
 }
 
 export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInReader, onNavigateToFolder }: PreviewPanelProps) {
+  const { t } = useTranslation('annotation');
   const [resource, setResource] = useState<Resource>(initialResource);
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
   const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
@@ -60,13 +62,13 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
       <div className={styles.body}>
         {/* Highlights section */}
         <div className={styles.sectionLabel}>
-          标注 ({loading ? "..." : highlights.length})
+          {t('annotationsCount', { count: loading ? "..." : highlights.length })}
         </div>
 
         {loading && <PreviewPanelSkeleton />}
 
         {!loading && highlights.length === 0 && (
-          <div className={styles.empty}>暂无标注</div>
+          <div className={styles.empty}>{t('noAnnotations')}</div>
         )}
 
         {!loading && highlights.map((hl) => {
@@ -93,7 +95,7 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
                       className={styles.commentToggle}
                       onClick={() => setExpandedHighlightId(hl.id)}
                     >
-                      查看全部 {comments.length} 条评论
+                      {t('viewAllComments', { count: comments.length })}
                     </span>
                   )}
                   {isExpanded && comments.slice(1).map((c) => (
@@ -104,7 +106,7 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
                       className={styles.commentToggle}
                       onClick={() => setExpandedHighlightId(null)}
                     >
-                      收起
+                      {t('collapse')}
                     </span>
                   )}
                 </div>
@@ -118,7 +120,7 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
           <>
             <hr className={styles.divider} />
             <div className={styles.sectionLabel}>
-              笔记 ({resourceNotes.length})
+              {t('notes')} ({resourceNotes.length})
             </div>
             {resourceNotes.map((note) => (
               <div key={note.id} className={styles.noteItem}>

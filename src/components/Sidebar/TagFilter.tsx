@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useTags } from "@/hooks/useTags";
 import { ContextMenu } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
@@ -13,6 +14,7 @@ interface TagFilterProps {
 }
 
 export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
+  const { t } = useTranslation('sidebar');
   const [collapsed, setCollapsed] = useState(false);
   const { tags, createTag, updateTag, deleteTag } = useTags();
 
@@ -63,7 +65,7 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
         setPopover(null);
       } catch (err) {
         toast.error(
-          popover?.mode === "create" ? "创建标签失败" : "更新标签失败",
+          popover?.mode === "create" ? t('createTagFailed') : t('updateTagFailed'),
         );
         console.error("Tag save failed:", err);
       }
@@ -77,7 +79,7 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
       await deleteTag(deleteConfirm.id);
       setDeleteConfirm(null);
     } catch (err) {
-      toast.error("删除标签失败");
+      toast.error(t('deleteTagFailed'));
       console.error("Tag delete failed:", err);
     }
   }, [deleteConfirm, deleteTag]);
@@ -89,7 +91,7 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className={styles.sectionHeaderIcon}>🏷️</span>
-        <span className={styles.sectionHeaderLabel}>标签</span>
+        <span className={styles.sectionHeaderLabel}>{t('tags')}</span>
         <button
           className={styles.addBtn}
           onClick={(e) => { e.stopPropagation(); handleAddClick(e); }}
@@ -100,7 +102,7 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
       {!collapsed && (
         <>
           {tags.length === 0 ? (
-            <div className={styles.empty}>暂无标签</div>
+            <div className={styles.empty}>{t('noTags')}</div>
           ) : (
             <div className={styles.tagList}>
               {tags.map((tag) => (
@@ -140,7 +142,7 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
           y={contextMenu.y}
           items={[
             {
-              label: "编辑",
+              label: t('edit', { ns: 'common' }),
               onClick: () => {
                 setPopover({
                   mode: "edit",
@@ -150,7 +152,7 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
               },
             },
             {
-              label: "删除",
+              label: t('delete', { ns: 'common' }),
               danger: true,
               onClick: () => {
                 setDeleteConfirm(contextMenu.tag);
@@ -162,22 +164,22 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
       )}
 
       {deleteConfirm && (
-        <Modal title="删除标签" onClose={() => setDeleteConfirm(null)}>
+        <Modal title={t('deleteTag')} onClose={() => setDeleteConfirm(null)}>
           <p>
-            确认删除标签「{deleteConfirm.name}」？该标签将从所有资料中移除。
+            {t('deleteTagConfirm', { name: deleteConfirm.name })}
           </p>
           <div className={styles.modalActions}>
             <button
               className={styles.modalCancelBtn}
               onClick={() => setDeleteConfirm(null)}
             >
-              取消
+              {t('cancel', { ns: 'common' })}
             </button>
             <button
               className={styles.modalDeleteBtn}
               onClick={handleConfirmDelete}
             >
-              删除
+              {t('delete', { ns: 'common' })}
             </button>
           </div>
         </Modal>

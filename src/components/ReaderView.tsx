@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { Resource, Anchor } from "@/types";
 import { useAnnotations } from "@/hooks/useAnnotations";
@@ -26,6 +27,8 @@ interface SelectionInfo {
 }
 
 export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
+  const { t } = useTranslation('reader');
+  const { t: tAnnotation } = useTranslation('annotation');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const didScrollToInitial = useRef(false);
@@ -76,14 +79,14 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
             setSnapshotStatus("synced");
             setIframeKey((k) => k + 1);
           } else {
-            toast.error("快照不存在");
+            toast.error(t('snapshotNotFound'));
           }
         } catch (err: unknown) {
           if (!cancelled) {
             const msg = err && typeof err === "object" && "message" in err
               ? String((err as { message: string }).message)
               : String(err);
-            toast.error(`快照下载失败: ${msg}`);
+            toast.error(t('snapshotDownloadFailed', { message: msg }));
           }
         } finally {
           if (!cancelled) setDownloading(false);
@@ -178,7 +181,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
             import("@tauri-apps/plugin-opener").then(({ openUrl }) => {
               openUrl(msg.url);
             });
-            toast("已在浏览器中打开", { duration: 2000 });
+            toast(t('openedInBrowser'), { duration: 2000 });
           }
           break;
 
@@ -247,7 +250,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         setSelection(null);
       } catch (err) {
         console.error("Failed to create highlight:", err);
-        toast.error("创建高亮失败");
+        toast.error(tAnnotation('createHighlightFailed'));
       }
     },
     [selection, resource.id, addHighlight],
@@ -371,7 +374,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           <button
             className={`${styles.invertBtn} ${inverted ? styles.invertBtnActive : ""}`}
             onClick={() => setInverted((v) => !v)}
-            title={inverted ? "恢复原始配色" : "反色阅读"}
+            title={inverted ? t('restoreOriginalColors') : t('invertColors')}
           >
             🌓
           </button>
@@ -381,14 +384,14 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         {snapshotStatus === "pending" || downloading ? (
           <div className={styles.downloadPrompt}>
             <div className={styles.spinner} />
-            <p>正在下载快照...</p>
+            <p>{t('downloadingSnapshot')}</p>
           </div>
         ) : (
           <>
             {iframeLoading && (
               <div className={styles.loadingOverlay}>
                 <div className={styles.spinner} />
-                <p>加载中...</p>
+                <p>{t('loading')}</p>
               </div>
             )}
             <iframe

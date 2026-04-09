@@ -6,13 +6,12 @@
 </head>
 <body>
   <div class="header">
-    <h1>拾贝</h1>
+    <h1 data-i18n="appTitle"></h1>
     <span id="status" class="status"></span>
   </div>
 
-  <div id="offline-notice" class="offline-notice" style="display:none">
-    请先启动拾贝桌面端
-  </div>
+  <div id="offline-notice" class="offline-notice" style="display:none"
+    data-i18n="offlineNotice"></div>
 
   <div id="main-content" style="display:none">
     <div class="page-info">
@@ -28,18 +27,18 @@
     </div>
 
     <div class="field">
-      <label>保存到文件夹</label>
+      <label data-i18n="labelFolder"></label>
       <select id="folder-select"></select>
     </div>
 
     <div class="field">
-      <label>标签（逗号分隔）</label>
-      <input type="text" id="tags-input" placeholder="如: Rust, Web">
+      <label data-i18n="labelTags"></label>
+      <input type="text" id="tags-input" data-i18n-placeholder="tagsPlaceholder">
     </div>
 
     <div class="btn-group">
-      <button id="save-btn" class="save-btn" disabled>保存整页</button>
-      <button id="select-save-btn" class="save-btn save-btn-outline">选区保存</button>
+      <button id="save-btn" class="save-btn" disabled data-i18n="btnSaveFullPage"></button>
+      <button id="select-save-btn" class="save-btn save-btn-outline" data-i18n="btnSaveRegion"></button>
     </div>
 
     <div id="message" class="message" style="display:none"></div>

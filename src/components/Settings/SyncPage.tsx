@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import * as cmd from "@/lib/commands";
 import type { SyncConfig } from "@/types";
 import type { OrphanScanResult } from "@/lib/commands";
@@ -25,6 +26,7 @@ interface SyncPageProps {
 }
 
 export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
+  const { t, i18n } = useTranslation('sync');
   const [config, setConfig] = useState<SyncConfig | null>(null);
   const [endpoint, setEndpoint] = useState("");
   const [region, setRegion] = useState("");
@@ -69,12 +71,12 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         secretKey || "__keep__",
       );
       if (ok) {
-        toast.success("连接成功");
+        toast.success(t('connectionSuccess'));
       } else {
-        toast.error("连接失败");
+        toast.error(t('connectionFailed'));
       }
     } catch (err) {
-      toast.error(`连接失败：${formatError(err)}`);
+      toast.error(t('connectionFailedWithError', { error: formatError(err) }));
     } finally {
       setTesting(false);
     }
@@ -82,11 +84,11 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
 
   async function handleSave() {
     if (!region || !bucket) {
-      toast.error("Region 和 Bucket 为必填项");
+      toast.error(t('regionBucketRequired'));
       return;
     }
     if (!hasCredentials && (!accessKey || !secretKey)) {
-      toast.error("首次配置需填写 Access Key 和 Secret Key");
+      toast.error(t('credentialsRequired'));
       return;
     }
     setSaving(true);
@@ -96,12 +98,12 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         accessKey || "__keep__",
         secretKey || "__keep__",
       );
-      toast.success("配置已保存");
+      toast.success(t('configSaved'));
       setAccessKey("");
       setSecretKey("");
       await loadConfig();
     } catch (err) {
-      toast.error(`保存失败：${formatError(err)}`);
+      toast.error(t('saveFailed', { error: formatError(err) }));
     } finally {
       setSaving(false);
     }
@@ -114,7 +116,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
       const result = await cmd.listOrphanSnapshots();
       setScanResult(result);
     } catch (err) {
-      toast.error(`扫描失败：${formatError(err)}`);
+      toast.error(t('scanFailed', { error: formatError(err) }));
     } finally {
       setScanning(false);
     }
@@ -124,27 +126,27 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
     setPurging(true);
     try {
       const result = await cmd.purgeOrphanSnapshots();
-      toast.success(`已删除 ${result.deleted} 个文件，释放 ${formatSize(result.freed_bytes)}`);
+      toast.success(t('purgeSuccess', { deleted: result.deleted, size: formatSize(result.freed_bytes) }));
       setScanResult(null);
       setShowConfirmModal(false);
       setConfirmInput("");
     } catch (err) {
-      toast.error(`清理失败：${formatError(err)}`);
+      toast.error(t('purgeFailed', { error: formatError(err) }));
     } finally {
       setPurging(false);
     }
   }
 
   const hasCredentials = config?.has_credentials ?? false;
-  const credentialPlaceholder = hasCredentials ? "(已保存，留空保持不变)" : "";
+  const credentialPlaceholder = hasCredentials ? t('credentialPlaceholder') : "";
 
   return (
     <>
-      <h2 className={styles.heading}>同步设置</h2>
+      <h2 className={styles.heading}>{t('title')}</h2>
 
       <div className={styles.form}>
         <label className={styles.label}>
-          <span>Endpoint（可选，留空使用 AWS 默认）</span>
+          <span>{t('endpointLabel')}</span>
           <input
             type="text"
             className={styles.input}
@@ -155,7 +157,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         </label>
 
         <label className={styles.label}>
-          <span>Region</span>
+          <span>{t('regionLabel')}</span>
           <input
             type="text"
             className={styles.input}
@@ -166,7 +168,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         </label>
 
         <label className={styles.label}>
-          <span>Bucket</span>
+          <span>{t('bucketLabel')}</span>
           <input
             type="text"
             className={styles.input}
@@ -177,7 +179,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         </label>
 
         <label className={styles.label}>
-          <span>Access Key</span>
+          <span>{t('accessKeyLabel')}</span>
           <input
             type="password"
             className={styles.input}
@@ -188,7 +190,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         </label>
 
         <label className={styles.label}>
-          <span>Secret Key</span>
+          <span>{t('secretKeyLabel')}</span>
           <input
             type="password"
             className={styles.input}
@@ -199,7 +201,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         </label>
 
         <label className={styles.label}>
-          <span>自动同步间隔</span>
+          <span>{t('autoSyncInterval')}</span>
           <select
             className={styles.input}
             value={interval}
@@ -210,19 +212,19 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
               onIntervalChange(v);
             }}
           >
-            <option value={0}>关闭</option>
-            <option value={1}>1 分钟</option>
-            <option value={3}>3 分钟</option>
-            <option value={5}>5 分钟</option>
-            <option value={10}>10 分钟</option>
-            <option value={30}>30 分钟</option>
+            <option value={0}>{t('intervalOff')}</option>
+            <option value={1}>{t('intervalMinute', { count: 1 })}</option>
+            <option value={3}>{t('intervalMinute', { count: 3 })}</option>
+            <option value={5}>{t('intervalMinute', { count: 5 })}</option>
+            <option value={10}>{t('intervalMinute', { count: 10 })}</option>
+            <option value={30}>{t('intervalMinute', { count: 30 })}</option>
           </select>
         </label>
       </div>
 
       {config?.last_sync_at && (
         <p className={styles.lastSync}>
-          上次同步：{new Date(config.last_sync_at).toLocaleString("zh-CN")}
+          {t('lastSync', { time: new Date(config.last_sync_at).toLocaleString(i18n.language === 'zh' ? 'zh-CN' : 'en-US') })}
         </p>
       )}
 
@@ -232,20 +234,20 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
           onClick={handleTest}
           disabled={testing}
         >
-          {testing ? "测试中…" : "测试连接"}
+          {testing ? t('testing') : t('testConnection')}
         </button>
         <button
           className={styles.primary}
           onClick={handleSave}
           disabled={saving}
         >
-          {saving ? "保存中…" : "保存配置"}
+          {saving ? t('saving') : t('saveConfig')}
         </button>
       </div>
 
       {hasCredentials && (
         <>
-          <h3 className={styles.subheading}>维护</h3>
+          <h3 className={styles.subheading}>{t('maintenance')}</h3>
           <div className={styles.actions}>
             <button
               className={styles.secondary}
@@ -255,21 +257,21 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
                   const result = await cmd.forceCompact();
                   toast.success(result);
                 } catch (err) {
-                  toast.error(`压缩失败：${formatError(err)}`);
+                  toast.error(t('compactFailed', { error: formatError(err) }));
                 } finally {
                   setCompacting(false);
                 }
               }}
               disabled={compacting}
             >
-              {compacting ? "压缩中…" : "强制压缩"}
+              {compacting ? t('compacting') : t('forceCompact')}
             </button>
             <button
               className={styles.secondary}
               onClick={handleScanOrphans}
               disabled={scanning}
             >
-              {scanning ? "扫描中…" : "清理孤儿文件"}
+              {scanning ? t('scanning') : t('cleanOrphans')}
             </button>
           </div>
 
@@ -277,12 +279,10 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
           {scanResult && (
             <div className={styles.info} style={{ marginTop: "var(--spacing-md)" }}>
               {scanResult.count === 0 ? (
-                <span>未发现孤儿文件</span>
+                <span>{t('noOrphansFound')}</span>
               ) : (
                 <>
-                  <div>
-                    发现 <strong>{scanResult.count}</strong> 个孤儿文件（共 {formatSize(scanResult.total_size)}）
-                  </div>
+                  <div dangerouslySetInnerHTML={{ __html: t('orphansFound', { count: scanResult.count, size: formatSize(scanResult.total_size) }) }} />
                   <div className={styles.orphanList}>
                     {scanResult.items.map((item) => (
                       <div key={item.resource_id}>
@@ -295,7 +295,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
                       className={styles.secondary}
                       onClick={() => setScanResult(null)}
                     >
-                      取消
+                      {t('cancel')}
                     </button>
                     <button
                       className={styles.danger}
@@ -304,7 +304,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
                         setShowConfirmModal(true);
                       }}
                     >
-                      开始清理
+                      {t('startCleanup')}
                     </button>
                   </div>
                 </>
@@ -317,25 +317,25 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
       {/* Confirm modal */}
       {showConfirmModal && scanResult && scanResult.count > 0 && (
         <Modal
-          title="清理孤儿文件"
+          title={t('cleanOrphansTitle')}
           onClose={() => {
             setShowConfirmModal(false);
             setConfirmInput("");
           }}
         >
-          <p style={{ margin: "0 0 var(--spacing-sm)", fontSize: "var(--font-size-sm)" }}>
-            即将永久删除 <strong>{scanResult.count}</strong> 个文件（共 {formatSize(scanResult.total_size)}）
-          </p>
+          <p style={{ margin: "0 0 var(--spacing-sm)", fontSize: "var(--font-size-sm)" }}
+            dangerouslySetInnerHTML={{ __html: t('confirmDeleteMessage', { count: scanResult.count, size: formatSize(scanResult.total_size) }) }}
+          />
           <div className={styles.warning}>
             <ul className={styles.warningList}>
-              <li>删除后不可恢复</li>
-              <li>如果有其他设备尚未同步，可能导致数据丢失</li>
-              <li>请确保所有设备已完成至少一次同步</li>
+              <li>{t('warningIrreversible')}</li>
+              <li>{t('warningDataLoss')}</li>
+              <li>{t('warningEnsureSync')}</li>
             </ul>
           </div>
-          <p style={{ margin: "var(--spacing-md) 0 0", fontSize: "var(--font-size-sm)" }}>
-            请输入 <strong>{scanResult.count}</strong> 以确认：
-          </p>
+          <p style={{ margin: "var(--spacing-md) 0 0", fontSize: "var(--font-size-sm)" }}
+            dangerouslySetInnerHTML={{ __html: t('confirmCountPrompt', { count: scanResult.count }) }}
+          />
           <input
             type="text"
             className={styles.confirmInput}
@@ -352,14 +352,14 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
                 setConfirmInput("");
               }}
             >
-              取消
+              {t('cancel')}
             </button>
             <button
               className={styles.danger}
               disabled={confirmInput !== String(scanResult.count) || purging}
               onClick={handlePurgeOrphans}
             >
-              {purging ? "删除中…" : "永久删除"}
+              {purging ? t('purging') : t('permanentDelete')}
             </button>
           </div>
         </Modal>

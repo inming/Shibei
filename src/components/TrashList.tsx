@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 import type { DeletedResource, DeletedFolder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
@@ -8,6 +9,7 @@ import toast from "react-hot-toast";
 import styles from "./TrashList.module.css";
 
 export function TrashList() {
+  const { t } = useTranslation('sidebar');
   const [resources, setResources] = useState<DeletedResource[]>([]);
   const [folders, setFolders] = useState<DeletedFolder[]>([]);
   const [purgeTarget, setPurgeTarget] = useState<{
@@ -40,9 +42,9 @@ export function TrashList() {
     try {
       if (type === "resource") await cmd.restoreResource(id);
       else await cmd.restoreFolder(id);
-      toast.success("已恢复");
+      toast.success(t('restored'));
     } catch {
-      toast.error("恢复失败");
+      toast.error(t('restoreFailed'));
     }
   };
 
@@ -51,9 +53,9 @@ export function TrashList() {
     try {
       if (purgeTarget.type === "resource") await cmd.purgeResource(purgeTarget.id);
       else await cmd.purgeFolder(purgeTarget.id);
-      toast.success("已彻底删除");
+      toast.success(t('permanentDeleted'));
     } catch {
-      toast.error("删除失败");
+      toast.error(t('permanentDeleteFailed'));
     }
     setPurgeTarget(null);
   };
@@ -62,12 +64,12 @@ export function TrashList() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>回收站</div>
-      {empty && <div className={styles.empty}>回收站为空</div>}
+      <div className={styles.header}>{t('trash')}</div>
+      {empty && <div className={styles.empty}>{t('trashEmpty')}</div>}
 
       {folders.length > 0 && (
         <>
-          <div className={styles.sectionLabel}>文件夹</div>
+          <div className={styles.sectionLabel}>{t('trashFolders')}</div>
           {folders.map((f) => (
             <div key={f.id} className={styles.item}>
               <div className={styles.itemInfo}>
@@ -77,14 +79,14 @@ export function TrashList() {
                 </span>
               </div>
               <div className={styles.itemActions}>
-                <button onClick={() => handleRestore("folder", f.id)}>恢复</button>
+                <button onClick={() => handleRestore("folder", f.id)}>{t('restore')}</button>
                 <button
                   className={styles.dangerBtn}
                   onClick={() =>
                     setPurgeTarget({ type: "folder", id: f.id, name: f.name })
                   }
                 >
-                  删除
+                  {t('delete', { ns: 'common' })}
                 </button>
               </div>
             </div>
@@ -94,7 +96,7 @@ export function TrashList() {
 
       {resources.length > 0 && (
         <>
-          <div className={styles.sectionLabel}>资料</div>
+          <div className={styles.sectionLabel}>{t('trashResources')}</div>
           {resources.map((r) => (
             <div key={r.id} className={styles.item}>
               <div className={styles.itemInfo}>
@@ -104,14 +106,14 @@ export function TrashList() {
                 </span>
               </div>
               <div className={styles.itemActions}>
-                <button onClick={() => handleRestore("resource", r.id)}>恢复</button>
+                <button onClick={() => handleRestore("resource", r.id)}>{t('restore')}</button>
                 <button
                   className={styles.dangerBtn}
                   onClick={() =>
                     setPurgeTarget({ type: "resource", id: r.id, name: r.title })
                   }
                 >
-                  删除
+                  {t('delete', { ns: 'common' })}
                 </button>
               </div>
             </div>
@@ -120,9 +122,9 @@ export function TrashList() {
       )}
 
       {purgeTarget && (
-        <Modal title="确认彻底删除" onClose={() => setPurgeTarget(null)}>
+        <Modal title={t('permanentDeleteTitle')} onClose={() => setPurgeTarget(null)}>
           <p style={{ marginBottom: "16px" }}>
-            确定要彻底删除「{purgeTarget.name}」吗？此操作无法撤销。
+            {t('permanentDeleteConfirm', { name: purgeTarget.name })}
           </p>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
             <button
@@ -135,7 +137,7 @@ export function TrashList() {
               }}
               onClick={() => setPurgeTarget(null)}
             >
-              取消
+              {t('cancel', { ns: 'common' })}
             </button>
             <button
               style={{
@@ -148,7 +150,7 @@ export function TrashList() {
               }}
               onClick={handlePurge}
             >
-              彻底删除
+              {t('permanentDelete')}
             </button>
           </div>
         </Modal>

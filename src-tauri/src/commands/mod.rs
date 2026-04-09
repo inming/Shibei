@@ -626,12 +626,12 @@ async fn build_sync_engine(
         .unwrap_or(false);
 
     let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
-        .ok_or_else(|| CommandError { message: "请先配置同步设置（Region 未设置）".to_string() })?;
+        .ok_or_else(|| CommandError { message: "error.syncRegionNotSet".to_string() })?;
     let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
-        .ok_or_else(|| CommandError { message: "请先配置同步设置（Bucket 未设置）".to_string() })?;
+        .ok_or_else(|| CommandError { message: "error.syncBucketNotSet".to_string() })?;
     let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
     let (access_key, secret_key) = crate::sync::credentials::load_credentials(&conn)?
-        .ok_or_else(|| CommandError { message: "请先配置同步设置（凭据未设置）".to_string() })?;
+        .ok_or_else(|| CommandError { message: "error.syncCredentialsNotSet".to_string() })?;
 
     let s3_config = crate::sync::backend::S3Config {
         endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
@@ -665,7 +665,7 @@ async fn build_sync_engine(
 
     let backend: Arc<dyn crate::sync::backend::SyncBackend> = if encryption_enabled {
         let mk = encryption_state.get_key().ok_or_else(|| CommandError {
-            message: "加密已启用但未解锁，请先输入加密密码".to_string(),
+            message: "error.encryptionNotUnlocked".to_string(),
         })?;
         Arc::new(crate::sync::encrypted_backend::EncryptedBackend::new(
             Arc::new(s3_backend),
@@ -692,12 +692,12 @@ async fn build_sync_engine(
 fn build_raw_s3_backend(state: &AppState) -> Result<crate::sync::backend::S3Backend, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
-        .ok_or_else(|| CommandError { message: "请先配置同步设置（Region 未设置）".to_string() })?;
+        .ok_or_else(|| CommandError { message: "error.syncRegionNotSet".to_string() })?;
     let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
-        .ok_or_else(|| CommandError { message: "请先配置同步设置（Bucket 未设置）".to_string() })?;
+        .ok_or_else(|| CommandError { message: "error.syncBucketNotSet".to_string() })?;
     let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
     let (access_key, secret_key) = crate::sync::credentials::load_credentials(&conn)?
-        .ok_or_else(|| CommandError { message: "请先配置同步设置（凭据未设置）".to_string() })?;
+        .ok_or_else(|| CommandError { message: "error.syncCredentialsNotSet".to_string() })?;
 
     let config = crate::sync::backend::S3Config {
         endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
@@ -725,16 +725,16 @@ pub async fn cmd_setup_encryption(
 
     // 1. Generate keyring
     let keyring = Keyring::generate(&password)
-        .map_err(|e| CommandError { message: format!("密钥生成失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyGenFailed: {}", e) })?;
     let mk = keyring.unlock(&password)
-        .map_err(|e| CommandError { message: format!("密钥验证失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyVerifyFailed: {}", e) })?;
 
     // 2. Upload keyring.json via raw backend
     let backend = build_raw_s3_backend(&state)?;
     let keyring_json = keyring.to_json()
         .map_err(|e| CommandError { message: e.to_string() })?;
     backend.upload("meta/keyring.json", keyring_json.as_bytes()).await
-        .map_err(|e| CommandError { message: format!("上传密钥文件失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyUploadFailed: {}", e) })?;
 
     // 3. Clear all existing S3 data
     for prefix in &["sync/", "state/", "snapshots/"] {
@@ -777,20 +777,20 @@ pub async fn cmd_unlock_encryption(
 
     let backend = build_raw_s3_backend(&state)?;
     let data = backend.download("meta/keyring.json").await
-        .map_err(|e| CommandError { message: format!("下载密钥文件失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyDownloadFailed: {}", e) })?;
     let json = String::from_utf8(data)
-        .map_err(|e| CommandError { message: format!("密钥文件格式错误: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyFileFormatError: {}", e) })?;
     let keyring = Keyring::from_json(&json)
-        .map_err(|e| CommandError { message: format!("密钥文件解析失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyFileParseFailed: {}", e) })?;
 
     let mk = keyring.unlock(&password).map_err(|e| match e {
         crate::sync::keyring::KeyringError::WrongPassword => {
-            CommandError { message: "密码错误".to_string() }
+            CommandError { message: "error.wrongPassword".to_string() }
         }
         crate::sync::keyring::KeyringError::Tampered => {
-            CommandError { message: "密钥文件可能被篡改，请检查".to_string() }
+            CommandError { message: "error.keyFileTampered".to_string() }
         }
-        other => CommandError { message: format!("解锁失败: {}", other) },
+        other => CommandError { message: format!("error.unlockFailed: {}", other) },
     })?;
 
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
@@ -839,23 +839,23 @@ pub async fn cmd_change_encryption_password(
 
     let backend = build_raw_s3_backend(&state)?;
     let data = backend.download("meta/keyring.json").await
-        .map_err(|e| CommandError { message: format!("下载密钥文件失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyDownloadFailed: {}", e) })?;
     let json = String::from_utf8(data)
-        .map_err(|e| CommandError { message: format!("密钥文件格式错误: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyFileFormatError: {}", e) })?;
     let keyring = Keyring::from_json(&json)
-        .map_err(|e| CommandError { message: format!("密钥文件解析失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyFileParseFailed: {}", e) })?;
 
     let new_keyring = keyring.change_password(&old_password, &new_password).map_err(|e| match e {
         crate::sync::keyring::KeyringError::WrongPassword => {
-            CommandError { message: "旧密码错误".to_string() }
+            CommandError { message: "error.wrongOldPassword".to_string() }
         }
-        other => CommandError { message: format!("修改密码失败: {}", other) },
+        other => CommandError { message: format!("error.changePasswordFailed: {}", other) },
     })?;
 
     let new_json = new_keyring.to_json()
         .map_err(|e| CommandError { message: e.to_string() })?;
     backend.upload("meta/keyring.json", new_json.as_bytes()).await
-        .map_err(|e| CommandError { message: format!("上传密钥文件失败: {}", e) })?;
+        .map_err(|e| CommandError { message: format!("error.keyUploadFailed: {}", e) })?;
 
     let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));
     Ok(())
@@ -987,10 +987,10 @@ pub async fn cmd_set_remember_key(
 
     if remember {
         let mk = encryption_state.get_key().ok_or_else(|| CommandError {
-            message: "加密未解锁，无法保存密钥".to_string(),
+            message: "error.encryptionNotUnlockedCannotSaveKey".to_string(),
         })?;
         os_keystore::save_master_key(&mk).map_err(|e| CommandError {
-            message: format!("保存到系统钥匙串失败: {}", e),
+            message: format!("error.keychainSaveFailed: {}", e),
         })?;
         crate::sync::sync_state::set(&conn, "config:remember_encryption_key", "true")?;
     } else {
@@ -1287,7 +1287,7 @@ const KEYRING_LOCK_TIMEOUT: &str = "lock-timeout-minutes";
 #[tauri::command]
 pub async fn cmd_setup_lock_pin(pin: String) -> Result<(), CommandError> {
     if pin.len() != 4 || !pin.chars().all(|c| c.is_ascii_digit()) {
-        return Err(CommandError { message: "PIN 必须为 4 位数字".to_string() });
+        return Err(CommandError { message: "error.pinMustBe4Digits".to_string() });
     }
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -1316,7 +1316,7 @@ pub async fn cmd_verify_lock_pin(pin: String) -> Result<bool, CommandError> {
         .map_err(|e| CommandError { message: e.to_string() })?;
     let hash_str = match entry.get_password() {
         Ok(h) => h,
-        Err(keyring::Error::NoEntry) => return Err(CommandError { message: "未设置 PIN".to_string() }),
+        Err(keyring::Error::NoEntry) => return Err(CommandError { message: "error.pinNotSet".to_string() }),
         Err(e) => return Err(CommandError { message: e.to_string() }),
     };
     let parsed_hash = PasswordHash::new(&hash_str)
@@ -1372,7 +1372,7 @@ pub async fn cmd_disable_lock_pin(pin: String) -> Result<(), CommandError> {
     let parsed_hash = PasswordHash::new(&hash_str)
         .map_err(|e| CommandError { message: format!("invalid hash: {}", e) })?;
     if Argon2::default().verify_password(pin.as_bytes(), &parsed_hash).is_err() {
-        return Err(CommandError { message: "PIN 不正确".to_string() });
+        return Err(CommandError { message: "error.pinIncorrect".to_string() });
     }
 
     entry.delete_credential()

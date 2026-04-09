@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
 import { useFolders } from "@/hooks/useFolders";
 import { DataEvents } from "@/lib/events";
 import { ALL_RESOURCES_ID, type Folder } from "@/types";
@@ -26,6 +28,7 @@ interface ContextMenuState {
 }
 
 export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps) {
+  const { t } = useTranslation('sidebar');
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -86,9 +89,9 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("UNIQUE constraint")) {
-        alert("文件夹名称已存在，请换一个名称");
+        toast.error(t('folderNameExists'));
       } else {
-        alert(`创建失败: ${msg}`);
+        toast.error(t('createFailed', { message: msg }));
       }
     }
   }
@@ -98,7 +101,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       await cmd.deleteFolder(id);
       setDeleteFolder(null);
     } catch (err: unknown) {
-      alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('deleteFailed', { message: err instanceof Error ? err.message : String(err) }));
     }
   }
 
@@ -120,9 +123,9 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("UNIQUE constraint")) {
-        alert("文件夹名称已存在，请换一个名称");
+        toast.error(t('folderNameExists'));
       } else {
-        alert(`创建失败: ${msg}`);
+        toast.error(t('createFailed', { message: msg }));
       }
     }
   }
@@ -168,18 +171,18 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
   const menuItems: MenuItem[] = contextMenu
     ? [
         {
-          label: "新建子文件夹",
+          label: t('newSubfolder'),
           onClick: () => {
             setSubfolderTarget(contextMenu.folderId);
             setSubfolderName("");
           },
         },
         {
-          label: "编辑",
+          label: t('edit', { ns: 'common' }),
           onClick: () => setEditFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
         },
         {
-          label: "删除",
+          label: t('delete', { ns: 'common' }),
           danger: true,
           onClick: () => setDeleteFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
         },
@@ -198,7 +201,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
         onClick={() => onSelectFolder(ALL_RESOURCES_ID)}
       >
         <span className={styles.allResourcesIcon}>📋</span>
-        <span>全部资料</span>
+        <span>{t('allResources')}</span>
       </button>
       <div
         ref={setRootDropRef}
@@ -206,11 +209,11 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className={styles.sectionHeaderIcon}>📁</span>
-        <span className={styles.sectionHeaderLabel}>文件夹</span>
+        <span className={styles.sectionHeaderLabel}>{t('folders')}</span>
         <button
           className={styles.addButton}
           onClick={(e) => { e.stopPropagation(); setIsCreating(!isCreating); setCollapsed(false); }}
-          title="新建文件夹"
+          title={t('newFolder')}
         >
           +
         </button>
@@ -229,7 +232,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="文件夹名称..."
+                placeholder={t('folderNamePlaceholder')}
                 autoFocus
                 style={{
                   width: "100%",
@@ -249,7 +252,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
             ref={treeRef}
             tabIndex={0}
             role="tree"
-            aria-label="文件夹"
+            aria-label={t('folderTree')}
             onKeyDown={handleTreeKeyDown}
           >
             <FolderNode
@@ -277,7 +280,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       )}
 
       {subfolderTarget && (
-        <Modal title="新建子文件夹" onClose={() => setSubfolderTarget(null)}>
+        <Modal title={t('newSubfolder')} onClose={() => setSubfolderTarget(null)}>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -287,7 +290,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
             <input
               value={subfolderName}
               onChange={(e) => setSubfolderName(e.target.value)}
-              placeholder="子文件夹名称..."
+              placeholder={t('subfolderNamePlaceholder')}
               autoFocus
               style={{
                 width: "100%",
@@ -311,7 +314,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
                   fontSize: "var(--font-size-base)",
                 }}
               >
-                取消
+                {t('cancel', { ns: 'common' })}
               </button>
               <button
                 type="submit"
@@ -325,7 +328,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
                   fontSize: "var(--font-size-base)",
                 }}
               >
-                创建
+                {t('create')}
               </button>
             </div>
           </form>
@@ -342,9 +345,9 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       )}
 
       {deleteFolder && (
-        <Modal title="删除文件夹" onClose={() => setDeleteFolder(null)}>
+        <Modal title={t('deleteFolder')} onClose={() => setDeleteFolder(null)}>
           <p style={{ marginBottom: "var(--spacing-lg)" }}>
-            确定删除文件夹「{deleteFolder.name}」及其所有资料吗？
+            {t('deleteFolderConfirm', { name: deleteFolder.name })}
           </p>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--spacing-sm)" }}>
             <button
@@ -358,7 +361,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
                 fontSize: "var(--font-size-base)",
               }}
             >
-              取消
+              {t('cancel', { ns: 'common' })}
             </button>
             <button
               onClick={() => doDelete(deleteFolder.id)}
@@ -372,7 +375,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
                 fontSize: "var(--font-size-base)",
               }}
             >
-              删除
+              {t('delete', { ns: 'common' })}
             </button>
           </div>
         </Modal>
@@ -406,6 +409,7 @@ function FolderNode({
   onToggleExpand,
   onContextMenu,
 }: FolderNodeProps) {
+  const { t } = useTranslation('sidebar');
   const { folders, loading } = useFolders(parentId);
 
   if (loading && depth === 0) {
@@ -413,7 +417,7 @@ function FolderNode({
   }
 
   if (!loading && folders.length === 0 && depth === 0) {
-    return <div className={styles.empty}>暂无文件夹</div>;
+    return <div className={styles.empty}>{t('noFolders')}</div>;
   }
 
   return (

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { Highlight, Comment, Resource } from "@/types";
 import styles from "./AnnotationPanel.module.css";
@@ -44,6 +45,7 @@ export function AnnotationPanel({
   resourceNotes,
   style,
 }: AnnotationPanelProps) {
+  const { t } = useTranslation('annotation');
   type DeleteConfirm = {
     type: "highlight" | "comment" | "note";
     id: string;
@@ -57,12 +59,12 @@ export function AnnotationPanel({
     switch (confirm.type) {
       case "highlight":
         return confirm.commentCount
-          ? `确定删除此高亮标注？关联的 ${confirm.commentCount} 条评论也会一并删除。`
-          : "确定删除此高亮标注？";
+          ? t('deleteHighlightWithCommentsConfirm', { count: confirm.commentCount })
+          : t('deleteHighlightConfirm');
       case "comment":
-        return "确定删除此评论？";
+        return t('deleteCommentConfirm');
       case "note":
-        return "确定删除此笔记？";
+        return t('deleteNoteConfirm');
     }
   }
 
@@ -104,11 +106,11 @@ export function AnnotationPanel({
   return (
     <div className={styles.panel} style={style}>
       <ResourceMeta resource={resource} />
-      <div className={styles.header}>标注 ({highlights.length})</div>
+      <div className={styles.header}>{t('annotationsCount', { count: highlights.length })}</div>
       <div ref={scrollAreaRef} className={styles.scrollArea}>
         <div className={styles.list}>
           {highlights.length === 0 && (
-            <div className={styles.empty}>选中文字创建标注</div>
+            <div className={styles.empty}>{t('selectTextToAnnotate')}</div>
           )}
           {highlights.map((hl) => (
             <HighlightEntry
@@ -151,7 +153,7 @@ export function AnnotationPanel({
           className={styles.stickyNotesHeader}
           onClick={() => notesHeaderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
         >
-          📝 笔记 ({resourceNotes.length})
+          {t('notesCount', { count: resourceNotes.length })}
         </div>
       )}
 
@@ -160,16 +162,16 @@ export function AnnotationPanel({
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <Modal title="确认删除" onClose={() => setDeleteConfirm(null)}>
+        <Modal title={t('confirmDelete')} onClose={() => setDeleteConfirm(null)}>
           <p className={styles.modalMessage}>
             {getDeleteMessage(deleteConfirm)}
           </p>
           <div className={styles.modalActions}>
             <button className={styles.modalCancelBtn} onClick={() => setDeleteConfirm(null)}>
-              取消
+              {t('cancel')}
             </button>
             <button className={styles.modalDangerBtn} onClick={handleConfirmDelete}>
-              删除
+              {t('delete')}
             </button>
           </div>
         </Modal>
@@ -198,6 +200,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     { highlight, comments, isActive, isFailed, onClick, onDelete, onChangeColor, onAddComment, onDeleteComment, onEditComment },
     ref,
   ) {
+    const { t } = useTranslation('annotation');
     const [showInput, setShowInput] = useState(false);
     const [commentText, setCommentText] = useState("");
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -250,7 +253,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
       >
         <div className={styles.highlightText}>{highlight.text_content}</div>
         <div className={styles.highlightMeta}>
-          {isFailed && <span className={styles.failedBadge}>定位失败</span>}
+          {isFailed && <span className={styles.failedBadge}>{t('locationFailed')}</span>}
           <span
             className={styles.colorDot}
             style={{ background: highlight.color }}
@@ -268,7 +271,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
           >
             <div className={styles.hlColorSection}>
               <div className={styles.hlColorRow}>
-                <span className={styles.hlColorLabel} title="浅色页面">☀︎</span>
+                <span className={styles.hlColorLabel} title={t('lightPage')}>☀︎</span>
                 {LIGHT_COLORS.map((c) => (
                   <button
                     key={c}
@@ -279,7 +282,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                 ))}
               </div>
               <div className={styles.hlColorRow}>
-                <span className={styles.hlColorLabel} title="深色页面">☾</span>
+                <span className={styles.hlColorLabel} title={t('darkPage')}>☾</span>
                 {DARK_COLORS.map((c) => (
                   <button
                     key={c}
@@ -297,17 +300,17 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                 navigator.clipboard.writeText(
                   `shibei://open/resource/${highlight.resource_id}?highlight=${highlight.id}`
                 );
-                toast.success("链接已复制");
+                toast.success(t('linkCopied'));
                 setCtxMenu(null);
               }}
             >
-              复制链接
+              {t('copyLink')}
             </button>
             <button
               className={`${styles.hlContextItem} ${styles.danger}`}
               onClick={() => { onDelete(); setCtxMenu(null); }}
             >
-              删除标注
+              {t('deleteAnnotation')}
             </button>
           </div>
         )}
@@ -321,7 +324,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                   <div>
                     <div className={styles.editContainer}>
                       <button className={styles.previewToggle} onClick={() => setPreviewingEdit(!previewingEdit)}>
-                        {previewingEdit ? "编辑" : "预览"}
+                        {previewingEdit ? t('edit') : t('preview')}
                       </button>
                       {previewingEdit ? (
                         <div className={styles.previewArea}><MarkdownContent content={editText} /></div>
@@ -360,13 +363,13 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                           }
                         }}
                       >
-                        保存
+                        {t('save')}
                       </button>
                       <button
                         className={styles.cancelBtn}
                         onClick={() => { setEditingCommentId(null); setPreviewingEdit(false); }}
                       >
-                        取消
+                        {t('cancel')}
                       </button>
                     </div>
                   </div>
@@ -383,13 +386,13 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                             setEditText(c.content);
                           }}
                         >
-                          编辑
+                          {t('edit')}
                         </button>
                         <button
                           className={styles.deleteBtn}
                           onClick={() => onDeleteComment(c.id)}
                         >
-                          删除
+                          {t('delete')}
                         </button>
                       </span>
                     </div>
@@ -407,7 +410,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
               <div className={styles.editContainer}>
                 {commentText.trim() && (
                   <button className={styles.previewToggle} onClick={() => setPreviewingNew(!previewingNew)}>
-                    {previewingNew ? "编辑" : "预览"}
+                    {previewingNew ? t('edit') : t('preview')}
                   </button>
                 )}
                 {previewingNew ? (
@@ -418,7 +421,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                     className={styles.commentInput}
                     value={commentText}
                     onChange={(e) => { setCommentText(e.target.value); autoResize(e.target); }}
-                    placeholder="添加评论..."
+                    placeholder={t('addCommentPlaceholder')}
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -431,7 +434,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
               </div>
               <div className={styles.commentActions}>
                 <button className={styles.submitBtn} onClick={handleSubmit}>
-                  保存
+                  {t('save')}
                 </button>
                 <button
                   className={styles.cancelBtn}
@@ -441,7 +444,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
                     setPreviewingNew(false);
                   }}
                 >
-                  取消
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -450,7 +453,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
               className={styles.addCommentBtn}
               onClick={() => setShowInput(true)}
             >
-              + 评论
+              {t('addComment')}
             </button>
           )}
         </div>
@@ -467,13 +470,14 @@ interface NotesListProps {
 
 const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
   function NotesList({ notes, onEdit, onDelete }, ref) {
+  const { t } = useTranslation('annotation');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [previewingNoteEdit, setPreviewingNoteEdit] = useState(false);
 
   return (
     <div className={styles.notesSection}>
-      <div ref={ref} className={styles.notesHeader}>📝 笔记 ({notes.length})</div>
+      <div ref={ref} className={styles.notesHeader}>{t('notesCount', { count: notes.length })}</div>
 
       {notes.map((note) => (
         <div key={note.id} className={styles.noteItem}>
@@ -481,7 +485,7 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
             <div>
               <div className={styles.editContainer}>
                 <button className={styles.previewToggle} onClick={() => setPreviewingNoteEdit(!previewingNoteEdit)}>
-                  {previewingNoteEdit ? "编辑" : "预览"}
+                  {previewingNoteEdit ? t('edit') : t('preview')}
                 </button>
                 {previewingNoteEdit ? (
                   <div className={styles.previewArea}><MarkdownContent content={editText} /></div>
@@ -517,10 +521,10 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
                     }
                   }}
                 >
-                  保存
+                  {t('save')}
                 </button>
                 <button className={styles.cancelBtn} onClick={() => { setEditingNoteId(null); setPreviewingNoteEdit(false); }}>
-                  取消
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -537,10 +541,10 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
                       setEditText(note.content);
                     }}
                   >
-                    编辑
+                    {t('edit')}
                   </button>
                   <button className={styles.deleteBtn} onClick={() => onDelete(note.id)}>
-                    删除
+                    {t('delete')}
                   </button>
                 </span>
               </div>
@@ -553,6 +557,7 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
 });
 
 function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
+  const { t } = useTranslation('annotation');
   const [noteText, setNoteText] = useState("");
   const [previewing, setPreviewing] = useState(false);
 
@@ -568,7 +573,7 @@ function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
       <div className={styles.editContainer}>
         {noteText.trim() && (
           <button className={styles.previewToggle} onClick={() => setPreviewing(!previewing)}>
-            {previewing ? "编辑" : "预览"}
+            {previewing ? t('edit') : t('preview')}
           </button>
         )}
         {previewing ? (
@@ -579,7 +584,7 @@ function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
             className={styles.noteInput}
             value={noteText}
             onChange={(e) => { setNoteText(e.target.value); autoResize(e.target); }}
-            placeholder="添加笔记..."
+            placeholder={t('addNotePlaceholder')}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -592,10 +597,10 @@ function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
       {noteText.trim() && (
         <div className={styles.commentActions}>
           <button className={styles.submitBtn} onClick={handleSubmit}>
-            保存
+            {t('save')}
           </button>
           <button className={styles.cancelBtn} onClick={() => { setNoteText(""); setPreviewing(false); }}>
-            取消
+            {t('cancel')}
           </button>
         </div>
       )}

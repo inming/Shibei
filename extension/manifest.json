@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "拾贝 — 网页收藏助手",
+  "name": "__MSG_extensionName__",
   "version": "0.1.0",
-  "description": "一键保存网页快照到拾贝桌面端",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "zh",
   "permissions": [
     "activeTab",
     "scripting",

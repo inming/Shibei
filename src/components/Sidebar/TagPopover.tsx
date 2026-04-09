@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import styles from "./TagPopover.module.css";
 
 const PRESET_COLORS = [
@@ -27,6 +28,7 @@ export function TagPopover({
   onSave,
   onClose,
 }: TagPopoverProps) {
+  const { t } = useTranslation('sidebar');
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState(initialColor);
   const ref = useRef<HTMLDivElement>(null);
@@ -65,7 +67,7 @@ export function TagPopover({
         ref={inputRef}
         className={styles.nameInput}
         type="text"
-        placeholder="标签名称"
+        placeholder={t('tagNamePlaceholder')}
         maxLength={30}
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -87,14 +89,14 @@ export function TagPopover({
       </div>
       <div className={styles.actions}>
         <button className={styles.cancelBtn} onClick={onClose}>
-          取消
+          {t('tagCancel')}
         </button>
         <button
           className={styles.saveBtn}
           disabled={!trimmedName}
           onClick={() => onSave(trimmedName, color)}
         >
-          保存
+          {t('tagSave')}
         </button>
       </div>
     </div>

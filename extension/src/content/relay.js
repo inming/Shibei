@@ -76,7 +76,7 @@ window.__shibeiRelayHandler = (event) => {
       window.postMessage({
         type: "shibei:save-region-result",
         success: false,
-        error: err.message || "保存失败",
+        error: err.message || (typeof chrome !== "undefined" && chrome.i18n ? chrome.i18n.getMessage("relaySaveFailed") : "Save failed"),
       });
     });
 };

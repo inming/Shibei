@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { ALL_RESOURCES_ID, type Resource, type Tag } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -12,6 +13,7 @@ export function useResources(
   searchQuery: string = "",
   selectedTagIds: string[] = [],
 ) {
+  const { t } = useTranslation('lock');
   const [resources, setResources] = useState<Resource[]>([]);
   const [resourceTags, setResourceTags] = useState<Record<string, Tag[]>>({});
   const [loading, setLoading] = useState(false);
@@ -49,7 +51,7 @@ export function useResources(
       setResourceTags(Object.fromEntries(tagEntries));
     } catch (err) {
       console.error("Failed to load resources:", err);
-      toast.error("加载资料列表失败");
+      toast.error(t('loadResourcesFailed'));
     } finally {
       setLoading(false);
     }

@@ -1,0 +1,11 @@
+{
+  "title": "外观",
+  "themeLight": "浅色",
+  "themeDark": "深色",
+  "themeSystem": "跟随系统",
+  "language": "语言",
+  "navAppearance": "外观",
+  "navSync": "同步",
+  "navEncryption": "加密",
+  "navSecurity": "安全"
+}

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import styles from "./SelectionToolbar.module.css";
 
 const LIGHT_COLORS = [
@@ -22,13 +23,14 @@ interface SelectionToolbarProps {
 }
 
 export function SelectionToolbar({ position, onSelectColor }: SelectionToolbarProps) {
+  const { t } = useTranslation('reader');
   return (
     <div
       className={styles.toolbar}
       style={{ top: position.top, left: position.left }}
     >
       <div className={styles.row}>
-        <span className={styles.rowLabel} title="浅色页面">☀︎</span>
+        <span className={styles.rowLabel} title={t('lightPage')}>☀︎</span>
         {LIGHT_COLORS.map((color) => (
           <button
             key={color}
@@ -40,7 +42,7 @@ export function SelectionToolbar({ position, onSelectColor }: SelectionToolbarPr
         ))}
       </div>
       <div className={styles.row}>
-        <span className={styles.rowLabel} title="深色页面">☾</span>
+        <span className={styles.rowLabel} title={t('darkPage')}>☾</span>
         {DARK_COLORS.map((color) => (
           <button
             key={color}

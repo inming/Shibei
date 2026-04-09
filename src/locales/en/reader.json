@@ -1,0 +1,11 @@
+{
+  "restoreOriginalColors": "Restore original colors",
+  "invertColors": "Invert colors",
+  "downloadingSnapshot": "Downloading snapshot...",
+  "loading": "Loading...",
+  "snapshotNotFound": "Snapshot not found",
+  "snapshotDownloadFailed": "Snapshot download failed: {{message}}",
+  "openedInBrowser": "Opened in browser",
+  "lightPage": "Light page",
+  "darkPage": "Dark page"
+}

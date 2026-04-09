@@ -1,0 +1,11 @@
+{
+  "restoreOriginalColors": "恢复原始配色",
+  "invertColors": "反色阅读",
+  "downloadingSnapshot": "正在下载快照...",
+  "loading": "加载中...",
+  "snapshotNotFound": "快照不存在",
+  "snapshotDownloadFailed": "快照下载失败: {{message}}",
+  "openedInBrowser": "已在浏览器中打开",
+  "lightPage": "浅色页面",
+  "darkPage": "深色页面"
+}

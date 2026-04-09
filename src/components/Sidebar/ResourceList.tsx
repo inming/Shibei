@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
+import { useTranslation } from "react-i18next";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
 import type { Resource } from "@/types";
@@ -47,6 +48,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onD
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
+  const { t } = useTranslation('sidebar');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: resource.id,
     data: { type: "resource", title: resource.title },
@@ -66,7 +68,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onD
       aria-selected={isSelected}
     >
       <div className={styles.itemTitle}>
-        {resource.selection_meta && <span className={styles.clipBadge} title="选区保存">&#9986;</span>}
+        {resource.selection_meta && <span className={styles.clipBadge} title={t('clipBadgeTitle')}>&#9986;</span>}
         {searchQuery.length >= 2 ? highlightMatch(resource.title, searchQuery) : resource.title}
       </div>
       <div className={styles.itemMeta}>
@@ -77,6 +79,8 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onD
 }
 
 export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
+  const { t } = useTranslation('sidebar');
+  const { t: tSearch } = useTranslation('search');
   const [inputValue, setInputValue] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const composingRef = useRef(false);
@@ -161,7 +165,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
         await cmd.deleteResource(id);
       }
     } catch (err: unknown) {
-      toast.error(`删除失败: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('deleteFailed_resource', { message: err instanceof Error ? err.message : String(err) }));
     }
   }, [contextResourceIds]);
 
@@ -172,7 +176,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
         await cmd.moveResource(id, targetFolderId);
       }
     } catch (err: unknown) {
-      toast.error(`移动失败: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('moveFailed', { message: err instanceof Error ? err.message : String(err) }));
     }
   }, [contextResourceIds]);
 
@@ -232,7 +236,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
         <input
           className={styles.searchInput}
           type="text"
-          placeholder="搜索..."
+          placeholder={tSearch('placeholder')}
           value={inputValue}
           onChange={(e) => handleSearchInput(e.target.value)}
           onCompositionStart={() => { composingRef.current = true; }}
@@ -245,7 +249,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
               setInputValue("");
               onSearchChange("");
             }}
-            aria-label="清除搜索"
+            aria-label={tSearch('clearSearch')}
           >
             &#10005;
           </button>
@@ -253,9 +257,9 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       </div>
       <div className={styles.header}>
         <span className={styles.title}>
-          资料
+          {t('resources')}
           {selectedResourceIds.size > 1 && (
-            <span className={styles.selectionCount}>已选 {selectedResourceIds.size} 项</span>
+            <span className={styles.selectionCount}>{t('selectedCount', { count: selectedResourceIds.size })}</span>
           )}
         </span>
         <div className={styles.sortControls}>
@@ -264,32 +268,32 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
             value={sortBy}
             onChange={(e) => onSortByChange(e.target.value as "created_at" | "annotated_at")}
           >
-            <option value="created_at">创建时间</option>
-            <option value="annotated_at">标注时间</option>
+            <option value="created_at">{t('sortByCreatedAt')}</option>
+            <option value="annotated_at">{t('sortByAnnotatedAt')}</option>
           </select>
           <button
             className={styles.sortOrderBtn}
             onClick={() => onSortOrderChange(sortOrder === "desc" ? "asc" : "desc")}
-            title={sortOrder === "desc" ? "降序" : "升序"}
+            title={sortOrder === "desc" ? t('sortDesc') : t('sortAsc')}
           >
             {sortOrder === "desc" ? "↓" : "↑"}
           </button>
         </div>
       </div>
       {!folderId && (
-        <div className={styles.empty}>选择文件夹查看资料</div>
+        <div className={styles.empty}>{t('selectFolderHint')}</div>
       )}
       {loading && <ResourceListSkeleton />}
       {folderId && !loading && filteredResources.length === 0 && (
         <div className={styles.empty}>
-          {searchQuery.length >= MIN_SEARCH_CHARS ? "无搜索结果" : "该文件夹暂无资料"}
+          {searchQuery.length >= MIN_SEARCH_CHARS ? t('noSearchResults') : t('emptyFolder')}
         </div>
       )}
       <div
         ref={listRef}
         tabIndex={0}
         role="listbox"
-        aria-label="资料列表"
+        aria-label={t('resourceList')}
         onKeyDown={handleKeyDown}
       >
         {filteredResources.map((resource) => (
@@ -332,11 +336,11 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       )}
 
       {deleteConfirm && (
-        <Modal title="确认删除" onClose={() => setDeleteConfirm(false)}>
+        <Modal title={t('confirmDelete')} onClose={() => setDeleteConfirm(false)}>
           <p>
             {isSingleSelect
-              ? `确定删除该资料吗？`
-              : `确定删除选中的 ${contextResourceIds.length} 项资料吗？`}
+              ? t('deleteResourceConfirm')
+              : t('deleteResourcesConfirm', { count: contextResourceIds.length })}
           </p>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
             <button
@@ -351,7 +355,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
               }}
               onClick={() => setDeleteConfirm(false)}
             >
-              取消
+              {t('cancel', { ns: 'common' })}
             </button>
             <button
               style={{
@@ -365,7 +369,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
               }}
               onClick={handleDelete}
             >
-              删除
+              {t('delete', { ns: 'common' })}
             </button>
           </div>
         </Modal>

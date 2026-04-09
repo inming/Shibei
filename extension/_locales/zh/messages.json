@@ -1,0 +1,242 @@
+{
+  "extensionName": {
+    "message": "拾贝 — 网页收藏助手",
+    "description": "Extension name shown in browser"
+  },
+  "extensionDescription": {
+    "message": "一键保存网页快照到拾贝桌面端",
+    "description": "Extension description shown in browser"
+  },
+  "appTitle": {
+    "message": "拾贝",
+    "description": "App title in popup header"
+  },
+  "statusOnline": {
+    "message": "已连接",
+    "description": "Connection status when desktop app is running"
+  },
+  "statusOffline": {
+    "message": "未连接",
+    "description": "Connection status when desktop app is not running"
+  },
+  "offlineNotice": {
+    "message": "请先启动拾贝桌面端",
+    "description": "Notice shown when desktop app is not running"
+  },
+  "labelFolder": {
+    "message": "保存到文件夹",
+    "description": "Label for folder selector"
+  },
+  "labelTags": {
+    "message": "标签（逗号分隔）",
+    "description": "Label for tags input"
+  },
+  "tagsPlaceholder": {
+    "message": "如: Rust, Web",
+    "description": "Placeholder for tags input"
+  },
+  "btnSaveFullPage": {
+    "message": "保存整页",
+    "description": "Button text for full page save"
+  },
+  "btnSaveRegion": {
+    "message": "选区保存",
+    "description": "Button text for region save"
+  },
+  "capturingPage": {
+    "message": "正在抓取页面...",
+    "description": "Status text while capturing page"
+  },
+  "captureEmpty": {
+    "message": "抓取返回空结果",
+    "description": "Error when capture returns empty result"
+  },
+  "captureDone": {
+    "message": "抓取完成 ($SIZE$)",
+    "description": "Status text when capture is done",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "1.2 MB"
+      }
+    }
+  },
+  "captureFailed": {
+    "message": "抓取失败: $ERROR$",
+    "description": "Status text when capture fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Network error"
+      }
+    }
+  },
+  "unsupportedPage": {
+    "message": "不支持保存系统页面",
+    "description": "Error for system pages like chrome://"
+  },
+  "systemPage": {
+    "message": "系统页面",
+    "description": "Fallback title for system pages"
+  },
+  "untitled": {
+    "message": "无标题",
+    "description": "Fallback title when page has no title"
+  },
+  "urlSavedCount": {
+    "message": "该 URL 已保存过 $COUNT$ 次",
+    "description": "Warning when URL was saved before",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "folderLoadFailed": {
+    "message": "加载文件夹失败",
+    "description": "Error when folder list fails to load"
+  },
+  "selectFolder": {
+    "message": "请选择文件夹",
+    "description": "Error when no folder is selected"
+  },
+  "saving": {
+    "message": "正在保存...",
+    "description": "Status while saving"
+  },
+  "saveFailed": {
+    "message": "保存失败",
+    "description": "Generic save failure message"
+  },
+  "saveSuccess": {
+    "message": "保存成功！",
+    "description": "Success message after saving"
+  },
+  "errorPageRestricted": {
+    "message": "页面受安全策略限制，无法抓取",
+    "description": "Error for CSP-restricted pages"
+  },
+  "errorNoTab": {
+    "message": "无法访问当前页面",
+    "description": "Error when tab is inaccessible"
+  },
+  "errorPrefix": {
+    "message": "错误: $MSG$",
+    "description": "Generic error prefix",
+    "placeholders": {
+      "msg": {
+        "content": "$1",
+        "example": "Network timeout"
+      }
+    }
+  },
+  "errorNoPageInfo": {
+    "message": "无法获取当前页面信息",
+    "description": "Error when page info is unavailable"
+  },
+  "injectParamsFailed": {
+    "message": "注入参数失败: $ERROR$",
+    "description": "Error when injecting save params fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Script error"
+      }
+    }
+  },
+  "injectSelectorFailed": {
+    "message": "注入选区脚本失败: $ERROR$",
+    "description": "Error when injecting region selector script fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Script error"
+      }
+    }
+  },
+  "selectRegionPrompt": {
+    "message": "请在页面中选择要保存的区域",
+    "description": "Prompt shown after entering region selection mode"
+  },
+  "regionTopBarGuide": {
+    "message": "选择要保存的区域 — 滚轮或方向键调整层级 — ESC 退出",
+    "description": "Top bar guide text in region selector"
+  },
+  "regionConfirmBtn": {
+    "message": "✓ 确认保存",
+    "description": "Confirm button in region selector"
+  },
+  "regionReselectBtn": {
+    "message": "✗ 重新选择",
+    "description": "Reselect button in region selector"
+  },
+  "regionSelected": {
+    "message": "已选择: <$TAG$> — 确认保存或重新选择",
+    "description": "Top bar text after element is selected",
+    "placeholders": {
+      "tag": {
+        "content": "$1",
+        "example": "div"
+      }
+    }
+  },
+  "regionWaitingCapture": {
+    "message": "已选择: <$TAG$> — 等待页面抓取完成...",
+    "description": "Top bar text while waiting for capture to finish",
+    "placeholders": {
+      "tag": {
+        "content": "$1",
+        "example": "div"
+      }
+    }
+  },
+  "regionSaving": {
+    "message": "正在保存...",
+    "description": "Top bar text while saving region"
+  },
+  "regionWaitingCaptureToast": {
+    "message": "等待页面抓取完成...",
+    "description": "Toast while waiting for page capture"
+  },
+  "regionCaptureFailed": {
+    "message": "页面抓取失败: $ERROR$",
+    "description": "Toast when page capture fails in region mode",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Network error"
+      }
+    }
+  },
+  "regionClipping": {
+    "message": "正在裁剪选区...",
+    "description": "Toast while clipping selected region"
+  },
+  "regionClipFailed": {
+    "message": "裁剪失败 — 未找到选区元素",
+    "description": "Toast when clip fails to find selected element"
+  },
+  "regionParamsLost": {
+    "message": "保存参数丢失，请重新操作",
+    "description": "Toast when save params are missing"
+  },
+  "regionSaveFailed": {
+    "message": "保存失败: $ERROR$",
+    "description": "Toast when region save fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Network error"
+      }
+    }
+  },
+  "unknownError": {
+    "message": "未知错误",
+    "description": "Generic unknown error"
+  },
+  "relaySaveFailed": {
+    "message": "保存失败",
+    "description": "Error message from relay when save fails"
+  }
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { TagSubMenu } from "@/components/Sidebar/TagSubMenu";
 import { FolderPickerMenu } from "@/components/Sidebar/FolderPickerMenu";
@@ -29,6 +30,7 @@ export function ResourceContextMenu({
   onTagsChanged,
   onClose,
 }: ResourceContextMenuProps) {
+  const { t } = useTranslation('sidebar');
   const [openSub, setOpenSub] = useState<"tags" | "move" | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -89,7 +91,7 @@ export function ResourceContextMenu({
     <div ref={menuRef} className={styles.menu} style={menuStyle}>
       {isSingleSelect && (
         <button className={styles.item} onClick={onEdit}>
-          编辑
+          {t('contextEdit')}
         </button>
       )}
       {isSingleSelect && (
@@ -97,18 +99,18 @@ export function ResourceContextMenu({
           className={styles.item}
           onClick={() => {
             navigator.clipboard.writeText(`shibei://open/resource/${resourceIds[0]}`);
-            toast.success("链接已复制");
+            toast.success(t('contextLinkCopied'));
             onClose();
           }}
         >
-          复制链接
+          {t('contextCopyLink')}
         </button>
       )}
       <div
         className={`${styles.item} ${styles.hasSubmenu}`}
         onMouseEnter={() => setOpenSub("tags")}
       >
-        <span>标签</span>
+        <span>{t('contextTags')}</span>
         <span className={styles.arrow}>&rsaquo;</span>
         {openSub === "tags" && (
           <div className={`${styles.submenuPanel} ${flipSub ? styles.submenuFlip : ""}`}>
@@ -124,7 +126,7 @@ export function ResourceContextMenu({
         className={`${styles.item} ${styles.hasSubmenu}`}
         onMouseEnter={() => setOpenSub("move")}
       >
-        <span>移动到</span>
+        <span>{t('contextMoveTo')}</span>
         <span className={styles.arrow}>&rsaquo;</span>
         {openSub === "move" && (
           <div className={`${styles.submenuPanel} ${flipSub ? styles.submenuFlip : ""}`}>
@@ -140,7 +142,7 @@ export function ResourceContextMenu({
       </div>
       <div className={styles.separator} />
       <button className={`${styles.item} ${styles.danger}`} onClick={onDelete}>
-        {isSingleSelect ? "删除" : `删除 (${resourceIds.length} 项)`}
+        {isSingleSelect ? t('contextDelete') : t('contextDeleteMultiple', { count: resourceIds.length })}
       </button>
     </div>
   );

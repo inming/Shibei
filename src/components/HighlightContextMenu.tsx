@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { Highlight } from "@/types";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
@@ -40,12 +41,14 @@ export function HighlightContextMenu({
     };
   }, [onClose]);
 
+  const { t } = useTranslation('annotation');
+
   if (!highlight) return null;
 
   return (
     <div ref={ref} className={styles.menu} style={{ top: position.top, left: position.left }}>
       <div className={styles.colorRow}>
-        <span className={styles.rowLabel} title="浅色页面">☀︎</span>
+        <span className={styles.rowLabel} title={t('lightPage')}>☀︎</span>
         {LIGHT_COLORS.map((c) => (
           <button
             key={c}
@@ -56,7 +59,7 @@ export function HighlightContextMenu({
         ))}
       </div>
       <div className={styles.colorRow}>
-        <span className={styles.rowLabel} title="深色页面">☾</span>
+        <span className={styles.rowLabel} title={t('darkPage')}>☾</span>
         {DARK_COLORS.map((c) => (
           <button
             key={c}
@@ -73,14 +76,14 @@ export function HighlightContextMenu({
           navigator.clipboard.writeText(
             `shibei://open/resource/${resourceId}?highlight=${highlight.id}`
           );
-          toast.success("链接已复制");
+          toast.success(t('linkCopied'));
           onClose();
         }}
       >
-        复制链接
+        {t('copyLink')}
       </button>
       <button className={`${styles.item} ${styles.danger}`} onClick={onDelete}>
-        删除标注
+        {t('deleteAnnotation')}
       </button>
     </div>
   );

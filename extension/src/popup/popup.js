@@ -3,6 +3,25 @@ const API_BASE = "http://127.0.0.1:21519";
 let cachedToken = null;
 let tokenPromise = null;
 
+// ── i18n helpers ──
+
+function msg(key, ...subs) {
+  return chrome.i18n.getMessage(key, subs) || key;
+}
+
+function localizeHtml() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    el.textContent = msg(key);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.getAttribute("data-i18n-placeholder");
+    el.placeholder = msg(key);
+  });
+}
+
+// ── Auth ──
+
 async function getToken() {
   if (cachedToken) return cachedToken;
   if (tokenPromise) return tokenPromise;
@@ -59,7 +78,7 @@ function formatSize(bytes) {
 async function startCapture() {
   captureStatusEl.style.display = "flex";
   captureStatusEl.className = "capture-status capturing";
-  captureTextEl.textContent = "正在抓取页面...";
+  captureTextEl.textContent = msg("capturingPage");
 
   const startTime = Date.now();
   const timerInterval = setInterval(() => {
@@ -112,19 +131,19 @@ async function startCapture() {
     const result = results?.[0]?.result;
 
     if (!result?.success) {
-      throw new Error(result?.error || "抓取返回空结果");
+      throw new Error(result?.error || msg("captureEmpty"));
     }
 
     captureReady = true;
     captureStatusEl.className = "capture-status capture-done";
-    captureTextEl.textContent = `抓取完成 (${formatSize(result.size)})`;
+    captureTextEl.textContent = msg("captureDone", formatSize(result.size));
     captureTimerEl.textContent = elapsed + "s";
     saveBtn.disabled = false;
     console.log("[shibei] capture done:", result.size, "bytes in", elapsed, "s");
   } catch (err) {
     clearInterval(timerInterval);
     captureStatusEl.className = "capture-status capture-error";
-    captureTextEl.textContent = "抓取失败: " + (err.message || String(err));
+    captureTextEl.textContent = msg("captureFailed", err.message || String(err));
     captureTimerEl.textContent = "";
     console.error("[shibei] capture error:", err);
   }
@@ -133,16 +152,18 @@ async function startCapture() {
 // ── Init ──
 
 async function init() {
+  localizeHtml();
+
   try {
     const res = await fetch(`${API_BASE}/api/ping`, { signal: AbortSignal.timeout(2000) });
     if (!res.ok) throw new Error("not ok");
     await getToken();
-    statusEl.textContent = "已连接";
+    statusEl.textContent = msg("statusOnline");
     statusEl.className = "status status-online";
     offlineNotice.style.display = "none";
     mainContent.style.display = "block";
   } catch (err) {
-    statusEl.textContent = "未连接";
+    statusEl.textContent = msg("statusOffline");
     statusEl.className = "status status-offline";
     offlineNotice.style.display = "block";
     mainContent.style.display = "none";
@@ -155,10 +176,10 @@ async function init() {
     if (tab) {
       const url = tab.url || "";
       if (url.startsWith("chrome://") || url.startsWith("about:") || url.startsWith("edge://") || url.startsWith("chrome-extension://")) {
-        showMessage("不支持保存系统页面", "error");
+        showMessage(msg("unsupportedPage"), "error");
         saveBtn.disabled = true;
         selectSaveBtn.disabled = true;
-        pageTitleEl.textContent = tab.title || "系统页面";
+        pageTitleEl.textContent = tab.title || msg("systemPage");
         pageUrlEl.textContent = url;
         return;
       }
@@ -168,7 +189,7 @@ async function init() {
 
       pageInfo = {
         tabId: tab.id,
-        title: tab.title || "无标题",
+        title: tab.title || msg("untitled"),
         url,
         domain,
         author: null,
@@ -211,7 +232,7 @@ async function init() {
           const { count } = await checkRes.json();
           if (count > 0) {
             const warningEl = document.getElementById("url-warning");
-            warningEl.textContent = `该 URL 已保存过 ${count} 次`;
+            warningEl.textContent = msg("urlSavedCount", String(count));
             warningEl.style.display = "block";
           }
         }
@@ -233,7 +254,7 @@ async function init() {
     populateFolderSelect(folders, 0);
   } catch (err) {
     console.error("[shibei] folder load failed:", err);
-    showMessage("加载文件夹失败", "error");
+    showMessage(msg("folderLoadFailed"), "error");
   }
 }
 
@@ -256,12 +277,12 @@ saveBtn.addEventListener("click", async () => {
 
   const folderId = folderSelect.value;
   if (!folderId) {
-    showMessage("请选择文件夹", "error");
+    showMessage(msg("selectFolder"), "error");
     return;
   }
 
   saveBtn.disabled = true;
-  showMessage("正在保存...", "loading");
+  showMessage(msg("saving"), "loading");
 
   try {
     const tags = tagsInput.value.split(",").map((t) => t.trim()).filter(Boolean);
@@ -357,20 +378,20 @@ saveBtn.addEventListener("click", async () => {
 
     const saveResult = postResults?.[0]?.result;
     if (!saveResult?.success) {
-      throw new Error(saveResult?.error || "保存失败");
+      throw new Error(saveResult?.error || msg("saveFailed"));
     }
 
-    showMessage("保存成功！", "success");
+    showMessage(msg("saveSuccess"), "success");
     setTimeout(() => window.close(), 1000);
   } catch (err) {
     console.error("[shibei] error:", err);
-    const msg = err.message || String(err);
-    if (msg.includes("Cannot access") || msg.includes("Cannot read")) {
-      showMessage("页面受安全策略限制，无法抓取", "error");
-    } else if (msg.includes("No tab with id") || msg.includes("Invalid tab")) {
-      showMessage("无法访问当前页面", "error");
+    const errMsg = err.message || String(err);
+    if (errMsg.includes("Cannot access") || errMsg.includes("Cannot read")) {
+      showMessage(msg("errorPageRestricted"), "error");
+    } else if (errMsg.includes("No tab with id") || errMsg.includes("Invalid tab")) {
+      showMessage(msg("errorNoTab"), "error");
     } else {
-      showMessage(`错误: ${msg}`, "error");
+      showMessage(msg("errorPrefix", errMsg), "error");
     }
     saveBtn.disabled = false;
   }
@@ -383,13 +404,13 @@ selectSaveBtn.addEventListener("click", async () => {
   saveBtn.disabled = true; // Disable full-page save during region selection
 
   if (!pageInfo?.tabId) {
-    showMessage("无法获取当前页面信息", "error");
+    showMessage(msg("errorNoPageInfo"), "error");
     return;
   }
 
   const folderId = folderSelect.value;
   if (!folderId) {
-    showMessage("请选择文件夹", "error");
+    showMessage(msg("selectFolder"), "error");
     return;
   }
 
@@ -408,19 +429,40 @@ selectSaveBtn.addEventListener("click", async () => {
     tags,
   };
 
+  // Prepare translated strings for region-selector (MAIN world cannot use chrome.i18n)
+  const regionI18n = {
+    regionTopBarGuide: msg("regionTopBarGuide"),
+    regionConfirmBtn: msg("regionConfirmBtn"),
+    regionReselectBtn: msg("regionReselectBtn"),
+    regionSelected: msg("regionSelected", "$1"),
+    regionWaitingCapture: msg("regionWaitingCapture", "$1"),
+    regionSaving: msg("regionSaving"),
+    capturingPage: msg("capturingPage"),
+    regionWaitingCaptureToast: msg("regionWaitingCaptureToast"),
+    regionCaptureFailed: msg("regionCaptureFailed", "$1"),
+    regionClipping: msg("regionClipping"),
+    regionClipFailed: msg("regionClipFailed"),
+    regionParamsLost: msg("regionParamsLost"),
+    saving: msg("saving"),
+    saveSuccess: msg("saveSuccess"),
+    regionSaveFailed: msg("regionSaveFailed", "$1"),
+    unknownError: msg("unknownError"),
+  };
+
   // Set a result flag that we'll poll for completion
   try {
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
       world: "MAIN",
-      func: (params) => {
+      func: (params, i18nStrings) => {
         window.__shibeiSaveParams = params;
+        window.__shibeiRegionI18n = i18nStrings;
         window.__shibeiRegionSaveResult = null; // reset
       },
-      args: [saveParams],
+      args: [saveParams, regionI18n],
     });
   } catch (e) {
-    showMessage("注入参数失败: " + e.message, "error");
+    showMessage(msg("injectParamsFailed", e.message), "error");
     return;
   }
 
@@ -450,11 +492,11 @@ selectSaveBtn.addEventListener("click", async () => {
       world: "MAIN",
     });
   } catch (e) {
-    showMessage("注入选区脚本失败: " + e.message, "error");
+    showMessage(msg("injectSelectorFailed", e.message), "error");
     return;
   }
 
-  showMessage("请在页面中选择要保存的区域", "loading");
+  showMessage(msg("selectRegionPrompt"), "loading");
 
   // Poll for region save result (set by region-selector.js)
   const pollInterval = setInterval(async () => {
@@ -467,7 +509,7 @@ selectSaveBtn.addEventListener("click", async () => {
       const result = results?.[0]?.result;
       if (result === "success") {
         clearInterval(pollInterval);
-        showMessage("保存成功！", "success");
+        showMessage(msg("saveSuccess"), "success");
         setTimeout(() => window.close(), 1000);
       } else if (result === "cancelled") {
         clearInterval(pollInterval);

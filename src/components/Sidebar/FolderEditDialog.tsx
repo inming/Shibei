@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
 import { Modal } from "@/components/Modal";
 import * as cmd from "@/lib/commands";
 
@@ -15,6 +17,7 @@ export function FolderEditDialog({
   onClose,
   onSaved,
 }: FolderEditDialogProps) {
+  const { t } = useTranslation('sidebar');
   const [name, setName] = useState(currentName);
   const [saving, setSaving] = useState(false);
 
@@ -32,9 +35,9 @@ export function FolderEditDialog({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("UNIQUE constraint")) {
-        alert("文件夹名称已存在，请换一个名称");
+        toast.error(t('folderNameExists'));
       } else {
-        alert(`重命名失败: ${msg}`);
+        toast.error(t('renameFailed', { message: msg }));
       }
     } finally {
       setSaving(false);
@@ -42,7 +45,7 @@ export function FolderEditDialog({
   }
 
   return (
-    <Modal title="编辑文件夹" onClose={onClose}>
+    <Modal title={t('editFolder')} onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -57,7 +60,7 @@ export function FolderEditDialog({
             marginBottom: "var(--spacing-xs)",
           }}
         >
-          文件夹名称
+          {t('folderNameLabel')}
         </label>
         <input
           value={name}
@@ -92,7 +95,7 @@ export function FolderEditDialog({
               fontSize: "var(--font-size-base)",
             }}
           >
-            取消
+            {t('cancel', { ns: 'common' })}
           </button>
           <button
             type="submit"
@@ -107,7 +110,7 @@ export function FolderEditDialog({
               fontSize: "var(--font-size-base)",
             }}
           >
-            确认
+            {t('confirm', { ns: 'common' })}
           </button>
         </div>
       </form>

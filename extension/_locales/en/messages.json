@@ -1,0 +1,242 @@
+{
+  "extensionName": {
+    "message": "Shibei — Web Clipper",
+    "description": "Extension name shown in browser"
+  },
+  "extensionDescription": {
+    "message": "Save web page snapshots to the Shibei desktop app with one click",
+    "description": "Extension description shown in browser"
+  },
+  "appTitle": {
+    "message": "Shibei",
+    "description": "App title in popup header"
+  },
+  "statusOnline": {
+    "message": "Connected",
+    "description": "Connection status when desktop app is running"
+  },
+  "statusOffline": {
+    "message": "Disconnected",
+    "description": "Connection status when desktop app is not running"
+  },
+  "offlineNotice": {
+    "message": "Please start the Shibei desktop app first",
+    "description": "Notice shown when desktop app is not running"
+  },
+  "labelFolder": {
+    "message": "Save to folder",
+    "description": "Label for folder selector"
+  },
+  "labelTags": {
+    "message": "Tags (comma-separated)",
+    "description": "Label for tags input"
+  },
+  "tagsPlaceholder": {
+    "message": "e.g. Rust, Web",
+    "description": "Placeholder for tags input"
+  },
+  "btnSaveFullPage": {
+    "message": "Save Full Page",
+    "description": "Button text for full page save"
+  },
+  "btnSaveRegion": {
+    "message": "Save Region",
+    "description": "Button text for region save"
+  },
+  "capturingPage": {
+    "message": "Capturing page...",
+    "description": "Status text while capturing page"
+  },
+  "captureEmpty": {
+    "message": "Capture returned empty result",
+    "description": "Error when capture returns empty result"
+  },
+  "captureDone": {
+    "message": "Capture done ($SIZE$)",
+    "description": "Status text when capture is done",
+    "placeholders": {
+      "size": {
+        "content": "$1",
+        "example": "1.2 MB"
+      }
+    }
+  },
+  "captureFailed": {
+    "message": "Capture failed: $ERROR$",
+    "description": "Status text when capture fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Network error"
+      }
+    }
+  },
+  "unsupportedPage": {
+    "message": "Cannot save system pages",
+    "description": "Error for system pages like chrome://"
+  },
+  "systemPage": {
+    "message": "System Page",
+    "description": "Fallback title for system pages"
+  },
+  "untitled": {
+    "message": "Untitled",
+    "description": "Fallback title when page has no title"
+  },
+  "urlSavedCount": {
+    "message": "This URL has been saved $COUNT$ time(s)",
+    "description": "Warning when URL was saved before",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "folderLoadFailed": {
+    "message": "Failed to load folders",
+    "description": "Error when folder list fails to load"
+  },
+  "selectFolder": {
+    "message": "Please select a folder",
+    "description": "Error when no folder is selected"
+  },
+  "saving": {
+    "message": "Saving...",
+    "description": "Status while saving"
+  },
+  "saveFailed": {
+    "message": "Save failed",
+    "description": "Generic save failure message"
+  },
+  "saveSuccess": {
+    "message": "Saved successfully!",
+    "description": "Success message after saving"
+  },
+  "errorPageRestricted": {
+    "message": "Page is restricted by security policy and cannot be captured",
+    "description": "Error for CSP-restricted pages"
+  },
+  "errorNoTab": {
+    "message": "Cannot access the current page",
+    "description": "Error when tab is inaccessible"
+  },
+  "errorPrefix": {
+    "message": "Error: $MSG$",
+    "description": "Generic error prefix",
+    "placeholders": {
+      "msg": {
+        "content": "$1",
+        "example": "Network timeout"
+      }
+    }
+  },
+  "errorNoPageInfo": {
+    "message": "Cannot get current page info",
+    "description": "Error when page info is unavailable"
+  },
+  "injectParamsFailed": {
+    "message": "Failed to inject parameters: $ERROR$",
+    "description": "Error when injecting save params fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Script error"
+      }
+    }
+  },
+  "injectSelectorFailed": {
+    "message": "Failed to inject selector script: $ERROR$",
+    "description": "Error when injecting region selector script fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Script error"
+      }
+    }
+  },
+  "selectRegionPrompt": {
+    "message": "Select the region to save on the page",
+    "description": "Prompt shown after entering region selection mode"
+  },
+  "regionTopBarGuide": {
+    "message": "Select region to save — Scroll or arrow keys to adjust level — ESC to exit",
+    "description": "Top bar guide text in region selector"
+  },
+  "regionConfirmBtn": {
+    "message": "\u2713 Confirm",
+    "description": "Confirm button in region selector"
+  },
+  "regionReselectBtn": {
+    "message": "\u2717 Reselect",
+    "description": "Reselect button in region selector"
+  },
+  "regionSelected": {
+    "message": "Selected: <$TAG$> — Confirm save or reselect",
+    "description": "Top bar text after element is selected",
+    "placeholders": {
+      "tag": {
+        "content": "$1",
+        "example": "div"
+      }
+    }
+  },
+  "regionWaitingCapture": {
+    "message": "Selected: <$TAG$> — Waiting for page capture...",
+    "description": "Top bar text while waiting for capture to finish",
+    "placeholders": {
+      "tag": {
+        "content": "$1",
+        "example": "div"
+      }
+    }
+  },
+  "regionSaving": {
+    "message": "Saving...",
+    "description": "Top bar text while saving region"
+  },
+  "regionWaitingCaptureToast": {
+    "message": "Waiting for page capture...",
+    "description": "Toast while waiting for page capture"
+  },
+  "regionCaptureFailed": {
+    "message": "Page capture failed: $ERROR$",
+    "description": "Toast when page capture fails in region mode",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Network error"
+      }
+    }
+  },
+  "regionClipping": {
+    "message": "Clipping selected region...",
+    "description": "Toast while clipping selected region"
+  },
+  "regionClipFailed": {
+    "message": "Clip failed — selected element not found",
+    "description": "Toast when clip fails to find selected element"
+  },
+  "regionParamsLost": {
+    "message": "Save parameters lost, please try again",
+    "description": "Toast when save params are missing"
+  },
+  "regionSaveFailed": {
+    "message": "Save failed: $ERROR$",
+    "description": "Toast when region save fails",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "Network error"
+      }
+    }
+  },
+  "unknownError": {
+    "message": "Unknown error",
+    "description": "Generic unknown error"
+  },
+  "relaySaveFailed": {
+    "message": "Save failed",
+    "description": "Error message from relay when save fails"
+  }
+}

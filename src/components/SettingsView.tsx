@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useSync } from "@/hooks/useSync";
 import { AppearancePage } from "@/components/Settings/AppearancePage";
 import { SyncPage } from "@/components/Settings/SyncPage";
@@ -9,12 +10,12 @@ import styles from "./SettingsView.module.css";
 
 type SettingsSection = "appearance" | "sync" | "encryption" | "security";
 
-const NAV_ITEMS: { id: SettingsSection; label: string }[] = [
-  { id: "appearance", label: "外观" },
-  { id: "sync", label: "同步" },
-  { id: "encryption", label: "加密" },
-  { id: "security", label: "安全" },
-];
+const NAV_KEYS = [
+  { id: "appearance", key: "navAppearance" },
+  { id: "sync", key: "navSync" },
+  { id: "encryption", key: "navEncryption" },
+  { id: "security", key: "navSecurity" },
+] as const;
 
 interface SettingsViewProps {
   initialSection?: SettingsSection;
@@ -24,6 +25,7 @@ interface SettingsViewProps {
 
 export function SettingsView({ initialSection, themeMode, onThemeModeChange }: SettingsViewProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection ?? "appearance");
+  const { t } = useTranslation('settings');
   const sync = useSync();
 
   useEffect(() => {
@@ -33,13 +35,13 @@ export function SettingsView({ initialSection, themeMode, onThemeModeChange }: S
   return (
     <div className={styles.container}>
       <nav className={styles.nav}>
-        {NAV_ITEMS.map((item) => (
+        {NAV_KEYS.map((item) => (
           <button
             key={item.id}
             className={`${styles.navItem} ${section === item.id ? styles.navItemActive : ""}`}
             onClick={() => setSection(item.id)}
           >
-            {item.label}
+            {t(item.key)}
           </button>
         ))}
       </nav>

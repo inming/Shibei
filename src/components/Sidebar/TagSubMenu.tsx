@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useTags } from "@/hooks/useTags";
 import * as cmd from "@/lib/commands";
 import toast from "react-hot-toast";
@@ -11,6 +12,7 @@ interface TagSubMenuProps {
 }
 
 export function TagSubMenu({ resourceIds, onClose, onTagsChanged }: TagSubMenuProps) {
+  const { t } = useTranslation('sidebar');
   const { tags } = useTags();
   const [assignedTagIds, setAssignedTagIds] = useState<Set<string>>(new Set());
 
@@ -44,12 +46,12 @@ export function TagSubMenu({ resourceIds, onClose, onTagsChanged }: TagSubMenuPr
       onTagsChanged();
       onClose();
     } catch (err) {
-      toast.error("标签操作失败");
+      toast.error(t('tagOperationFailed'));
     }
   }, [resourceIds, assignedTagIds, onTagsChanged, onClose]);
 
   if (tags.length === 0) {
-    return <div className={styles.empty}>暂无标签</div>;
+    return <div className={styles.empty}>{t('noTags')}</div>;
   }
 
   return (

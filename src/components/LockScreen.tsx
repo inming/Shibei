@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import * as cmd from "@/lib/commands";
 import styles from "./LockScreen.module.css";
 
@@ -7,6 +8,7 @@ interface LockScreenProps {
 }
 
 export function LockScreen({ onUnlock }: LockScreenProps) {
+  const { t } = useTranslation('lock');
   const [pin, setPin] = useState("");
   const [errorCount, setErrorCount] = useState(0);
   const [verifying, setVerifying] = useState(false);
@@ -47,8 +49,8 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
     <div className={styles.overlay} onClick={() => inputRef.current?.focus()}>
       <div className={styles.card}>
         <img className={styles.icon} src="/app-icon.png" alt="" aria-hidden="true" />
-        <h2 className={styles.title}>拾贝已锁定</h2>
-        <p className={styles.subtitle}>请输入 PIN 码解锁</p>
+        <h2 className={styles.title}>{t('appLocked')}</h2>
+        <p className={styles.subtitle}>{t('enterPinToUnlock')}</p>
         <div key={errorCount} className={styles.dots}>
           {[0, 1, 2, 3].map((i) => (
             <div
@@ -70,7 +72,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
           onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); }}
           autoFocus
         />
-        {errorCount > 0 && pin.length === 0 && <p className={styles.error}>PIN 码不正确</p>}
+        {errorCount > 0 && pin.length === 0 && <p className={styles.error}>{t('pinError')}</p>}
       </div>
     </div>
   );

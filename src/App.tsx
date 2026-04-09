@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { useTranslation } from "react-i18next";
 import { Toaster } from "react-hot-toast";
 import type { Resource } from "@/types";
 import { DataEvents, type ResourceChangedPayload, type ConfigChangedPayload } from "@/lib/events";
@@ -22,6 +23,7 @@ interface ReaderTab {
 }
 
 function App() {
+  const { t } = useTranslation('sidebar');
   const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -171,13 +173,13 @@ function App() {
   }, []);
 
   const tabs: TabItem[] = [
-    { id: LIBRARY_TAB_ID, label: "资料库", closable: false },
+    { id: LIBRARY_TAB_ID, label: t('libraryTab'), closable: false },
     ...Array.from(readerTabs.entries()).map(([id, tab]) => ({
       id,
       label: tab.resource.title,
       closable: true,
     })),
-    ...(settingsOpen ? [{ id: SETTINGS_TAB_ID, label: "设置", closable: true }] : []),
+    ...(settingsOpen ? [{ id: SETTINGS_TAB_ID, label: t('settingsTab'), closable: true }] : []),
   ];
 
   return (
