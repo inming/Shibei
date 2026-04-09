@@ -151,17 +151,11 @@ struct UpdateCommentRequest {
 pub async fn start_server(
     state: Arc<AppState>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Allow any origin: server is localhost-only with token auth, and content scripts
+    // in ISOLATED world send the page's origin (e.g. https://example.com), not
+    // chrome-extension://, so we can't whitelist by origin.
     let cors = tower_http::cors::CorsLayer::new()
-        .allow_origin(tower_http::cors::AllowOrigin::predicate(
-            |origin: &axum::http::HeaderValue, _req: &axum::http::request::Parts| {
-                let Ok(s) = origin.to_str() else { return false };
-                s.starts_with("chrome-extension://")
-                    || s.starts_with("tauri://")
-                    || s.starts_with("http://tauri.localhost")
-                    || s.starts_with("http://127.0.0.1")
-                    || s.starts_with("http://localhost")
-            },
-        ))
+        .allow_origin(tower_http::cors::Any)
         .allow_methods([
             axum::http::Method::GET,
             axum::http::Method::POST,
