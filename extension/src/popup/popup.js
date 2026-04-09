@@ -34,8 +34,12 @@ const tagsInput = document.getElementById("tags-input");
 const saveBtn = document.getElementById("save-btn");
 const selectSaveBtn = document.getElementById("select-save-btn");
 const messageEl = document.getElementById("message");
+const captureStatusEl = document.getElementById("capture-status");
+const captureTextEl = document.getElementById("capture-text");
+const captureTimerEl = document.getElementById("capture-timer");
 
 let pageInfo = null;
+let captureReady = false;
 
 function showMessage(text, type) {
   console.log(`[shibei] ${type}: ${text}`);
@@ -44,24 +48,100 @@ function showMessage(text, type) {
   messageEl.style.display = "block";
 }
 
-async function init() {
-  console.log("[shibei] popup init started");
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
 
-  // Check if desktop app is running
+// ── Auto-capture ──
+
+async function startCapture() {
+  captureStatusEl.style.display = "flex";
+  captureStatusEl.className = "capture-status capturing";
+  captureTextEl.textContent = "正在抓取页面...";
+
+  const startTime = Date.now();
+  const timerInterval = setInterval(() => {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    captureTimerEl.textContent = elapsed + "s";
+  }, 100);
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
+      files: ["lib/single-file-bundle.js"],
+      world: "MAIN",
+    });
+
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
+      world: "MAIN",
+      func: async () => {
+        try {
+          if (typeof SingleFile === "undefined" || !SingleFile.getPageData) {
+            return { success: false, error: "SingleFile not available" };
+          }
+          const pageData = await SingleFile.getPageData({
+            removeHiddenElements: false,
+            removeUnusedStyles: true,
+            removeUnusedFonts: true,
+            compressHTML: true,
+            loadDeferredImages: true,
+            loadDeferredImagesMaxIdleTime: 3000,
+            maxResourceSizeEnabled: true,
+            maxResourceSize: 5,
+          });
+
+          let content = pageData.content;
+          content = content.replace(/<video[\s>][\s\S]*?<\/video>/gi, "");
+          content = content.replace(/<audio[\s>][\s\S]*?<\/audio>/gi, "");
+          content = content.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, "");
+
+          window.__shibeiCapturedHtml = content;
+
+          return { success: true, size: content.length };
+        } catch (err) {
+          return { success: false, error: String(err) };
+        }
+      },
+    });
+
+    clearInterval(timerInterval);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const result = results?.[0]?.result;
+
+    if (!result?.success) {
+      throw new Error(result?.error || "抓取返回空结果");
+    }
+
+    captureReady = true;
+    captureStatusEl.className = "capture-status capture-done";
+    captureTextEl.textContent = `抓取完成 (${formatSize(result.size)})`;
+    captureTimerEl.textContent = elapsed + "s";
+    saveBtn.disabled = false;
+    console.log("[shibei] capture done:", result.size, "bytes in", elapsed, "s");
+  } catch (err) {
+    clearInterval(timerInterval);
+    captureStatusEl.className = "capture-status capture-error";
+    captureTextEl.textContent = "抓取失败: " + (err.message || String(err));
+    captureTimerEl.textContent = "";
+    console.error("[shibei] capture error:", err);
+  }
+}
+
+// ── Init ──
+
+async function init() {
   try {
     const res = await fetch(`${API_BASE}/api/ping`, { signal: AbortSignal.timeout(2000) });
     if (!res.ok) throw new Error("not ok");
-    console.log("[shibei] ping ok");
-
-    // Fetch and cache auth token
     await getToken();
-
     statusEl.textContent = "已连接";
     statusEl.className = "status status-online";
     offlineNotice.style.display = "none";
     mainContent.style.display = "block";
   } catch (err) {
-    console.log("[shibei] ping failed:", err);
     statusEl.textContent = "未连接";
     statusEl.className = "status status-offline";
     offlineNotice.style.display = "block";
@@ -69,13 +149,10 @@ async function init() {
     return;
   }
 
-  // Get current tab info
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    console.log("[shibei] current tab:", tab?.url);
 
     if (tab) {
-      // Check for restricted pages
       const url = tab.url || "";
       if (url.startsWith("chrome://") || url.startsWith("about:") || url.startsWith("edge://") || url.startsWith("chrome-extension://")) {
         showMessage("不支持保存系统页面", "error");
@@ -98,7 +175,6 @@ async function init() {
         description: null,
       };
 
-      // Try to extract more meta info (may fail on restricted pages)
       try {
         const results = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
@@ -125,7 +201,6 @@ async function init() {
       pageTitleEl.textContent = pageInfo.title;
       pageUrlEl.textContent = pageInfo.url;
 
-      // Check for duplicate URL
       try {
         const token = await getToken();
         const checkRes = await fetch(
@@ -143,17 +218,18 @@ async function init() {
       } catch (e) {
         console.log("[shibei] url check failed (ok):", e.message);
       }
+
+      // Start capture immediately (non-blocking)
+      startCapture();
     }
   } catch (err) {
     console.error("[shibei] tab query failed:", err);
   }
 
-  // Load folders
   try {
     const token = await getToken();
     const res = await fetch(`${API_BASE}/api/folders`, { headers: authHeader(token) });
     const folders = await res.json();
-    console.log("[shibei] folders loaded:", folders.length);
     populateFolderSelect(folders, 0);
   } catch (err) {
     console.error("[shibei] folder load failed:", err);
@@ -173,13 +249,10 @@ function populateFolderSelect(folders, depth) {
   }
 }
 
-saveBtn.addEventListener("click", async () => {
-  console.log("[shibei] save clicked");
+// ── Save full page ──
 
-  if (!pageInfo?.tabId) {
-    showMessage("无法获取当前页面信息", "error");
-    return;
-  }
+saveBtn.addEventListener("click", async () => {
+  if (!pageInfo?.tabId || !captureReady) return;
 
   const folderId = folderSelect.value;
   if (!folderId) {
@@ -188,70 +261,9 @@ saveBtn.addEventListener("click", async () => {
   }
 
   saveBtn.disabled = true;
+  showMessage("正在保存...", "loading");
 
   try {
-    // Step 1: Inject SingleFile bundle into MAIN world
-    showMessage("注入 SingleFile...", "loading");
-    await chrome.scripting.executeScript({
-      target: { tabId: pageInfo.tabId },
-      files: ["lib/single-file-bundle.js"],
-      world: "MAIN",
-    });
-
-    // Step 2: Capture page in MAIN world, strip media, write to DOM element
-    showMessage("正在抓取页面（可能需要几秒）...", "loading");
-    const captureResults = await chrome.scripting.executeScript({
-      target: { tabId: pageInfo.tabId },
-      world: "MAIN",
-      func: async () => {
-        try {
-          if (typeof SingleFile === "undefined" || !SingleFile.getPageData) {
-            return { success: false, error: "SingleFile not available" };
-          }
-          const pageData = await SingleFile.getPageData({
-            removeHiddenElements: false,
-            removeUnusedStyles: true,
-            removeUnusedFonts: true,
-            compressHTML: true,
-            loadDeferredImages: true,
-            loadDeferredImagesMaxIdleTime: 3000,
-            maxResourceSizeEnabled: true,
-            maxResourceSize: 5,
-          });
-
-          // Strip media elements and noscript
-          let content = pageData.content;
-          content = content.replace(/<video[\s>][\s\S]*?<\/video>/gi, '');
-          content = content.replace(/<audio[\s>][\s\S]*?<\/audio>/gi, '');
-          content = content.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, '');
-
-          // Write to shared DOM element (ISOLATED world will read it)
-          let el = document.getElementById("__shibei_transfer__");
-          if (!el) {
-            el = document.createElement("script");
-            el.type = "text/shibei-transfer";
-            el.id = "__shibei_transfer__";
-            el.style.display = "none";
-            document.documentElement.appendChild(el);
-          }
-          el.textContent = content;
-
-          return { success: true, size: content.length };
-        } catch (err) {
-          return { success: false, error: String(err) };
-        }
-      },
-    });
-
-    const captureResult = captureResults?.[0]?.result;
-    if (!captureResult?.success) {
-      throw new Error(captureResult?.error || "抓取返回空结果");
-    }
-    console.log("[shibei] captured", captureResult.size, "bytes");
-
-    // Step 3: POST from ISOLATED world (reads DOM element, sends raw HTML)
-    showMessage("正在保存...", "loading");
-
     const tags = tagsInput.value.split(",").map((t) => t.trim()).filter(Boolean);
     const metadata = {
       title: pageInfo.title,
@@ -263,24 +275,53 @@ saveBtn.addEventListener("click", async () => {
       tags,
     };
 
-    const saveResults = await chrome.scripting.executeScript({
+    // Write pre-captured HTML from MAIN world variable to DOM element
+    const writeResults = await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
-      // default world = ISOLATED — can access DOM and fetch localhost
+      world: "MAIN",
+      func: () => {
+        try {
+          const capturedHtml = window.__shibeiCapturedHtml;
+          if (!capturedHtml) return { success: false, error: "No captured content available" };
+
+          let el = document.getElementById("__shibei_transfer__");
+          if (!el) {
+            el = document.createElement("script");
+            el.type = "text/shibei-transfer";
+            el.id = "__shibei_transfer__";
+            el.style.display = "none";
+            document.documentElement.appendChild(el);
+          }
+          el.textContent = capturedHtml;
+          delete window.__shibeiCapturedHtml;
+
+          return { success: true };
+        } catch (err) {
+          return { success: false, error: String(err) };
+        }
+      },
+    });
+
+    const writeResult = writeResults?.[0]?.result;
+    if (!writeResult?.success) {
+      throw new Error(writeResult?.error || "Failed to prepare content");
+    }
+
+    // POST from ISOLATED world
+    const postResults = await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
       func: async (meta) => {
         const API = "http://127.0.0.1:21519";
         try {
-          // Read content from shared DOM element
           const el = document.getElementById("__shibei_transfer__");
           const content = el?.textContent || "";
           if (el) el.remove();
           if (!content) return { success: false, error: "No content in transfer element" };
 
-          // Get auth token
           const tokenRes = await fetch(`${API}/token`, { signal: AbortSignal.timeout(2000) });
           if (!tokenRes.ok) return { success: false, error: `Token fetch failed: HTTP ${tokenRes.status}` };
           const { token } = await tokenRes.json();
 
-          // Build metadata headers
           const headers = {
             "Content-Type": "text/html; charset=utf-8",
             "Authorization": `Bearer ${token}`,
@@ -294,7 +335,6 @@ saveBtn.addEventListener("click", async () => {
           if (meta.description) headers["X-Shibei-Description"] = encodeURIComponent(meta.description);
           if (meta.tags?.length) headers["X-Shibei-Tags"] = meta.tags.map(encodeURIComponent).join(",");
 
-          // POST raw HTML body
           const res = await fetch(`${API}/api/save-raw`, {
             method: "POST",
             headers,
@@ -315,14 +355,16 @@ saveBtn.addEventListener("click", async () => {
       args: [metadata],
     });
 
-    const saveResult = saveResults?.[0]?.result;
+    const saveResult = postResults?.[0]?.result;
     if (!saveResult?.success) {
       throw new Error(saveResult?.error || "保存失败");
     }
 
-    console.log("[shibei] saved:", saveResult.resource_id);
     showMessage("保存成功！", "success");
-    saveBtn.textContent = "已保存";
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ type: "close-panel", tabId: pageInfo.tabId });
+      window.close();
+    }, 1000);
   } catch (err) {
     console.error("[shibei] error:", err);
     const msg = err.message || String(err);
@@ -337,8 +379,9 @@ saveBtn.addEventListener("click", async () => {
   }
 });
 
+// ── Region save ──
+
 selectSaveBtn.addEventListener("click", async () => {
-  console.log("[shibei] select-save clicked");
   selectSaveBtn.disabled = true;
 
   if (!pageInfo?.tabId) {
@@ -367,7 +410,6 @@ selectSaveBtn.addEventListener("click", async () => {
     tags,
   };
 
-  // Inject save parameters into page global scope (MAIN world)
   try {
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
@@ -382,7 +424,6 @@ selectSaveBtn.addEventListener("click", async () => {
     return;
   }
 
-  // Inject relay script in ISOLATED world (bridges postMessage to background)
   try {
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
@@ -392,7 +433,6 @@ selectSaveBtn.addEventListener("click", async () => {
     console.log("[shibei] relay inject failed:", e.message);
   }
 
-  // Inject SingleFile bundle (pre-load, don't execute capture)
   try {
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
@@ -400,10 +440,9 @@ selectSaveBtn.addEventListener("click", async () => {
       world: "MAIN",
     });
   } catch (e) {
-    console.log("[shibei] SingleFile pre-inject failed (may already be injected):", e.message);
+    console.log("[shibei] SingleFile pre-inject (may already exist):", e.message);
   }
 
-  // Inject the region selector script
   try {
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
@@ -415,7 +454,6 @@ selectSaveBtn.addEventListener("click", async () => {
     return;
   }
 
-  // Show message — user switches to page to select region
   showMessage("请在页面中选择要保存的区域", "loading");
 });
 
