@@ -2,6 +2,13 @@
 // Bridges postMessage from MAIN world (region-selector.js) to local HTTP server.
 // Posts directly to avoid chrome.runtime.sendMessage 64MiB limit.
 
+// Guard against double-injection (old listener would still call sendMessage)
+if (window.__shibeiRelayInjected) {
+  // Remove old listener before re-registering
+  window.removeEventListener("message", window.__shibeiRelayHandler);
+}
+window.__shibeiRelayInjected = true;
+
 const RELAY_API_BASE = "http://127.0.0.1:21519";
 
 async function relaySaveRegion(data) {
@@ -51,7 +58,7 @@ async function relaySaveRegion(data) {
   return res.json();
 }
 
-window.addEventListener("message", (event) => {
+window.__shibeiRelayHandler = (event) => {
   if (event.source !== window) return;
   if (event.data?.type !== "shibei:save-region") return;
 
@@ -70,4 +77,5 @@ window.addEventListener("message", (event) => {
         error: err.message || "保存失败",
       });
     });
-});
+};
+window.addEventListener("message", window.__shibeiRelayHandler);
