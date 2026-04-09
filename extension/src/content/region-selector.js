@@ -397,15 +397,14 @@
     // MAIN and ISOLATED worlds share the DOM, so this bypasses the 64MiB limit.
     showToast("正在保存...", "#1e40af");
 
-    // Write large content to a hidden DOM element instead of postMessage
-    let transferEl = document.getElementById("__shibei_transfer__");
-    if (!transferEl) {
-      transferEl = document.createElement("script");
-      transferEl.type = "text/shibei-transfer";
-      transferEl.id = "__shibei_transfer__";
-      transferEl.style.display = "none";
-      document.documentElement.appendChild(transferEl);
-    }
+    // Write clipped content to a uniquely-ID'd DOM element (avoids postMessage IPC limits).
+    // Unique ID prevents stale relay handlers from consuming the wrong element.
+    const transferId = "__shibei_transfer_" + Date.now();
+    const transferEl = document.createElement("script");
+    transferEl.type = "text/shibei-transfer";
+    transferEl.id = transferId;
+    transferEl.style.display = "none";
+    document.documentElement.appendChild(transferEl);
     transferEl.textContent = clippedHtml;
 
     const saveData = {
@@ -414,9 +413,9 @@
       domain: params.domain,
       author: params.author,
       description: params.description,
-      // content is in DOM element, not in postMessage payload
       folderId: params.folderId,
       tags: params.tags,
+      transferId,
       selection_meta: JSON.stringify({
         selector: selector,
         tag_name: tagName,

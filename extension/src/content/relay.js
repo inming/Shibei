@@ -13,7 +13,8 @@ const RELAY_API_BASE = "http://127.0.0.1:21519";
 
 async function relaySaveRegion(data) {
   // Read content from shared DOM element (written by region-selector.js in MAIN world)
-  const transferEl = document.getElementById("__shibei_transfer__");
+  const elId = data.transferId || "__shibei_transfer__";
+  const transferEl = document.getElementById(elId);
   const content = transferEl?.textContent || "";
   if (transferEl) transferEl.remove();
 
