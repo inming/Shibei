@@ -1,10 +1,9 @@
 // Relay script — runs in ISOLATED world.
 // Bridges postMessage from MAIN world (region-selector.js) to local HTTP server.
-// Posts directly to avoid chrome.runtime.sendMessage 64MiB limit.
+// Reads large content from a shared DOM element to avoid IPC size limits.
 
-// Guard against double-injection (old listener would still call sendMessage)
+// Guard against double-injection
 if (window.__shibeiRelayInjected) {
-  // Remove old listener before re-registering
   window.removeEventListener("message", window.__shibeiRelayHandler);
 }
 window.__shibeiRelayInjected = true;
@@ -12,6 +11,15 @@ window.__shibeiRelayInjected = true;
 const RELAY_API_BASE = "http://127.0.0.1:21519";
 
 async function relaySaveRegion(data) {
+  // Read content from shared DOM element (written by region-selector.js in MAIN world)
+  const transferEl = document.getElementById("__shibei_transfer__");
+  const content = transferEl?.textContent || "";
+  if (transferEl) transferEl.remove();
+
+  if (!content) {
+    throw new Error("No content found in transfer element");
+  }
+
   // Get auth token
   const tokenRes = await fetch(`${RELAY_API_BASE}/token`, {
     signal: AbortSignal.timeout(2000),
@@ -20,7 +28,7 @@ async function relaySaveRegion(data) {
   const { token } = await tokenRes.json();
 
   // Base64 encode content (chunked to avoid O(n²) string concat)
-  const bytes = new TextEncoder().encode(data.content);
+  const bytes = new TextEncoder().encode(content);
   const chunks = [];
   for (let i = 0; i < bytes.length; i += 8192) {
     chunks.push(String.fromCharCode(...bytes.subarray(i, i + 8192)));

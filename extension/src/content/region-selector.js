@@ -373,8 +373,20 @@
       return;
     }
 
-    // Send to background via relay (MAIN world cannot fetch to localhost due to CSP)
+    // Send to relay via DOM element (avoids postMessage IPC size limits).
+    // MAIN and ISOLATED worlds share the DOM, so this bypasses the 64MiB limit.
     showToast("正在保存...", "#1e40af");
+
+    // Write large content to a hidden DOM element instead of postMessage
+    let transferEl = document.getElementById("__shibei_transfer__");
+    if (!transferEl) {
+      transferEl = document.createElement("script");
+      transferEl.type = "text/shibei-transfer";
+      transferEl.id = "__shibei_transfer__";
+      transferEl.style.display = "none";
+      document.documentElement.appendChild(transferEl);
+    }
+    transferEl.textContent = clippedHtml;
 
     const saveData = {
       title: params.title,
@@ -382,7 +394,7 @@
       domain: params.domain,
       author: params.author,
       description: params.description,
-      content: clippedHtml,
+      // content is in DOM element, not in postMessage payload
       folderId: params.folderId,
       tags: params.tags,
       selection_meta: JSON.stringify({
@@ -409,7 +421,7 @@
     };
     window.addEventListener("message", resultHandler);
 
-    // Post to relay script in ISOLATED world
+    // Send small metadata message to relay (content is in DOM)
     window.postMessage({
       type: "shibei:save-region",
       payload: saveData,
