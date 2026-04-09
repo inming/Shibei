@@ -538,6 +538,24 @@
 
     // Show confirm bar
     confirmBar.style.display = "flex";
+
+    // Disable confirm button until capture is ready
+    const confirmBtnEl = confirmBar.querySelector("[" + ATTR + "='btn']");
+    if (!window.__shibeiCapturedHtml) {
+      confirmBtnEl.disabled = true;
+      confirmBtnEl.style.opacity = "0.5";
+      confirmBtnEl.style.cursor = "not-allowed";
+      topBar.textContent = "已选择: <" + lockedElement.tagName.toLowerCase() + "> — 等待页面抓取完成...";
+      const waitInterval = setInterval(() => {
+        if (window.__shibeiCapturedHtml) {
+          clearInterval(waitInterval);
+          confirmBtnEl.disabled = false;
+          confirmBtnEl.style.opacity = "1";
+          confirmBtnEl.style.cursor = "pointer";
+          topBar.textContent = "已选择: <" + lockedElement.tagName.toLowerCase() + "> — 确认保存或重新选择";
+        }
+      }, 200);
+    }
   }
 
   let saving = false;

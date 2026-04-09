@@ -120,7 +120,6 @@ async function startCapture() {
     captureTextEl.textContent = `抓取完成 (${formatSize(result.size)})`;
     captureTimerEl.textContent = elapsed + "s";
     saveBtn.disabled = false;
-    selectSaveBtn.disabled = false;
     console.log("[shibei] capture done:", result.size, "bytes in", elapsed, "s");
   } catch (err) {
     clearInterval(timerInterval);
