@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::Read as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -1392,7 +1393,7 @@ impl SyncEngine {
         }
     }
 
-    /// Upload a local snapshot.html to the backend.
+    /// Upload a local snapshot.html to the backend (gzip-compressed).
     pub async fn upload_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
         let snapshot_path = self.base_dir.join("storage").join(resource_id).join("snapshot.html");
         if !snapshot_path.exists() {
@@ -1400,15 +1401,26 @@ impl SyncEngine {
         }
 
         let data = std::fs::read(&snapshot_path)?;
-        let key = format!("snapshots/{}/snapshot.html", resource_id);
-        self.backend.upload(&key, &data).await?;
+
+        // Gzip compress before upload
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut encoder, &data)?;
+        let compressed = encoder.finish()?;
+
+        let key = format!("snapshots/{}/snapshot.html.gz", resource_id);
+        self.backend.upload(&key, &compressed).await?;
         Ok(())
     }
 
-    /// Download a snapshot from the backend and save locally.
+    /// Download a snapshot from the backend (gzip-compressed) and save locally.
     pub async fn download_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
-        let key = format!("snapshots/{}/snapshot.html", resource_id);
-        let data = self.backend.download(&key).await?;
+        let key = format!("snapshots/{}/snapshot.html.gz", resource_id);
+        let compressed = self.backend.download(&key).await?;
+
+        // Gzip decompress
+        let mut decoder = flate2::read::GzDecoder::new(&compressed[..]);
+        let mut data = Vec::new();
+        decoder.read_to_end(&mut data)?;
 
         let local_dir = self.base_dir.join("storage").join(resource_id);
         std::fs::create_dir_all(&local_dir)?;
@@ -1799,7 +1811,6 @@ mod tests {
         let backend = Arc::new(MockBackend::new());
         let dir = tempfile::tempdir().unwrap();
 
-        // Create a snapshot file locally (under storage/<id>/)
         let resource_dir = dir.path().join("storage").join("res-1");
         std::fs::create_dir_all(&resource_dir).unwrap();
         std::fs::write(resource_dir.join("snapshot.html"), b"<html>test</html>").unwrap();
@@ -1810,6 +1821,18 @@ mod tests {
         // Upload
         engine.upload_snapshot("res-1").await.unwrap();
 
+        // Verify S3 key is .html.gz
+        {
+            let store = backend.store.lock().await;
+            assert!(store.contains_key("snapshots/res-1/snapshot.html.gz"),
+                "S3 key should be snapshot.html.gz");
+            assert!(!store.contains_key("snapshots/res-1/snapshot.html"),
+                "old key should not exist");
+            // Verify stored data is gzip (magic bytes 1f 8b)
+            let compressed = store.get("snapshots/res-1/snapshot.html.gz").unwrap();
+            assert_eq!(&compressed[..2], &[0x1f, 0x8b], "data should be gzip-compressed");
+        }
+
         // Download to a different location
         let dir2 = tempfile::tempdir().unwrap();
         let (_db_dir2, pool2) = test_pool();
@@ -1817,7 +1840,7 @@ mod tests {
 
         engine2.download_snapshot("res-1").await.unwrap();
 
-        // Verify file exists
+        // Verify file is decompressed back to original HTML
         let downloaded = std::fs::read_to_string(dir2.path().join("storage/res-1/snapshot.html")).unwrap();
         assert_eq!(downloaded, "<html>test</html>");
 

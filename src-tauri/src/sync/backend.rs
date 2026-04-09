@@ -183,7 +183,7 @@ pub mod mock {
     use tokio::sync::Mutex;
 
     pub struct MockBackend {
-        store: Mutex<HashMap<String, Vec<u8>>>,
+        pub store: Mutex<HashMap<String, Vec<u8>>>,
     }
 
     impl Default for MockBackend {
