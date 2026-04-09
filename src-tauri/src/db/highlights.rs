@@ -184,6 +184,39 @@ pub fn delete_highlight(
     Ok(())
 }
 
+pub fn update_highlight_color(
+    conn: &Connection,
+    id: &str,
+    color: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<Highlight, DbError> {
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+    let changed = conn.execute(
+        "UPDATE highlights SET color = ?1, hlc = COALESCE(?2, hlc) WHERE id = ?3 AND deleted_at IS NULL",
+        params![color, hlc_str, id],
+    )?;
+    if changed == 0 {
+        return Err(DbError::NotFound(format!("highlight {}", id)));
+    }
+    let highlight = get_highlight_by_id(conn, id)?;
+
+    if let Some(ctx) = sync_ctx {
+        let payload = serde_json::to_string(&highlight)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        sync::sync_log::append(
+            conn,
+            "highlight",
+            id,
+            "UPDATE",
+            &payload,
+            hlc_str.as_deref().unwrap_or(""),
+            ctx.device_id,
+        )?;
+    }
+
+    Ok(highlight)
+}
+
 pub fn get_highlight_by_id(conn: &Connection, id: &str) -> Result<Highlight, DbError> {
     conn.query_row(
         "SELECT id, resource_id, text_content, anchor, color, created_at
@@ -286,6 +319,19 @@ mod tests {
         assert_eq!(highlights[0].anchor.text_quote.exact, "highlighted text");
         assert_eq!(highlights[0].anchor.text_quote.prefix, "before ");
         assert_eq!(highlights[0].anchor.text_quote.suffix, " after");
+    }
+
+    #[test]
+    fn test_update_highlight_color() {
+        let conn = test_db();
+        let resource = setup_resource(&conn);
+        let hl = create_highlight(&conn, &resource.id, "test", &test_anchor(), "#FFFF00", None).unwrap();
+        let updated = update_highlight_color(&conn, &hl.id, "#81C784", None).unwrap();
+        assert_eq!(updated.color, "#81C784");
+        assert_eq!(updated.text_content, "test");
+
+        let fetched = get_highlight_by_id(&conn, &hl.id).unwrap();
+        assert_eq!(fetched.color, "#81C784");
     }
 
     #[test]

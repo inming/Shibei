@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent } from "@dnd-kit/core";
+import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import type { Resource } from "@/types";
+import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
 import * as cmd from "@/lib/commands";
 import { useSync } from "@/hooks/useSync";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
@@ -100,6 +102,25 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     setSelectedResourceIds(new Set());
     setSelectedResource(null);
   }, [selectedFolderId]);
+
+  // Clear preview when selected resource is deleted or moved away
+  useEffect(() => {
+    const unlisten = listen<ResourceChangedPayload>(DataEvents.RESOURCE_CHANGED, (event) => {
+      const { action, resource_id } = event.payload;
+      if ((action === "deleted" || action === "moved") && resource_id) {
+        setSelectedResource((prev) => (prev?.id === resource_id ? null : prev));
+        setSelectedResourceIds((prev) => {
+          if (prev.has(resource_id)) {
+            const next = new Set(prev);
+            next.delete(resource_id);
+            return next;
+          }
+          return prev;
+        });
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;

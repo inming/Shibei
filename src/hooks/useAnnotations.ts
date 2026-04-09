@@ -50,6 +50,21 @@ export function useAnnotations(resourceId: string) {
     [],
   );
 
+  const updateHighlightColor = useCallback(
+    async (id: string, color: string) => {
+      try {
+        const updated = await cmd.updateHighlightColor(id, resourceId, color);
+        setHighlights((prev) => prev.map((h) => (h.id === id ? updated : h)));
+        return updated;
+      } catch (err) {
+        console.error("Failed to update highlight color:", err);
+        toast.error("修改颜色失败");
+        return null;
+      }
+    },
+    [resourceId],
+  );
+
   const removeHighlight = useCallback(
     async (id: string) => {
       try {
@@ -116,6 +131,7 @@ export function useAnnotations(resourceId: string) {
     loading,
     refresh,
     addHighlight,
+    updateHighlightColor,
     removeHighlight,
     addComment,
     removeComment,

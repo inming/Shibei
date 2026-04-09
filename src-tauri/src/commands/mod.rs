@@ -397,6 +397,21 @@ pub async fn cmd_create_highlight(
 }
 
 #[tauri::command]
+pub async fn cmd_update_highlight_color(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    id: String,
+    resource_id: String,
+    color: String,
+) -> Result<highlights::Highlight, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let sync_ctx = state.sync_context();
+    let highlight = highlights::update_highlight_color(&conn, &id, &color, sync_ctx.as_ref())?;
+    let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "updated", "resource_id": resource_id }));
+    Ok(highlight)
+}
+
+#[tauri::command]
 pub async fn cmd_delete_highlight(
     state: tauri::State<'_, Arc<AppState>>,
     app: tauri::AppHandle,

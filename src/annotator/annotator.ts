@@ -53,28 +53,21 @@
     id: string;
   }
 
+  interface UpdateHighlightColorMsg {
+    type: "shibei:update-highlight-color";
+    source: "shibei";
+    id: string;
+    color: string;
+  }
+
   type InboundMessage =
     | RenderHighlightsMsg
     | AddHighlightMsg
     | RemoveHighlightMsg
-    | ScrollToHighlightMsg;
+    | ScrollToHighlightMsg
+    | UpdateHighlightColorMsg;
 
   // ── Outbound message types (annotator → React parent) ──
-
-  interface SelectionRect {
-    top: number;
-    left: number;
-    width: number;
-    height: number;
-  }
-
-  interface SelectionMsg {
-    type: "shibei:selection";
-    source: "shibei";
-    text: string;
-    anchor: Anchor;
-    rect: SelectionRect;
-  }
 
   interface SelectionClearedMsg {
     type: "shibei:selection-cleared";
@@ -219,7 +212,7 @@
    */
   function computeAnchor(selection: Selection): Anchor {
     const range = selection.getRangeAt(0);
-    const exact = selection.toString();
+    const exact = range.toString();
     const start = computeTextOffset(range.startContainer, range.startOffset);
     const end = start + exact.length;
 
@@ -591,32 +584,77 @@
   }
 
   // ── Selection detection ──
-
-  document.addEventListener("mouseup", () => {
+  // Only notify parent when selection is cleared (e.g. click away).
+  // Annotation toolbar is shown via right-click only.
+  document.addEventListener("mouseup", (e: MouseEvent) => {
+    if (e.button === 2) return; // right-click handled separately
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.toString().trim()) {
-      const msg: SelectionClearedMsg = { type: "shibei:selection-cleared", source: "shibei" };
-      window.parent.postMessage(msg, "*");
+      window.parent.postMessage({ type: "shibei:selection-cleared", source: "shibei" } as SelectionClearedMsg, "*");
+    }
+  });
+
+  // ── Hide toolbar on scroll (selection preserved for right-click annotate) ──
+  let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+  document.addEventListener("scroll", () => {
+    if (scrollTimer) return;
+    scrollTimer = setTimeout(() => { scrollTimer = null; }, 100);
+    window.parent.postMessage({ type: "shibei:scroll", source: "shibei" }, "*");
+  }, true);
+
+  // ── Right-click handling ──
+  function findHighlightElement(target: EventTarget | null): Element | null {
+    let node = target as Node | null;
+    while (node) {
+      if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName === "SHIBEI-HL" && (node as Element).hasAttribute("data-hl-id")) {
+        return node as Element;
+      }
+      node = node.parentElement || node.parentNode;
+    }
+    return null;
+  }
+
+  // Suppress native context menu inside the iframe
+  document.addEventListener("contextmenu", (e: Event) => e.preventDefault());
+
+  // All right-click logic in mousedown — at this point the existing
+  // selection is still intact (browser hasn't modified it yet).
+  // e.preventDefault() stops the browser from changing the selection.
+  document.addEventListener("mousedown", (e: MouseEvent) => {
+    if (e.button !== 2) return;
+    // 1. Right-click on highlight → show highlight context menu
+    const hlEl = findHighlightElement(e.target);
+    if (hlEl) {
+      e.preventDefault();
+      // Clear any word-selection the OS created before dispatching mousedown
+      window.getSelection()?.removeAllRanges();
+      // Also clear on next frame in case browser re-applies selection
+      requestAnimationFrame(() => window.getSelection()?.removeAllRanges());
+      window.parent.postMessage({
+        type: "shibei:highlight-context-menu",
+        source: "shibei",
+        id: hlEl.getAttribute("data-hl-id"),
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+      }, "*");
       return;
     }
-
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    const anchor = computeAnchor(selection);
-
-    const msg: SelectionMsg = {
-      type: "shibei:selection",
-      source: "shibei",
-      text: selection.toString(),
-      anchor,
-      rect: {
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-      },
-    };
-    window.parent.postMessage(msg, "*");
+    // 2. Right-click with text selection → show annotation toolbar
+    const selection = window.getSelection();
+    const selText = selection?.toString().trim() ?? "";
+    if (selText) {
+      e.preventDefault();
+      const range = selection!.getRangeAt(0);
+      const anchor = computeAnchor(selection!);
+      window.parent.postMessage({
+        type: "shibei:context-menu",
+        source: "shibei",
+        text: range.toString(),
+        anchor,
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+      }, "*");
+    }
   });
 
   // ── Message handler (from parent React app) ──
@@ -673,6 +711,14 @@
       case "shibei:remove-highlight":
         if (msg.id) {
           removeHighlight(msg.id);
+        }
+        break;
+
+      case "shibei:update-highlight-color":
+        if (msg.id && msg.color) {
+          document.querySelectorAll(`shibei-hl[data-hl-id="${msg.id}"]`).forEach((el) => {
+            (el as HTMLElement).style.setProperty("--shibei-hl-color", msg.color);
+          });
         }
         break;
 

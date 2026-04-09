@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import styles from "./ContextMenu.module.css";
 
 export interface MenuItem {
@@ -16,6 +16,22 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [adjustedPos, setAdjustedPos] = useState({ left: x, top: y });
+
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const MARGIN = 4;
+    let left = x;
+    let top = y;
+    if (top + rect.height > window.innerHeight - MARGIN) {
+      top = Math.max(MARGIN, window.innerHeight - rect.height - MARGIN);
+    }
+    if (left + rect.width > window.innerWidth - MARGIN) {
+      left = Math.max(MARGIN, window.innerWidth - rect.width - MARGIN);
+    }
+    setAdjustedPos({ left, top });
+  }, [x, y]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -35,7 +51,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   }, [onClose]);
 
   return (
-    <div ref={ref} className={styles.menu} style={{ top: y, left: x }} role="menu">
+    <div ref={ref} className={styles.menu} style={{ top: adjustedPos.top, left: adjustedPos.left }} role="menu">
       {items.map((item) => (
         <button
           key={item.label}

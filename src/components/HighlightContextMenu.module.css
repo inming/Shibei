@@ -1,0 +1,83 @@
+.menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 6px 8px;
+  z-index: 1000;
+  animation: fadeIn 0.12s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.colorRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rowLabel {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.colorBtn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s;
+}
+
+.colorBtn:hover {
+  border-color: var(--color-text-secondary);
+}
+
+.colorBtnActive {
+  border-color: var(--color-text-primary);
+}
+
+.separator {
+  height: 1px;
+  background: var(--color-border-light);
+  margin: 4px 0;
+}
+
+.item {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: none;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 3px;
+}
+
+.item:hover {
+  background: var(--color-bg-secondary);
+}
+
+.danger {
+  color: var(--color-danger);
+}
+
+.danger:hover {
+  background: var(--color-danger);
+  color: white;
+}

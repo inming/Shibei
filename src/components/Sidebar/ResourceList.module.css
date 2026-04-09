@@ -2,6 +2,7 @@
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-sm);
+  padding-bottom: 50vh;
   height: 100%;
   user-select: none;
   -webkit-user-select: none;

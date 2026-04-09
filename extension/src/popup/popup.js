@@ -381,8 +381,8 @@ selectSaveBtn.addEventListener("click", async () => {
     return;
   }
 
-  // Close popup — user interacts with the page now
-  window.close();
+  // Show message — user switches to page to select region
+  showMessage("请在页面中选择要保存的区域", "loading");
 });
 
 init();

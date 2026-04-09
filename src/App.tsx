@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { Toaster } from "react-hot-toast";
 import type { Resource } from "@/types";
 import { DataEvents, type ResourceChangedPayload, type ConfigChangedPayload } from "@/lib/events";
@@ -142,6 +143,28 @@ function App() {
     });
     return () => { unlisten.then((f) => f()); };
   }, []);
+
+  // Deep link handler: shibei://open/resource/{id}?highlight={hlId}
+  useEffect(() => {
+    async function handleDeepLinks(urls: string[]) {
+      for (const url of urls) {
+        const match = url.match(/shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?/);
+        if (!match) continue;
+        const resourceId = match[1];
+        const highlightId = match[2] || undefined;
+        try {
+          const resource = await cmd.getResource(resourceId);
+          if (resource) {
+            openResource(resource, highlightId);
+          }
+        } catch (err) {
+          console.error("Deep link: resource not found", resourceId, err);
+        }
+      }
+    }
+    const unlisten = onOpenUrl(handleDeepLinks);
+    return () => { unlisten.then((f) => f()); };
+  }, [openResource]);
 
   const handleUnlock = useCallback(() => {
     setLocked(false);

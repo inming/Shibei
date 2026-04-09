@@ -42,6 +42,9 @@ function isDuplicate(url) {
   return false;
 }
 
+// Open side panel when action icon is clicked
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
 // Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) {

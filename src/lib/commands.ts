@@ -152,6 +152,10 @@ export function createHighlight(
   return invoke("cmd_create_highlight", { resourceId, textContent, anchor, color });
 }
 
+export function updateHighlightColor(id: string, resourceId: string, color: string): Promise<Highlight> {
+  return invoke("cmd_update_highlight_color", { id, resourceId, color });
+}
+
 export function deleteHighlight(id: string, resourceId: string): Promise<void> {
   return invoke("cmd_delete_highlight", { id, resourceId });
 }

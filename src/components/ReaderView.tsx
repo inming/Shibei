@@ -4,6 +4,7 @@ import type { Resource, Anchor } from "@/types";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { SelectionToolbar } from "@/components/SelectionToolbar";
 import { AnnotationPanel } from "@/components/AnnotationPanel";
+import { HighlightContextMenu } from "@/components/HighlightContextMenu";
 import * as cmd from "@/lib/commands";
 import styles from "./ReaderView.module.css";
 
@@ -34,6 +35,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     return saved ? Math.max(220, parseInt(saved, 10)) : 280;
   });
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
+  const [highlightMenu, setHighlightMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
   const [failedHighlightIds, setFailedHighlightIds] = useState<Set<string>>(new Set());
@@ -96,6 +98,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     getCommentsForHighlight,
     resourceNotes,
     addHighlight,
+    updateHighlightColor,
     removeHighlight,
     addComment,
     removeComment,
@@ -113,52 +116,61 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           setIframeReady(true);
           break;
 
-        case "shibei:selection":
+        // shibei:selection removed — toolbar is only shown via right-click
+
+        case "shibei:selection-cleared":
+          setSelection(null);
+          setHighlightMenu(null);
+          break;
+
+        case "shibei:scroll":
+          // Hide menus on scroll; selection is preserved in iframe for right-click
+          setSelection(null);
+          setHighlightMenu(null);
+          break;
+
+        case "shibei:context-menu":
+          // Right-click with active selection → show toolbar near mouse position
           if (iframeRef.current) {
             const iframeRect = iframeRef.current.getBoundingClientRect();
-            const TOOLBAR_HEIGHT = 36;
             const TOOLBAR_WIDTH = 180;
             const MARGIN = 8;
-            const selRect = msg.rect;
 
-            let top = iframeRect.top + selRect.top - TOOLBAR_HEIGHT - MARGIN;
-            let left =
-              iframeRect.left +
-              selRect.left +
-              selRect.width / 2 -
-              TOOLBAR_WIDTH / 2;
+            // Position at mouse cursor (offset slightly so toolbar doesn't cover click point)
+            let top = iframeRect.top + (msg.mouseY as number) + MARGIN;
+            let left = iframeRect.left + (msg.mouseX as number) - TOOLBAR_WIDTH / 2;
 
-            // Edge detection: if toolbar would go above viewport, show below selection
-            if (top < MARGIN) {
-              top = iframeRect.top + selRect.bottom + MARGIN;
+            // Clamp to viewport
+            if (top + 36 > window.innerHeight - MARGIN) {
+              top = iframeRect.top + (msg.mouseY as number) - 36 - MARGIN;
             }
-
-            // Horizontal clamping
-            if (left < MARGIN) {
-              left = MARGIN;
-            } else if (left + TOOLBAR_WIDTH > window.innerWidth - MARGIN) {
+            if (left < MARGIN) left = MARGIN;
+            else if (left + TOOLBAR_WIDTH > window.innerWidth - MARGIN) {
               left = window.innerWidth - MARGIN - TOOLBAR_WIDTH;
             }
 
             setSelection({
               text: msg.text,
               anchor: msg.anchor,
-              rect: {
-                top,
-                left,
-                width: selRect.width,
-                height: selRect.height,
-              },
+              rect: { top, left, width: 0, height: 0 },
             });
           }
           break;
 
-        case "shibei:selection-cleared":
-          setSelection(null);
-          break;
-
         case "shibei:highlight-clicked":
           setActiveHighlightId(msg.id);
+          break;
+
+        case "shibei:highlight-context-menu":
+          if (iframeRef.current && msg.id) {
+            const iframeRect = iframeRef.current.getBoundingClientRect();
+            setHighlightMenu({
+              id: msg.id as string,
+              top: iframeRect.top + (msg.mouseY as number),
+              left: iframeRect.left + (msg.mouseX as number),
+            });
+            setActiveHighlightId(msg.id as string);
+          }
           break;
 
         case "shibei:link-clicked":
@@ -239,6 +251,21 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       }
     },
     [selection, resource.id, addHighlight],
+  );
+
+  // Handle change highlight color
+  const handleChangeHighlightColor = useCallback(
+    async (id: string, color: string) => {
+      const updated = await updateHighlightColor(id, color);
+      if (updated) {
+        // Tell iframe to update the highlight color
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "shibei:update-highlight-color", source: "shibei", id, color },
+          "*",
+        );
+      }
+    },
+    [updateHighlightColor],
   );
 
   // Handle delete highlight
@@ -377,11 +404,29 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         )}
       </div>
 
-      {/* Selection toolbar */}
+      {/* Selection toolbar (right-click on text selection) */}
       {selection && (
         <SelectionToolbar
           position={{ top: selection.rect.top, left: selection.rect.left }}
           onSelectColor={handleCreateHighlight}
+        />
+      )}
+
+      {/* Highlight context menu (right-click on existing highlight) */}
+      {highlightMenu && (
+        <HighlightContextMenu
+          position={{ top: highlightMenu.top, left: highlightMenu.left }}
+          highlight={highlights.find((h) => h.id === highlightMenu.id) ?? null}
+          resourceId={resource.id}
+          onChangeColor={(color) => {
+            handleChangeHighlightColor(highlightMenu.id, color);
+            setHighlightMenu(null);
+          }}
+          onDelete={() => {
+            handleDeleteHighlight(highlightMenu.id);
+            setHighlightMenu(null);
+          }}
+          onClose={() => setHighlightMenu(null)}
         />
       )}
 
@@ -399,6 +444,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         failedHighlightIds={failedHighlightIds}
         onClickHighlight={handlePanelClickHighlight}
         onDeleteHighlight={handleDeleteHighlight}
+        onChangeHighlightColor={handleChangeHighlightColor}
         onAddComment={(hlId, content) => addComment(hlId, content)}
         onDeleteComment={removeComment}
         onEditComment={editComment}

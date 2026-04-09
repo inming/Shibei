@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import toast from "react-hot-toast";
 import { TagSubMenu } from "@/components/Sidebar/TagSubMenu";
 import { FolderPickerMenu } from "@/components/Sidebar/FolderPickerMenu";
 import styles from "./ResourceContextMenu.module.css";
@@ -57,10 +58,30 @@ export function ResourceContextMenu({
   }, [handleOutsideClick, handleKeyDown]);
 
   // Adjust position so menu doesn't overflow viewport
+  const [adjustedPos, setAdjustedPos] = useState({ left: x, top: y });
+
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const MARGIN = 4;
+    let left = x;
+    let top = y;
+    if (top + rect.height > window.innerHeight - MARGIN) {
+      top = Math.max(MARGIN, window.innerHeight - rect.height - MARGIN);
+    }
+    if (left + rect.width > window.innerWidth - MARGIN) {
+      left = Math.max(MARGIN, window.innerWidth - rect.width - MARGIN);
+    }
+    setAdjustedPos({ left, top });
+  }, [x, y]);
+
+  // Determine if submenus should flip horizontally
+  const flipSub = adjustedPos.left + 320 > window.innerWidth;
+
   const menuStyle: React.CSSProperties = {
     position: "fixed",
-    left: x,
-    top: y,
+    left: adjustedPos.left,
+    top: adjustedPos.top,
     zIndex: 1000,
   };
 
@@ -71,6 +92,18 @@ export function ResourceContextMenu({
           编辑
         </button>
       )}
+      {isSingleSelect && (
+        <button
+          className={styles.item}
+          onClick={() => {
+            navigator.clipboard.writeText(`shibei://open/resource/${resourceIds[0]}`);
+            toast.success("链接已复制");
+            onClose();
+          }}
+        >
+          复制链接
+        </button>
+      )}
       <div
         className={`${styles.item} ${styles.hasSubmenu}`}
         onMouseEnter={() => setOpenSub("tags")}
@@ -78,7 +111,7 @@ export function ResourceContextMenu({
         <span>标签</span>
         <span className={styles.arrow}>&rsaquo;</span>
         {openSub === "tags" && (
-          <div className={styles.submenuPanel}>
+          <div className={`${styles.submenuPanel} ${flipSub ? styles.submenuFlip : ""}`}>
             <TagSubMenu
               resourceIds={resourceIds}
               onClose={onClose}
@@ -94,7 +127,7 @@ export function ResourceContextMenu({
         <span>移动到</span>
         <span className={styles.arrow}>&rsaquo;</span>
         {openSub === "move" && (
-          <div className={styles.submenuPanel}>
+          <div className={`${styles.submenuPanel} ${flipSub ? styles.submenuFlip : ""}`}>
             <FolderPickerMenu
               currentFolderId={currentFolderId}
               onSelect={(folderId) => {

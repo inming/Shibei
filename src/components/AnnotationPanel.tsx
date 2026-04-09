@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import toast from "react-hot-toast";
 import type { Highlight, Comment, Resource } from "@/types";
 import styles from "./AnnotationPanel.module.css";
 import { Modal } from "@/components/Modal";
 import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
+import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
 
 function autoResize(el: HTMLTextAreaElement | null) {
   if (!el) return;
@@ -19,6 +21,7 @@ interface AnnotationPanelProps {
   activeHighlightId: string | null;
   onClickHighlight: (id: string) => void;
   onDeleteHighlight: (id: string) => void;
+  onChangeHighlightColor: (id: string, color: string) => void;
   onAddComment: (highlightId: string | null, content: string) => void;
   onDeleteComment: (id: string) => void;
   onEditComment: (id: string, content: string) => void;
@@ -34,6 +37,7 @@ export function AnnotationPanel({
   activeHighlightId,
   onClickHighlight,
   onDeleteHighlight,
+  onChangeHighlightColor,
   onAddComment,
   onDeleteComment,
   onEditComment,
@@ -122,6 +126,7 @@ export function AnnotationPanel({
                   commentCount: getCommentsForHighlight(hl.id).length,
                 })
               }
+              onChangeColor={(color) => onChangeHighlightColor(hl.id, color)}
               onAddComment={(content) => onAddComment(hl.id, content)}
               onDeleteComment={(id) => setDeleteConfirm({ type: "comment", id })}
               onEditComment={onEditComment}
@@ -180,6 +185,7 @@ interface HighlightEntryProps {
   isFailed: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onChangeColor: (color: string) => void;
   onAddComment: (content: string) => void;
   onDeleteComment: (id: string) => void;
   onEditComment: (id: string, content: string) => void;
@@ -189,7 +195,7 @@ import { forwardRef } from "react";
 
 const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
   function HighlightEntry(
-    { highlight, comments, isActive, isFailed, onClick, onDelete, onAddComment, onDeleteComment, onEditComment },
+    { highlight, comments, isActive, isFailed, onClick, onDelete, onChangeColor, onAddComment, onDeleteComment, onEditComment },
     ref,
   ) {
     const [showInput, setShowInput] = useState(false);
@@ -198,6 +204,33 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     const [editText, setEditText] = useState("");
     const [previewingEdit, setPreviewingEdit] = useState(false);
     const [previewingNew, setPreviewingNew] = useState(false);
+    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+    const ctxRef = useRef<HTMLDivElement>(null);
+
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Clear any text selection caused by right-click
+      window.getSelection()?.removeAllRanges();
+      setCtxMenu({ x: e.clientX, y: e.clientY });
+    }, []);
+
+    // Close context menu on outside click or escape
+    useEffect(() => {
+      if (!ctxMenu) return;
+      function handleClick(e: MouseEvent) {
+        if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) setCtxMenu(null);
+      }
+      function handleKey(e: KeyboardEvent) {
+        if (e.key === "Escape") setCtxMenu(null);
+      }
+      document.addEventListener("mousedown", handleClick);
+      document.addEventListener("keydown", handleKey);
+      return () => {
+        document.removeEventListener("mousedown", handleClick);
+        document.removeEventListener("keydown", handleKey);
+      };
+    }, [ctxMenu]);
 
     function handleSubmit() {
       if (!commentText.trim()) return;
@@ -213,21 +246,71 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
         className={`${styles.highlightItem} ${isActive ? styles.highlightItemActive : ""} ${isFailed ? styles.highlightItemFailed : ""}`}
         style={{ borderLeftColor: isFailed ? "var(--color-text-muted)" : highlight.color }}
         onClick={onClick}
+        onContextMenu={handleContextMenu}
       >
         <div className={styles.highlightText}>{highlight.text_content}</div>
         <div className={styles.highlightMeta}>
           {isFailed && <span className={styles.failedBadge}>定位失败</span>}
+          <span
+            className={styles.colorDot}
+            style={{ background: highlight.color }}
+          />
           <span>{new Date(highlight.created_at).toLocaleDateString()}</span>
-          <button
-            className={styles.deleteBtn}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            删除
-          </button>
         </div>
+
+        {/* Right-click context menu */}
+        {ctxMenu && (
+          <div
+            ref={ctxRef}
+            className={styles.hlContextMenu}
+            style={{ top: ctxMenu.y, left: ctxMenu.x }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.hlColorSection}>
+              <div className={styles.hlColorRow}>
+                <span className={styles.hlColorLabel} title="浅色页面">☀︎</span>
+                {LIGHT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className={`${styles.hlColorBtn} ${c === highlight.color ? styles.hlColorBtnActive : ""}`}
+                    style={{ background: c }}
+                    onClick={() => { onChangeColor(c); setCtxMenu(null); }}
+                  />
+                ))}
+              </div>
+              <div className={styles.hlColorRow}>
+                <span className={styles.hlColorLabel} title="深色页面">☾</span>
+                {DARK_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className={`${styles.hlColorBtn} ${c === highlight.color ? styles.hlColorBtnActive : ""}`}
+                    style={{ background: c }}
+                    onClick={() => { onChangeColor(c); setCtxMenu(null); }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className={styles.hlContextSeparator} />
+            <button
+              className={styles.hlContextItem}
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  `shibei://open/resource/${highlight.resource_id}?highlight=${highlight.id}`
+                );
+                toast.success("链接已复制");
+                setCtxMenu(null);
+              }}
+            >
+              复制链接
+            </button>
+            <button
+              className={`${styles.hlContextItem} ${styles.danger}`}
+              onClick={() => { onDelete(); setCtxMenu(null); }}
+            >
+              删除标注
+            </button>
+          </div>
+        )}
 
         {/* Comments */}
         {comments.length > 0 && (

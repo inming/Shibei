@@ -85,6 +85,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(cmd_state)
         .manage(Arc::new(sync::EncryptionState::new()))
         .invoke_handler(tauri::generate_handler![
@@ -112,6 +113,7 @@ pub fn run() {
             commands::cmd_get_resources_by_tag,
             commands::cmd_get_highlights,
             commands::cmd_create_highlight,
+            commands::cmd_update_highlight_color,
             commands::cmd_delete_highlight,
             commands::cmd_get_comments,
             commands::cmd_create_comment,
