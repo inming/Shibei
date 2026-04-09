@@ -190,31 +190,23 @@ saveBtn.addEventListener("click", async () => {
   saveBtn.disabled = true;
 
   try {
-    // Step 1: Inject SingleFile bundle
+    // Step 1: Inject SingleFile bundle into MAIN world
     showMessage("注入 SingleFile...", "loading");
-    console.log("[shibei] injecting SingleFile bundle into tab", pageInfo.tabId);
-
     await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
       files: ["lib/single-file-bundle.js"],
       world: "MAIN",
     });
-    console.log("[shibei] bundle injected");
 
-    // Step 2: Run capture
+    // Step 2: Capture page in MAIN world, strip media, write to DOM element
     showMessage("正在抓取页面（可能需要几秒）...", "loading");
-    console.log("[shibei] running SingleFile capture");
-
     const captureResults = await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
       world: "MAIN",
       func: async () => {
         try {
-          if (typeof SingleFile === "undefined") {
-            return { success: false, error: "SingleFile is undefined" };
-          }
-          if (!SingleFile.getPageData) {
-            return { success: false, error: "SingleFile.getPageData not found. Keys: " + Object.keys(SingleFile).join(",") };
+          if (typeof SingleFile === "undefined" || !SingleFile.getPageData) {
+            return { success: false, error: "SingleFile not available" };
           }
           const pageData = await SingleFile.getPageData({
             removeHiddenElements: false,
@@ -223,70 +215,112 @@ saveBtn.addEventListener("click", async () => {
             compressHTML: true,
             loadDeferredImages: true,
             loadDeferredImagesMaxIdleTime: 3000,
+            maxResourceSizeEnabled: true,
+            maxResourceSize: 5,
           });
-          return { success: true, content: pageData.content, size: pageData.content.length };
+
+          // Strip media elements and noscript
+          let content = pageData.content;
+          content = content.replace(/<video[\s>][\s\S]*?<\/video>/gi, '');
+          content = content.replace(/<audio[\s>][\s\S]*?<\/audio>/gi, '');
+          content = content.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, '');
+
+          // Write to shared DOM element (ISOLATED world will read it)
+          let el = document.getElementById("__shibei_transfer__");
+          if (!el) {
+            el = document.createElement("script");
+            el.type = "text/shibei-transfer";
+            el.id = "__shibei_transfer__";
+            el.style.display = "none";
+            document.documentElement.appendChild(el);
+          }
+          el.textContent = content;
+
+          return { success: true, size: content.length };
         } catch (err) {
           return { success: false, error: String(err) };
         }
       },
     });
 
-    console.log("[shibei] capture results:", JSON.stringify(captureResults?.[0]?.result).slice(0, 200));
-
     const captureResult = captureResults?.[0]?.result;
-    if (!captureResult || !captureResult.success) {
+    if (!captureResult?.success) {
       throw new Error(captureResult?.error || "抓取返回空结果");
     }
-
     console.log("[shibei] captured", captureResult.size, "bytes");
 
-    // Step 3: Base64 encode and POST
+    // Step 3: POST from ISOLATED world (reads DOM element, sends raw HTML)
     showMessage("正在保存...", "loading");
 
-    const tags = tagsInput.value
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-
-    // Encode content as base64 (chunked to avoid O(n²) string concat)
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(captureResult.content);
-    const chunks = [];
-    for (let i = 0; i < bytes.length; i += 8192) {
-      chunks.push(String.fromCharCode(...bytes.subarray(i, i + 8192)));
-    }
-    const base64Content = btoa(chunks.join(""));
-
-    const payload = {
+    const tags = tagsInput.value.split(",").map((t) => t.trim()).filter(Boolean);
+    const metadata = {
       title: pageInfo.title,
       url: pageInfo.url,
       domain: pageInfo.domain,
-      author: pageInfo.author || null,
-      description: pageInfo.description || null,
-      content: base64Content,
-      content_type: "html",
-      folder_id: folderId,
+      author: pageInfo.author,
+      description: pageInfo.description,
+      folderId,
       tags,
-      captured_at: new Date().toISOString(),
     };
 
-    console.log("[shibei] posting to server, payload size:", base64Content.length);
+    const saveResults = await chrome.scripting.executeScript({
+      target: { tabId: pageInfo.tabId },
+      // default world = ISOLATED — can access DOM and fetch localhost
+      func: async (meta) => {
+        const API = "http://127.0.0.1:21519";
+        try {
+          // Read content from shared DOM element
+          const el = document.getElementById("__shibei_transfer__");
+          const content = el?.textContent || "";
+          if (el) el.remove();
+          if (!content) return { success: false, error: "No content in transfer element" };
 
-    const token = await getToken();
-    const res = await fetch(`${API_BASE}/api/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader(token) },
-      body: JSON.stringify(payload),
+          // Get auth token
+          const tokenRes = await fetch(`${API}/token`, { signal: AbortSignal.timeout(2000) });
+          if (!tokenRes.ok) return { success: false, error: `Token fetch failed: HTTP ${tokenRes.status}` };
+          const { token } = await tokenRes.json();
+
+          // Build metadata headers
+          const headers = {
+            "Content-Type": "text/html; charset=utf-8",
+            "Authorization": `Bearer ${token}`,
+            "X-Shibei-Title": encodeURIComponent(meta.title || ""),
+            "X-Shibei-Url": encodeURIComponent(meta.url || ""),
+            "X-Shibei-Domain": encodeURIComponent(meta.domain || ""),
+            "X-Shibei-Folder-Id": meta.folderId || "",
+            "X-Shibei-Captured-At": new Date().toISOString(),
+          };
+          if (meta.author) headers["X-Shibei-Author"] = encodeURIComponent(meta.author);
+          if (meta.description) headers["X-Shibei-Description"] = encodeURIComponent(meta.description);
+          if (meta.tags?.length) headers["X-Shibei-Tags"] = meta.tags.map(encodeURIComponent).join(",");
+
+          // POST raw HTML body
+          const res = await fetch(`${API}/api/save-raw`, {
+            method: "POST",
+            headers,
+            body: content,
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Unknown error" }));
+            return { success: false, error: err.error || `HTTP ${res.status}` };
+          }
+
+          const result = await res.json();
+          return { success: true, resource_id: result.resource_id };
+        } catch (err) {
+          return { success: false, error: String(err) };
+        }
+      },
+      args: [metadata],
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`HTTP ${res.status}: ${err}`);
+    const saveResult = saveResults?.[0]?.result;
+    if (!saveResult?.success) {
+      throw new Error(saveResult?.error || "保存失败");
     }
 
-    const result = await res.json();
-    console.log("[shibei] saved:", result);
-
+    console.log("[shibei] saved:", saveResult.resource_id);
     showMessage("保存成功！", "success");
     saveBtn.textContent = "已保存";
   } catch (err) {
