@@ -248,14 +248,14 @@ saveBtn.addEventListener("click", async () => {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    // Encode content as base64
+    // Encode content as base64 (chunked to avoid O(n²) string concat)
     const encoder = new TextEncoder();
     const bytes = encoder.encode(captureResult.content);
-    let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    const chunks = [];
+    for (let i = 0; i < bytes.length; i += 8192) {
+      chunks.push(String.fromCharCode(...bytes.subarray(i, i + 8192)));
     }
-    const base64Content = btoa(binary);
+    const base64Content = btoa(chunks.join(""));
 
     const payload = {
       title: pageInfo.title,
