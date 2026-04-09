@@ -87,6 +87,9 @@ impl SyncEngine {
             Err(_) => return Err(SyncError::AlreadyRunning),
         };
 
+        // Auto-migrate uncompressed snapshots (one-time)
+        self.migrate_snapshots_to_gzip().await?;
+
         // Phase 0: First-time sync — upload full state snapshot if never synced before
         self.ensure_initial_snapshot().await?;
 
@@ -365,9 +368,9 @@ impl SyncEngine {
     }
 
     /// Phase 0: On first sync (or after sync state reset), upload a full state snapshot
-    /// + all existing resource snapshots. Each device uploads its own snapshot when
-    /// last_sync_at is unset, even if other devices' snapshots exist on S3. This ensures
-    /// no data is lost when different devices have different subsets of data.
+    /// and all existing resource snapshots. Each device uploads its own snapshot when
+    /// `last_sync_at` is unset, even if other devices' snapshots exist on S3.
+    /// This ensures no data is lost when different devices have different subsets of data.
     async fn ensure_initial_snapshot(&self) -> Result<(), SyncError> {
         // Check if we've ever synced
         {
@@ -1393,6 +1396,68 @@ impl SyncEngine {
         }
     }
 
+    /// One-time migration: re-upload existing uncompressed snapshots as gzip.
+    /// Skips if already done (sync_state flag `config:snapshots_gzip_migrated`).
+    pub async fn migrate_snapshots_to_gzip(&self) -> Result<(), SyncError> {
+        // Check if already migrated
+        {
+            let conn = self.pool.get().map_err(DbError::Pool)?;
+            if sync_state::get(&conn, "config:snapshots_gzip_migrated")? == Some("done".to_string()) {
+                return Ok(());
+            }
+        }
+
+        eprintln!("[sync] Migrating existing snapshots to gzip...");
+
+        // List all objects under snapshots/ prefix
+        let objects = self.backend.list("snapshots/").await?;
+
+        // Find uncompressed snapshot.html keys (exclude already-migrated .html.gz)
+        let old_keys: Vec<String> = objects
+            .iter()
+            .filter(|obj| obj.key.ends_with("/snapshot.html"))
+            .map(|obj| obj.key.clone())
+            .collect();
+
+        if old_keys.is_empty() {
+            eprintln!("[sync] No uncompressed snapshots to migrate.");
+        } else {
+            eprintln!("[sync] Found {} uncompressed snapshot(s) to migrate.", old_keys.len());
+
+            for old_key in &old_keys {
+                // Download raw HTML
+                let data = match self.backend.download(old_key).await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        eprintln!("[sync] Warning: failed to download {}: {}", old_key, e);
+                        continue;
+                    }
+                };
+
+                // Gzip compress
+                let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                std::io::Write::write_all(&mut encoder, &data)?;
+                let compressed = encoder.finish()?;
+
+                // Upload as .html.gz
+                let new_key = format!("{}.gz", old_key);
+                self.backend.upload(&new_key, &compressed).await?;
+
+                // Delete old key
+                self.backend.delete(old_key).await?;
+
+                eprintln!("[sync] Migrated: {} -> {}", old_key, new_key);
+            }
+        }
+
+        // Mark migration complete
+        let conn = self.pool.get().map_err(DbError::Pool)?;
+        sync_state::set(&conn, "config:snapshots_gzip_migrated", "done")?;
+
+        eprintln!("[sync] Snapshot gzip migration complete.");
+        Ok(())
+    }
+
     /// Upload a local snapshot.html to the backend (gzip-compressed).
     pub async fn upload_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
         let snapshot_path = self.base_dir.join("storage").join(resource_id).join("snapshot.html");
@@ -2107,5 +2172,47 @@ mod tests {
             let status = sync_state::get(&conn, "snapshot:res-1").unwrap();
             assert_eq!(status, Some("synced".to_string()));
         }
+    }
+
+    #[tokio::test]
+    async fn test_migrate_snapshots_to_gzip() {
+        let backend = Arc::new(MockBackend::new());
+        let dir = tempfile::tempdir().unwrap();
+        let (_db_dir, pool) = test_pool();
+        let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
+
+        // Simulate pre-existing uncompressed snapshots on S3
+        let html_data = b"<html>old snapshot</html>";
+        backend.upload("snapshots/res-old/snapshot.html", html_data).await.unwrap();
+
+        // Run migration
+        engine.migrate_snapshots_to_gzip().await.unwrap();
+
+        // Verify: old key deleted, new .gz key exists with gzip data
+        {
+            let store = backend.store.lock().await;
+            assert!(!store.contains_key("snapshots/res-old/snapshot.html"),
+                "old uncompressed key should be deleted");
+            assert!(store.contains_key("snapshots/res-old/snapshot.html.gz"),
+                "new gzip key should exist");
+            let compressed = store.get("snapshots/res-old/snapshot.html.gz").unwrap();
+            assert_eq!(&compressed[..2], &[0x1f, 0x8b], "should be gzip data");
+
+            // Verify round-trip: decompress and check content
+            let mut decoder = flate2::read::GzDecoder::new(&compressed[..]);
+            let mut decompressed = Vec::new();
+            std::io::Read::read_to_end(&mut decoder, &mut decompressed).unwrap();
+            assert_eq!(&decompressed, html_data);
+        }
+
+        // Verify: sync_state flag set
+        {
+            let conn = pool.get().unwrap();
+            let flag = sync_state::get(&conn, "config:snapshots_gzip_migrated").unwrap();
+            assert_eq!(flag, Some("done".to_string()));
+        }
+
+        // Verify: running again is a no-op (idempotent)
+        engine.migrate_snapshots_to_gzip().await.unwrap();
     }
 }
