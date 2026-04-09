@@ -158,7 +158,7 @@ impl SyncEngine {
     pub async fn list_orphan_snapshots(&self) -> Result<Vec<(String, u64)>, SyncError> {
         let objects = self.backend.list("snapshots/").await?;
 
-        // Extract resource IDs from S3 keys like "snapshots/{id}/snapshot.html"
+        // Extract resource IDs from S3 keys like "snapshots/{id}/snapshot.html.gz"
         let mut s3_entries: Vec<(String, u64)> = Vec::new();
         for obj in &objects {
             let parts: Vec<&str> = obj.key.split('/').collect();
@@ -197,7 +197,7 @@ impl SyncEngine {
         let mut freed = 0u64;
 
         for (resource_id, size) in &orphans {
-            let key = format!("snapshots/{}/snapshot.html", resource_id);
+            let key = format!("snapshots/{}/snapshot.html.gz", resource_id);
             match self.backend.delete(&key).await {
                 Ok(()) => {
                     deleted += 1;
@@ -294,7 +294,7 @@ impl SyncEngine {
         {
             let mut uploaded_count = 0usize;
             for id in &active_ids {
-                let s3_key = format!("snapshots/{}/snapshot.html", id);
+                let s3_key = format!("snapshots/{}/snapshot.html.gz", id);
                 let exists = self.backend.head(&s3_key).await?.is_some();
                 if !exists {
                     if let Err(e) = self.upload_snapshot(id).await {
