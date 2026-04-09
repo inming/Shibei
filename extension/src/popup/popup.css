@@ -181,3 +181,33 @@ body {
   padding: 20px;
   color: #666;
 }
+
+.capture-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.capture-status.capturing {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.capture-status.capture-done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.capture-status.capture-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+#capture-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}

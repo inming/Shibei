@@ -22,6 +22,11 @@
 
     <div id="url-warning" class="url-warning" style="display:none"></div>
 
+    <div id="capture-status" class="capture-status" style="display:none">
+      <span id="capture-text"></span>
+      <span id="capture-timer"></span>
+    </div>
+
     <div class="field">
       <label>保存到文件夹</label>
       <select id="folder-select"></select>
@@ -33,7 +38,7 @@
     </div>
 
     <div class="btn-group">
-      <button id="save-btn" class="save-btn">保存整页</button>
+      <button id="save-btn" class="save-btn" disabled>保存整页</button>
       <button id="select-save-btn" class="save-btn save-btn-outline">选区保存</button>
     </div>
 
