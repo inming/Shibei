@@ -1,6 +1,7 @@
 // Relay script — runs in ISOLATED world.
 // Bridges postMessage from MAIN world (region-selector.js) to local HTTP server.
-// Reads large content from a shared DOM element to avoid IPC size limits.
+// Reads large content from a shared DOM element and POSTs raw HTML to avoid
+// base64 encoding and JSON wrapping that cause memory exhaustion on large pages.
 
 // Guard against double-injection
 if (window.__shibeiRelayInjected) {
@@ -27,35 +28,27 @@ async function relaySaveRegion(data) {
   if (!tokenRes.ok) throw new Error(`Token fetch failed: HTTP ${tokenRes.status}`);
   const { token } = await tokenRes.json();
 
-  // Base64 encode content (chunked to avoid O(n²) string concat)
-  const bytes = new TextEncoder().encode(content);
-  const chunks = [];
-  for (let i = 0; i < bytes.length; i += 8192) {
-    chunks.push(String.fromCharCode(...bytes.subarray(i, i + 8192)));
-  }
-  const base64 = btoa(chunks.join(""));
-
-  const payload = {
-    title: data.title,
-    url: data.url,
-    domain: data.domain,
-    author: data.author || null,
-    description: data.description || null,
-    content: base64,
-    content_type: "html",
-    folder_id: data.folderId,
-    tags: data.tags || [],
-    captured_at: new Date().toISOString(),
-    selection_meta: data.selection_meta,
+  // POST raw HTML body with metadata in headers (no base64, no JSON wrapping)
+  const headers = {
+    "Content-Type": "text/html; charset=utf-8",
+    "Authorization": `Bearer ${token}`,
+    "X-Shibei-Title": encodeURIComponent(data.title || ""),
+    "X-Shibei-Url": encodeURIComponent(data.url || ""),
+    "X-Shibei-Domain": encodeURIComponent(data.domain || ""),
+    "X-Shibei-Folder-Id": data.folderId || "",
+    "X-Shibei-Captured-At": new Date().toISOString(),
   };
+  if (data.author) headers["X-Shibei-Author"] = encodeURIComponent(data.author);
+  if (data.description) headers["X-Shibei-Description"] = encodeURIComponent(data.description);
+  if (data.selection_meta) headers["X-Shibei-Selection-Meta"] = encodeURIComponent(data.selection_meta);
+  if (data.tags && data.tags.length > 0) {
+    headers["X-Shibei-Tags"] = data.tags.map(encodeURIComponent).join(",");
+  }
 
-  const res = await fetch(`${RELAY_API_BASE}/api/save`, {
+  const res = await fetch(`${RELAY_API_BASE}/api/save-raw`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+    headers,
+    body: content,
   });
 
   if (!res.ok) {

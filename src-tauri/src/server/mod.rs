@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json};
@@ -168,7 +169,7 @@ pub async fn start_server(
             axum::http::Method::DELETE,
             axum::http::Method::OPTIONS,
         ])
-        .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::header::AUTHORIZATION]);
+        .allow_headers(tower_http::cors::AllowHeaders::any());
 
     let app = Router::new()
         .route("/api/ping", get(handle_ping))
@@ -178,6 +179,7 @@ pub async fn start_server(
         .route("/api/folder-counts", get(handle_folder_counts))
         .route("/api/check-url", get(handle_check_url))
         .route("/api/save", post(handle_save))
+        .route("/api/save-raw", post(handle_save_raw))
         .route("/api/resources", get(handle_list_resources))
         .route(
             "/api/resources/{id}",
@@ -524,6 +526,186 @@ async fn handle_save(
         "resource_id": resource.id,
         "folder_id": resource.folder_id,
     }));
+
+    Ok(Json(SaveResponse {
+        resource_id: resource.id,
+    }))
+}
+
+/// Helper to read a percent-encoded header value as a String.
+fn get_header_str(headers: &HeaderMap, key: &str) -> Option<String> {
+    headers
+        .get(key)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| {
+            urlencoding::decode(v)
+                .map(|s| s.into_owned())
+                .unwrap_or_else(|_| v.to_string())
+        })
+}
+
+/// Save endpoint that accepts raw HTML body with metadata in headers.
+/// Avoids base64 encoding and JSON wrapping to handle large files without
+/// memory exhaustion in the browser extension.
+async fn handle_save_raw(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<SaveResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+
+    let title = get_header_str(&headers, "x-shibei-title")
+        .unwrap_or_else(|| "Untitled".to_string());
+    let url = get_header_str(&headers, "x-shibei-url")
+        .unwrap_or_default();
+    let domain = get_header_str(&headers, "x-shibei-domain");
+    let author = get_header_str(&headers, "x-shibei-author");
+    let description = get_header_str(&headers, "x-shibei-description");
+    let folder_id = get_header_str(&headers, "x-shibei-folder-id")
+        .unwrap_or_default();
+    let captured_at = get_header_str(&headers, "x-shibei-captured-at")
+        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+    let selection_meta = get_header_str(&headers, "x-shibei-selection-meta");
+    let tags_str = get_header_str(&headers, "x-shibei-tags")
+        .unwrap_or_default();
+    let tag_names: Vec<String> = tags_str
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let content_bytes: Vec<u8> = body.to_vec();
+
+    // Generate resource_id and save to filesystem
+    let resource_id = uuid::Uuid::new_v4().to_string();
+    let rel_path =
+        storage::save_snapshot(&state.base_dir, &resource_id, &content_bytes).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("storage error: {}", e),
+                }),
+            )
+        })?;
+
+    let conn = state.pool.get().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+
+    conn.execute_batch("BEGIN").map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("db error: {}", e),
+            }),
+        )
+    })?;
+
+    let sync_ctx = state.sync_context();
+    let resource = match resources::create_resource(
+        &conn,
+        resources::CreateResourceInput {
+            id: Some(resource_id.clone()),
+            title,
+            url,
+            domain,
+            author,
+            description,
+            folder_id,
+            resource_type: "html".to_string(),
+            file_path: rel_path.to_string_lossy().to_string(),
+            captured_at,
+            selection_meta,
+        },
+        sync_ctx.as_ref(),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            let _ = std::fs::remove_dir_all(storage::resource_dir(&state.base_dir, &resource_id));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("db error: {}", e),
+                }),
+            ));
+        }
+    };
+
+    // Associate tags
+    let all_tags = tags::list_tags(&conn).unwrap_or_default();
+    for tag_name in &tag_names {
+        let tag = all_tags.iter().find(|t| t.name == *tag_name);
+        let tag_id = match tag {
+            Some(t) => t.id.clone(),
+            None => {
+                match tags::create_tag(&conn, tag_name, "#888888", sync_ctx.as_ref()) {
+                    Ok(new_tag) => new_tag.id,
+                    Err(e) => {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        let _ = std::fs::remove_dir_all(
+                            storage::resource_dir(&state.base_dir, &resource_id),
+                        );
+                        return Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse {
+                                error: format!("tag error: {}", e),
+                            }),
+                        ));
+                    }
+                }
+            }
+        };
+
+        if let Err(e) = tags::add_tag_to_resource(&conn, &resource.id, &tag_id, sync_ctx.as_ref())
+        {
+            let _ = conn.execute_batch("ROLLBACK");
+            let _ =
+                std::fs::remove_dir_all(storage::resource_dir(&state.base_dir, &resource_id));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("tag association error: {}", e),
+                }),
+            ));
+        }
+    }
+
+    conn.execute_batch("COMMIT").map_err(|e| {
+        let _ = std::fs::remove_dir_all(storage::resource_dir(&state.base_dir, &resource_id));
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("db error: {}", e),
+            }),
+        )
+    })?;
+
+    // Extract and store plain text (best-effort)
+    {
+        let html_str = String::from_utf8_lossy(&content_bytes);
+        let text = plain_text::extract_plain_text(&html_str);
+        if !text.is_empty() {
+            let _ = resources::set_plain_text(&conn, &resource.id, &text);
+        }
+    }
+
+    // Build search index (best-effort)
+    let _ = search::rebuild_search_index(&conn, &resource.id);
+
+    // Notify desktop app
+    let _ = state
+        .app_handle
+        .emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({
+            "action": "created",
+            "resource_id": resource.id,
+            "folder_id": resource.folder_id,
+        }));
 
     Ok(Json(SaveResponse {
         resource_id: resource.id,
