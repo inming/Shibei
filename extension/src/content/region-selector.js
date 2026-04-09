@@ -355,8 +355,13 @@
         compressHTML: true,
         loadDeferredImages: true,
         loadDeferredImagesMaxIdleTime: 3000,
+        maxResourceSizeEnabled: true,
+        maxResourceSize: 5,
       });
       fullHtml = pageData.content;
+      fullHtml = fullHtml.replace(/<video[\s>][\s\S]*?<\/video>/gi, '');
+      fullHtml = fullHtml.replace(/<audio[\s>][\s\S]*?<\/audio>/gi, '');
+      fullHtml = fullHtml.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, '');
     } catch (err) {
       showToast("页面抓取失败: " + err.message, "#dc2626");
       setTimeout(cleanup, 2000);
