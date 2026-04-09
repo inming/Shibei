@@ -342,30 +342,45 @@
       return;
     }
 
-    // Run SingleFile capture (bundle was pre-injected by popup)
+    // Reuse pre-captured HTML from auto-capture if available
     let fullHtml;
-    try {
-      if (typeof SingleFile === "undefined" || !SingleFile.getPageData) {
-        throw new Error("SingleFile not available");
+    if (window.__shibeiCapturedHtml) {
+      fullHtml = window.__shibeiCapturedHtml;
+    } else {
+      // Wait for auto-capture to finish (poll every 200ms, max 60s)
+      showToast("等待页面抓取完成...", "#1e40af");
+      const waitStart = Date.now();
+      while (!window.__shibeiCapturedHtml && Date.now() - waitStart < 60000) {
+        await new Promise((r) => setTimeout(r, 200));
       }
-      const pageData = await SingleFile.getPageData({
-        removeHiddenElements: false,
-        removeUnusedStyles: true,
-        removeUnusedFonts: true,
-        compressHTML: true,
-        loadDeferredImages: true,
-        loadDeferredImagesMaxIdleTime: 3000,
-        maxResourceSizeEnabled: true,
-        maxResourceSize: 5,
-      });
-      fullHtml = pageData.content;
-      fullHtml = fullHtml.replace(/<video[\s>][\s\S]*?<\/video>/gi, '');
-      fullHtml = fullHtml.replace(/<audio[\s>][\s\S]*?<\/audio>/gi, '');
-      fullHtml = fullHtml.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, '');
-    } catch (err) {
-      showToast("页面抓取失败: " + err.message, "#dc2626");
-      setTimeout(cleanup, 2000);
-      return;
+      if (window.__shibeiCapturedHtml) {
+        fullHtml = window.__shibeiCapturedHtml;
+      } else {
+        // Fallback: capture now (panel wasn't opened or capture failed)
+        try {
+          if (typeof SingleFile === "undefined" || !SingleFile.getPageData) {
+            throw new Error("SingleFile not available");
+          }
+          const pageData = await SingleFile.getPageData({
+            removeHiddenElements: false,
+            removeUnusedStyles: true,
+            removeUnusedFonts: true,
+            compressHTML: true,
+            loadDeferredImages: true,
+            loadDeferredImagesMaxIdleTime: 3000,
+            maxResourceSizeEnabled: true,
+            maxResourceSize: 5,
+          });
+          fullHtml = pageData.content;
+          fullHtml = fullHtml.replace(/<video[\s>][\s\S]*?<\/video>/gi, "");
+          fullHtml = fullHtml.replace(/<audio[\s>][\s\S]*?<\/audio>/gi, "");
+          fullHtml = fullHtml.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, "");
+        } catch (err) {
+          showToast("页面抓取失败: " + err.message, "#dc2626");
+          setTimeout(cleanup, 2000);
+          return;
+        }
+      }
     }
 
     // Clip HTML to selected subtree
