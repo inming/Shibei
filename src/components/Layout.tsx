@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSe
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import type { Resource } from "@/types";
+import { ALL_RESOURCES_ID, type Resource } from "@/types";
 import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
 import * as cmd from "@/lib/commands";
 import { useSync } from "@/hooks/useSync";
@@ -26,7 +26,7 @@ interface LibraryViewProps {
 
 export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLock }: LibraryViewProps) {
   const { t } = useTranslation('sidebar');
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(ALL_RESOURCES_ID);
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
   const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
