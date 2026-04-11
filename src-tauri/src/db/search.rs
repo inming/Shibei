@@ -180,7 +180,8 @@ pub fn search_resources(
              JOIN search_index si ON r.id = si.resource_id \
              WHERE r.deleted_at IS NULL \
              AND (si.title LIKE ?1 OR si.url LIKE ?1 OR si.description LIKE ?1 \
-                  OR si.highlights_text LIKE ?1 OR si.comments_text LIKE ?1)",
+                  OR si.highlights_text LIKE ?1 OR si.comments_text LIKE ?1 \
+                  OR si.body_text LIKE ?1)",
         );
         param_values.push(Box::new(like_pattern));
         param_index = 2;
