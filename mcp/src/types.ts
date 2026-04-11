@@ -11,6 +11,7 @@ export interface Resource {
   created_at: string;
   captured_at: string;
   selection_meta: string | null;
+  matchedBody?: boolean;
 }
 
 export interface ResourceWithTags extends Resource {
