@@ -25,6 +25,10 @@ export interface Resource {
   selection_meta: string | null;
 }
 
+export interface SearchResult extends Resource {
+  matchedBody: boolean;
+}
+
 export interface Tag {
   id: string;
   name: string;

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder } from "@/types";
+import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult } from "@/types";
 
 // ── Folders ──
 
@@ -77,7 +77,7 @@ export function searchResources(
   tagIds: string[],
   sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
-): Promise<Resource[]> {
+): Promise<SearchResult[]> {
   return invoke("cmd_search_resources", {
     query,
     folderId,

@@ -1,4 +1,5 @@
 {
   "placeholder": "搜索...",
-  "clearSearch": "清除搜索"
+  "clearSearch": "清除搜索",
+  "bodyMatch": "正文匹配"
 }

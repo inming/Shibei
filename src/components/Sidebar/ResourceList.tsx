@@ -40,15 +40,17 @@ interface ResourceListProps {
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
 }
 
-function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onDoubleClick, onContextMenu }: {
+function DraggableResourceItem({ resource, isSelected, searchQuery, matchedBody, onClick, onDoubleClick, onContextMenu }: {
   resource: Resource;
   isSelected: boolean;
   searchQuery: string;
+  matchedBody: boolean;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const { t } = useTranslation('sidebar');
+  const { t: tSearch } = useTranslation('search');
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: resource.id,
     data: { type: "resource", title: resource.title },
@@ -70,6 +72,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, onClick, onD
       <div className={styles.itemTitle}>
         {resource.selection_meta && <span className={styles.clipBadge} title={t('clipBadgeTitle')}>&#9986;</span>}
         {searchQuery.length >= 2 ? highlightMatch(resource.title, searchQuery) : resource.title}
+        {matchedBody && <span className={styles.bodyMatchTag}>{tSearch('bodyMatch')}</span>}
       </div>
       <div className={styles.itemMeta}>
         <span>{searchQuery.length >= 2 ? highlightMatch(resource.domain ?? new URL(resource.url).hostname, searchQuery) : (resource.domain ?? new URL(resource.url).hostname)} · {new Date(resource.created_at).toLocaleDateString()}</span>
@@ -90,7 +93,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
   const tagIdsArray = useMemo(() => Array.from(selectedTagIds), [tagIdsKey]);
 
   // Pass tag filtering to backend via hook
-  const { resources, loading } = useResources(
+  const { resources, matchedBodyMap, loading } = useResources(
     folderId,
     sortBy,
     sortOrder,
@@ -302,6 +305,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
             resource={resource}
             isSelected={selectedResourceIds.has(resource.id)}
             searchQuery={searchQuery}
+            matchedBody={!!matchedBodyMap[resource.id]}
             onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
             onDoubleClick={() => onOpen(resource)}
             onContextMenu={(e) => handleContextMenu(e, resource)}

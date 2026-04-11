@@ -1,4 +1,5 @@
 {
   "placeholder": "Search...",
-  "clearSearch": "Clear search"
+  "clearSearch": "Clear search",
+  "bodyMatch": "Body match"
 }

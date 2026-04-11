@@ -185,3 +185,16 @@
   border-radius: 2px;
   padding: 0 1px;
 }
+
+.bodyMatchTag {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--color-accent-light, #e8f0fe);
+  color: var(--color-accent, #1a73e8);
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}

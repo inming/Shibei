@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import { ALL_RESOURCES_ID, type Resource, type Tag } from "@/types";
+import { ALL_RESOURCES_ID, type Resource, type Tag, type SearchResult } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 
@@ -16,31 +16,39 @@ export function useResources(
   const { t } = useTranslation('lock');
   const [resources, setResources] = useState<Resource[]>([]);
   const [resourceTags, setResourceTags] = useState<Record<string, Tag[]>>({});
+  const [matchedBodyMap, setMatchedBodyMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!folderId) {
       setResources([]);
       setResourceTags({});
+      setMatchedBodyMap({});
       return;
     }
     setLoading(true);
     try {
       let list: Resource[];
+      let bodyMap: Record<string, boolean> = {};
       if (searchQuery.length >= 2) {
-        list = await cmd.searchResources(
+        const searchResults: SearchResult[] = await cmd.searchResources(
           searchQuery,
           folderId === ALL_RESOURCES_ID ? null : folderId,
           selectedTagIds,
           sortBy,
           sortOrder,
         );
+        list = searchResults;
+        for (const sr of searchResults) {
+          bodyMap[sr.id] = sr.matchedBody;
+        }
       } else if (folderId === ALL_RESOURCES_ID) {
         list = await cmd.listAllResources(sortBy, sortOrder, selectedTagIds);
       } else {
         list = await cmd.listResources(folderId, sortBy, sortOrder, selectedTagIds);
       }
       setResources(list);
+      setMatchedBodyMap(bodyMap);
       // Fetch tags for all resources in parallel
       const tagEntries = await Promise.all(
         list.map(async (r) => {
@@ -77,5 +85,5 @@ export function useResources(
     };
   }, [refresh, searchQuery]);
 
-  return { resources, resourceTags, loading, refresh };
+  return { resources, resourceTags, matchedBodyMap, loading, refresh };
 }
