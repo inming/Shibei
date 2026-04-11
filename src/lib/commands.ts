@@ -87,6 +87,17 @@ export function searchResources(
   });
 }
 
+export interface IndexStats {
+  total: number;
+  indexed: number;
+  pending: number;
+  ftsInitialized: boolean;
+}
+
+export function getIndexStats(): Promise<IndexStats> {
+  return invoke("cmd_get_index_stats");
+}
+
 export function getResource(id: string): Promise<Resource> {
   return invoke("cmd_get_resource", { id });
 }

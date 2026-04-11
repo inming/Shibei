@@ -369,6 +369,14 @@ pub async fn cmd_search_resources(
     .map_err(Into::into)
 }
 
+#[tauri::command]
+pub async fn cmd_get_index_stats(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<db::search::IndexStats, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    db::search::get_index_stats(&conn).map_err(Into::into)
+}
+
 // ── Highlights ──
 
 #[tauri::command]

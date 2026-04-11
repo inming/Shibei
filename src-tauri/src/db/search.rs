@@ -293,6 +293,32 @@ pub fn is_fts_initialized(conn: &Connection) -> Result<bool, DbError> {
     Ok(result.is_some())
 }
 
+/// Get FTS index statistics: total resources, indexed (plain_text not null), and FTS initialized flag.
+pub fn get_index_stats(conn: &Connection) -> Result<IndexStats, DbError> {
+    let total: u32 = conn.query_row(
+        "SELECT COUNT(*) FROM resources WHERE deleted_at IS NULL",
+        [],
+        |row| row.get(0),
+    )?;
+    let indexed: u32 = conn.query_row(
+        "SELECT COUNT(*) FROM resources WHERE deleted_at IS NULL AND plain_text IS NOT NULL",
+        [],
+        |row| row.get(0),
+    )?;
+    let fts_initialized = is_fts_initialized(conn)?;
+    Ok(IndexStats { total, indexed, pending: total - indexed, fts_initialized })
+}
+
+/// FTS index statistics.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexStats {
+    pub total: u32,
+    pub indexed: u32,
+    pub pending: u32,
+    pub fts_initialized: bool,
+}
+
 /// Mark FTS index as initialized.
 pub fn mark_fts_initialized(conn: &Connection) -> Result<(), DbError> {
     conn.execute(
