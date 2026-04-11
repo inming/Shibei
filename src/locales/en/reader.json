@@ -7,5 +7,7 @@
   "snapshotDownloadFailed": "Snapshot download failed: {{message}}",
   "openedInBrowser": "Opened in browser",
   "lightPage": "Light page",
-  "darkPage": "Dark page"
+  "darkPage": "Dark page",
+  "collapsePanel": "Collapse annotations",
+  "expandPanel": "Expand annotations"
 }

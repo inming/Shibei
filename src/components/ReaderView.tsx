@@ -47,6 +47,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [iframeKey, setIframeKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [inverted, setInverted] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [metaHidden, setMetaHidden] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(0);
 
@@ -456,25 +457,54 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         />
       )}
 
-      {/* Resize handle */}
-      <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown} />
+      {panelCollapsed ? (
+        <div
+          className={styles.collapsedPanel}
+          onClick={() => setPanelCollapsed(false)}
+          title={t('expandPanel')}
+        >
+          <div className={styles.collapsedHighlights}>
+            {highlights.map(h => (
+              <div
+                key={h.id}
+                className={styles.collapsedDot}
+                style={{ backgroundColor: h.color }}
+              />
+            ))}
+          </div>
+          <span className={styles.collapsedCount}>{highlights.length}</span>
+        </div>
+      ) : (
+        <>
+          {/* Resize handle with collapse button */}
+          <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown}>
+            <button
+              className={styles.collapseBtn}
+              onClick={(e) => { e.stopPropagation(); setPanelCollapsed(true); }}
+              title={t('collapsePanel')}
+            >
+              ›
+            </button>
+          </div>
 
-      {/* Annotation panel */}
-      <AnnotationPanel
-        resource={resource}
-        style={{ width: panelWidth }}
-        highlights={highlights}
-        getCommentsForHighlight={getCommentsForHighlight}
-        resourceNotes={resourceNotes}
-        activeHighlightId={activeHighlightId}
-        failedHighlightIds={failedHighlightIds}
-        onClickHighlight={handlePanelClickHighlight}
-        onDeleteHighlight={handleDeleteHighlight}
-        onChangeHighlightColor={handleChangeHighlightColor}
-        onAddComment={(hlId, content) => addComment(hlId, content)}
-        onDeleteComment={removeComment}
-        onEditComment={editComment}
-      />
+          {/* Annotation panel */}
+          <AnnotationPanel
+            resource={resource}
+            style={{ width: panelWidth }}
+            highlights={highlights}
+            getCommentsForHighlight={getCommentsForHighlight}
+            resourceNotes={resourceNotes}
+            activeHighlightId={activeHighlightId}
+            failedHighlightIds={failedHighlightIds}
+            onClickHighlight={handlePanelClickHighlight}
+            onDeleteHighlight={handleDeleteHighlight}
+            onChangeHighlightColor={handleChangeHighlightColor}
+            onAddComment={(hlId, content) => addComment(hlId, content)}
+            onDeleteComment={removeComment}
+            onEditComment={editComment}
+          />
+        </>
+      )}
     </div>
   );
 }
