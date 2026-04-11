@@ -511,7 +511,6 @@ async fn handle_save(
         let text = plain_text::extract_plain_text(&html_str);
         if !text.is_empty() {
             let _ = resources::set_plain_text(&conn, &resource.id, &text);
-            let _ = search::rebuild_search_index(&conn, &resource.id);
         }
     }
 
@@ -856,7 +855,6 @@ async fn handle_get_content(
                 let extracted = plain_text::extract_plain_text(&html);
                 if !extracted.is_empty() {
                     let _ = resources::set_plain_text(&conn, &id, &extracted);
-                    let _ = search::rebuild_search_index(&conn, &id);
                     text = Some(extracted);
                 }
             }

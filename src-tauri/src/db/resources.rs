@@ -714,6 +714,7 @@ pub fn get_plain_text(conn: &Connection, resource_id: &str) -> Result<Option<Str
 }
 
 /// Set the plain text content for a resource.
+/// Automatically rebuilds the FTS search index (best-effort) to keep body_text in sync.
 pub fn set_plain_text(conn: &Connection, resource_id: &str, text: &str) -> Result<(), DbError> {
     let rows = conn.execute(
         "UPDATE resources SET plain_text = ?1 WHERE id = ?2 AND deleted_at IS NULL",
@@ -725,6 +726,8 @@ pub fn set_plain_text(conn: &Connection, resource_id: &str, text: &str) -> Resul
             resource_id
         )));
     }
+    // Keep FTS body_text in sync (best-effort)
+    let _ = super::search::rebuild_search_index(conn, resource_id);
     Ok(())
 }
 
