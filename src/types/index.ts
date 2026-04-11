@@ -27,6 +27,8 @@ export interface Resource {
 
 export interface SearchResult extends Resource {
   matchedBody: boolean;
+  matchFields: string[];
+  snippet: string | null;
 }
 
 export interface Tag {

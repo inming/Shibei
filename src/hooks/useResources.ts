@@ -17,6 +17,8 @@ export function useResources(
   const [resources, setResources] = useState<Resource[]>([]);
   const [resourceTags, setResourceTags] = useState<Record<string, Tag[]>>({});
   const [matchedBodyMap, setMatchedBodyMap] = useState<Record<string, boolean>>({});
+  const [snippetMap, setSnippetMap] = useState<Record<string, string | null>>({});
+  const [matchFieldsMap, setMatchFieldsMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -24,12 +26,16 @@ export function useResources(
       setResources([]);
       setResourceTags({});
       setMatchedBodyMap({});
+      setSnippetMap({});
+      setMatchFieldsMap({});
       return;
     }
     setLoading(true);
     try {
       let list: Resource[];
       let bodyMap: Record<string, boolean> = {};
+      let snippets: Record<string, string | null> = {};
+      let matchFields: Record<string, string[]> = {};
       if (searchQuery.length >= 2) {
         const searchResults: SearchResult[] = await cmd.searchResources(
           searchQuery,
@@ -41,6 +47,8 @@ export function useResources(
         list = searchResults;
         for (const sr of searchResults) {
           bodyMap[sr.id] = sr.matchedBody;
+          snippets[sr.id] = sr.snippet;
+          matchFields[sr.id] = sr.matchFields;
         }
       } else if (folderId === ALL_RESOURCES_ID) {
         list = await cmd.listAllResources(sortBy, sortOrder, selectedTagIds);
@@ -49,6 +57,8 @@ export function useResources(
       }
       setResources(list);
       setMatchedBodyMap(bodyMap);
+      setSnippetMap(snippets);
+      setMatchFieldsMap(matchFields);
       // Fetch tags for all resources in parallel
       const tagEntries = await Promise.all(
         list.map(async (r) => {
@@ -85,5 +95,5 @@ export function useResources(
     };
   }, [refresh, searchQuery]);
 
-  return { resources, resourceTags, matchedBodyMap, loading, refresh };
+  return { resources, resourceTags, matchedBodyMap, snippetMap, matchFieldsMap, loading, refresh };
 }

@@ -1,5 +1,7 @@
 {
   "placeholder": "Search...",
   "clearSearch": "Clear search",
-  "bodyMatch": "Body match"
+  "bodyMatch": "Body match",
+  "highlightsMatch": "Highlights match",
+  "commentsMatch": "Comments match"
 }

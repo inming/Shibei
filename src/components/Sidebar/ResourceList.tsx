@@ -40,11 +40,12 @@ interface ResourceListProps {
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
 }
 
-function DraggableResourceItem({ resource, isSelected, searchQuery, matchedBody, onClick, onDoubleClick, onContextMenu }: {
+function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, matchFields, onClick, onDoubleClick, onContextMenu }: {
   resource: Resource;
   isSelected: boolean;
   searchQuery: string;
-  matchedBody: boolean;
+  snippet: string | null;
+  matchFields: string[];
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -72,11 +73,18 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, matchedBody,
       <div className={styles.itemTitle}>
         {resource.selection_meta && <span className={styles.clipBadge} title={t('clipBadgeTitle')}>&#9986;</span>}
         {searchQuery.length >= 2 ? highlightMatch(resource.title, searchQuery) : resource.title}
-        {matchedBody && <span className={styles.bodyMatchTag}>{tSearch('bodyMatch')}</span>}
+        {matchFields.includes('body') && <span className={styles.matchTag}>{tSearch('bodyMatch')}</span>}
+        {matchFields.includes('highlights') && <span className={styles.matchTag}>{tSearch('highlightsMatch')}</span>}
+        {matchFields.includes('comments') && <span className={styles.matchTag}>{tSearch('commentsMatch')}</span>}
       </div>
       <div className={styles.itemMeta}>
         <span>{searchQuery.length >= 2 ? highlightMatch(resource.domain ?? new URL(resource.url).hostname, searchQuery) : (resource.domain ?? new URL(resource.url).hostname)} · {new Date(resource.created_at).toLocaleDateString()}</span>
       </div>
+      {snippet && (
+        <div className={styles.snippet}>
+          {highlightMatch(snippet, searchQuery)}
+        </div>
+      )}
     </div>
   );
 }
@@ -93,7 +101,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
   const tagIdsArray = useMemo(() => Array.from(selectedTagIds), [tagIdsKey]);
 
   // Pass tag filtering to backend via hook
-  const { resources, matchedBodyMap, loading } = useResources(
+  const { resources, snippetMap, matchFieldsMap, loading } = useResources(
     folderId,
     sortBy,
     sortOrder,
@@ -305,7 +313,8 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
             resource={resource}
             isSelected={selectedResourceIds.has(resource.id)}
             searchQuery={searchQuery}
-            matchedBody={!!matchedBodyMap[resource.id]}
+            snippet={snippetMap[resource.id] ?? null}
+            matchFields={matchFieldsMap[resource.id] ?? []}
             onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
             onDoubleClick={() => onOpen(resource)}
             onContextMenu={(e) => handleContextMenu(e, resource)}
