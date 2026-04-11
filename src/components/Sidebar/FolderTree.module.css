@@ -9,7 +9,7 @@
 
 .sectionHeader {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--spacing-sm);
   width: 100%;
   padding: 6px 12px;
@@ -32,6 +32,14 @@
 }
 
 .sectionHeaderLabel {
+  flex: 0 0 auto;
+}
+
+.sectionSubtitle {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-weight: normal;
+  margin-left: 6px;
   flex: 1;
 }
 

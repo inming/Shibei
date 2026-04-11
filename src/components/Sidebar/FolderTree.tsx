@@ -210,6 +210,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       >
         <span className={styles.sectionHeaderIcon}>📁</span>
         <span className={styles.sectionHeaderLabel}>{t('folders')}</span>
+        <span className={styles.sectionSubtitle}>{t('foldersSubtitle')}</span>
         <button
           className={styles.addButton}
           onClick={(e) => { e.stopPropagation(); setIsCreating(!isCreating); setCollapsed(false); }}
