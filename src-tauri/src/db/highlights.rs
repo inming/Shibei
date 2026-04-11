@@ -245,6 +245,39 @@ pub fn get_highlight_by_id(conn: &Connection, id: &str) -> Result<Highlight, DbE
     })
 }
 
+/// Batch-count highlights for multiple resources.
+pub fn count_by_resource_ids(
+    conn: &Connection,
+    resource_ids: &[String],
+) -> Result<std::collections::HashMap<String, i64>, DbError> {
+    if resource_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let placeholders: Vec<String> = resource_ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect();
+    let sql = format!(
+        "SELECT resource_id, COUNT(*) FROM highlights WHERE resource_id IN ({}) AND deleted_at IS NULL GROUP BY resource_id",
+        placeholders.join(", ")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> = resource_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+    let rows = stmt.query_map(params.as_slice(), |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    let mut map = std::collections::HashMap::new();
+    for row in rows {
+        let (id, count) = row?;
+        map.insert(id, count);
+    }
+    Ok(map)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,5 +389,62 @@ mod tests {
 
         let comments = comments::get_comments_for_resource(&conn, &resource.id).unwrap();
         assert!(comments.is_empty());
+    }
+
+    #[test]
+    fn test_count_by_resource_ids() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "test", "__root__", None).unwrap();
+        let r1 = resources::create_resource(
+            &conn,
+            resources::CreateResourceInput {
+                id: None,
+                title: "R1".to_string(),
+                url: "https://a.com".to_string(),
+                domain: None,
+                author: None,
+                description: None,
+                folder_id: folder.id.clone(),
+                resource_type: "webpage".to_string(),
+                file_path: "x".to_string(),
+                captured_at: "2026-01-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            },
+            None,
+        )
+        .unwrap();
+        let r2 = resources::create_resource(
+            &conn,
+            resources::CreateResourceInput {
+                id: None,
+                title: "R2".to_string(),
+                url: "https://b.com".to_string(),
+                domain: None,
+                author: None,
+                description: None,
+                folder_id: folder.id.clone(),
+                resource_type: "webpage".to_string(),
+                file_path: "y".to_string(),
+                captured_at: "2026-01-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            },
+            None,
+        )
+        .unwrap();
+
+        let anchor = Anchor {
+            text_position: TextPosition { start: 0, end: 5 },
+            text_quote: TextQuote {
+                exact: "test".to_string(),
+                prefix: "".to_string(),
+                suffix: "".to_string(),
+            },
+        };
+        create_highlight(&conn, &r1.id, "hl1", &anchor, "#FF0000", None).unwrap();
+        create_highlight(&conn, &r1.id, "hl2", &anchor, "#00FF00", None).unwrap();
+
+        let counts = count_by_resource_ids(&conn, &[r1.id.clone(), r2.id.clone()]).unwrap();
+        assert_eq!(*counts.get(&r1.id).unwrap_or(&0), 2);
+        assert_eq!(counts.get(&r2.id), None); // r2 has no highlights, not in map
     }
 }

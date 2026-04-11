@@ -1393,6 +1393,30 @@ pub async fn cmd_disable_lock_pin(pin: String) -> Result<(), CommandError> {
     Ok(())
 }
 
+// ── Annotation Counts ──
+
+#[derive(Debug, Serialize)]
+pub struct AnnotationCount {
+    pub highlights: i64,
+}
+
+#[tauri::command]
+pub async fn cmd_get_annotation_counts(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, AnnotationCount>, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let hl_counts = highlights::count_by_resource_ids(&conn, &resource_ids)?;
+
+    let mut result = std::collections::HashMap::new();
+    for id in &resource_ids {
+        if let Some(&count) = hl_counts.get(id) {
+            result.insert(id.clone(), AnnotationCount { highlights: count });
+        }
+    }
+    Ok(result)
+}
+
 // ── Debug ──
 
 #[tauri::command]

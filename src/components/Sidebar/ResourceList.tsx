@@ -3,7 +3,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "react-i18next";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
-import type { Resource } from "@/types";
+import type { Resource, Tag } from "@/types";
 import { ResourceListSkeleton } from "@/components/Skeleton";
 import { Modal } from "@/components/Modal";
 import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
@@ -40,12 +40,14 @@ interface ResourceListProps {
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
 }
 
-function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, matchFields, onClick, onDoubleClick, onContextMenu }: {
+function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, matchFields, tags, highlightCount, onClick, onDoubleClick, onContextMenu }: {
   resource: Resource;
   isSelected: boolean;
   searchQuery: string;
   snippet: string | null;
   matchFields: string[];
+  tags: Tag[];
+  highlightCount: number;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -78,7 +80,18 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
         {matchFields.includes('comments') && <span className={styles.matchTag}>{tSearch('commentsMatch')}</span>}
       </div>
       <div className={styles.itemMeta}>
-        <span>{searchQuery.length >= 2 ? highlightMatch(resource.domain ?? new URL(resource.url).hostname, searchQuery) : (resource.domain ?? new URL(resource.url).hostname)} · {new Date(resource.created_at).toLocaleDateString()}</span>
+        <span className={styles.metaLeft}>
+          {tags.slice(0, 3).map(tag => (
+            <span key={tag.id} className={styles.tagDot} style={{ backgroundColor: tag.color }} />
+          ))}
+          {searchQuery.length >= 2 ? highlightMatch(resource.domain ?? new URL(resource.url).hostname, searchQuery) : (resource.domain ?? new URL(resource.url).hostname)}
+        </span>
+        <span className={styles.metaRight}>
+          {highlightCount > 0 && (
+            <span className={styles.annotationCount}>{highlightCount}</span>
+          )}
+          {new Date(resource.created_at).toLocaleDateString()}
+        </span>
       </div>
       {snippet && (
         <div className={styles.snippet}>
@@ -101,7 +114,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
   const tagIdsArray = useMemo(() => Array.from(selectedTagIds), [tagIdsKey]);
 
   // Pass tag filtering to backend via hook
-  const { resources, snippetMap, matchFieldsMap, loading } = useResources(
+  const { resources, resourceTags, annotationCounts, snippetMap, matchFieldsMap, loading } = useResources(
     folderId,
     sortBy,
     sortOrder,
@@ -325,6 +338,8 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
             searchQuery={searchQuery}
             snippet={snippetMap[resource.id] ?? null}
             matchFields={matchFieldsMap[resource.id] ?? []}
+            tags={resourceTags[resource.id] ?? []}
+            highlightCount={annotationCounts[resource.id]?.highlights ?? 0}
             onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
             onDoubleClick={() => onOpen(resource)}
             onContextMenu={(e) => handleContextMenu(e, resource)}

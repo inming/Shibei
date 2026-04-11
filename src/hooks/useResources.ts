@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import { ALL_RESOURCES_ID, type Resource, type Tag, type SearchResult } from "@/types";
+import { ALL_RESOURCES_ID, type Resource, type Tag, type SearchResult, type AnnotationCounts } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 
@@ -19,6 +19,7 @@ export function useResources(
   const [matchedBodyMap, setMatchedBodyMap] = useState<Record<string, boolean>>({});
   const [snippetMap, setSnippetMap] = useState<Record<string, string | null>>({});
   const [matchFieldsMap, setMatchFieldsMap] = useState<Record<string, string[]>>({});
+  const [annotationCounts, setAnnotationCounts] = useState<Record<string, AnnotationCounts>>({});
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -28,6 +29,7 @@ export function useResources(
       setMatchedBodyMap({});
       setSnippetMap({});
       setMatchFieldsMap({});
+      setAnnotationCounts({});
       return;
     }
     setLoading(true);
@@ -67,6 +69,13 @@ export function useResources(
         }),
       );
       setResourceTags(Object.fromEntries(tagEntries));
+      // Batch fetch annotation counts
+      if (list.length > 0) {
+        const counts = await cmd.getAnnotationCounts(list.map(r => r.id));
+        setAnnotationCounts(counts);
+      } else {
+        setAnnotationCounts({});
+      }
     } catch (err) {
       console.error("Failed to load resources:", err);
       toast.error(t('loadResourcesFailed'));
@@ -85,7 +94,7 @@ export function useResources(
     const u2 = listen(DataEvents.TAG_CHANGED, () => { refresh(); });
     const u3 = listen(DataEvents.SYNC_COMPLETED, () => { refresh(); });
     const u4 = listen(DataEvents.ANNOTATION_CHANGED, () => {
-      if (searchQuery.length >= 2) refresh();
+      refresh();
     });
     return () => {
       u1.then((f) => f());
@@ -95,5 +104,5 @@ export function useResources(
     };
   }, [refresh, searchQuery]);
 
-  return { resources, resourceTags, matchedBodyMap, snippetMap, matchFieldsMap, loading, refresh };
+  return { resources, resourceTags, matchedBodyMap, snippetMap, matchFieldsMap, annotationCounts, loading, refresh };
 }

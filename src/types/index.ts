@@ -93,6 +93,10 @@ export type AutoUnlockResult =
   | "keychain_error"
   | "key_mismatch";
 
+export interface AnnotationCounts {
+  highlights: number;
+}
+
 export interface DeletedResource {
   id: string;
   title: string;

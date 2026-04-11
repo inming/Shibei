@@ -229,6 +229,40 @@
   line-height: 1.5;
 }
 
+.tagDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 3px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.metaLeft {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metaRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.annotationCount {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-tertiary);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
 .snippet {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
