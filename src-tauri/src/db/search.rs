@@ -9,6 +9,30 @@ pub struct SearchResult {
     #[serde(flatten)]
     pub resource: super::resources::Resource,
     pub matched_body: bool,
+    pub match_fields: Vec<String>,
+    pub snippet: Option<String>,
+}
+
+/// Extract a text snippet around the first occurrence of `query` (case-insensitive).
+/// Returns None if query is not found. `context_chars` = chars to include before/after.
+fn extract_snippet(text: &str, query: &str, context_chars: usize) -> Option<String> {
+    let text_lower = text.to_lowercase();
+    let query_lower = query.to_lowercase();
+    let byte_pos = text_lower.find(&query_lower)?;
+
+    let char_pos = text[..byte_pos].chars().count();
+    let query_char_len = query.chars().count();
+    let total_chars = text.chars().count();
+
+    let start = char_pos.saturating_sub(context_chars);
+    let end = (char_pos + query_char_len + context_chars).min(total_chars);
+
+    let snippet: String = text.chars().skip(start).take(end - start).collect();
+
+    let prefix = if start > 0 { "..." } else { "" };
+    let suffix = if end < total_chars { "..." } else { "" };
+
+    Some(format!("{}{}{}", prefix, snippet, suffix))
 }
 
 /// Escape user input for FTS5 MATCH: wrap in double quotes, escape internal quotes.
@@ -162,7 +186,7 @@ pub fn search_resources(
         sql = String::from(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
              r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, \
-             si.highlights_text, si.comments_text \
+             si.highlights_text, si.comments_text, si.body_text \
              FROM resources r \
              JOIN search_index si ON r.id = si.resource_id \
              WHERE r.deleted_at IS NULL \
@@ -175,7 +199,7 @@ pub fn search_resources(
         sql = String::from(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
              r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, \
-             si.highlights_text, si.comments_text \
+             si.highlights_text, si.comments_text, si.body_text \
              FROM resources r \
              JOIN search_index si ON r.id = si.resource_id \
              WHERE r.deleted_at IS NULL \
@@ -244,20 +268,39 @@ pub fn search_resources(
             let highlights_text: String = row.get(12)?;
             let comments_text: String = row.get(13)?;
 
-            let title_matches = title.to_lowercase().contains(&query_lower);
-            let url_matches = url.to_lowercase().contains(&query_lower);
-            let desc_matches = description
+            let mut match_fields = Vec::new();
+
+            if title.to_lowercase().contains(&query_lower) {
+                match_fields.push("title".to_string());
+            }
+            if url.to_lowercase().contains(&query_lower) {
+                match_fields.push("url".to_string());
+            }
+            if description
                 .as_deref()
                 .map(|d| d.to_lowercase().contains(&query_lower))
-                .unwrap_or(false);
-            let highlights_matches = highlights_text.to_lowercase().contains(&query_lower);
-            let comments_matches = comments_text.to_lowercase().contains(&query_lower);
+                .unwrap_or(false)
+            {
+                match_fields.push("description".to_string());
+            }
+            if highlights_text.to_lowercase().contains(&query_lower) {
+                match_fields.push("highlights".to_string());
+            }
+            if comments_text.to_lowercase().contains(&query_lower) {
+                match_fields.push("comments".to_string());
+            }
 
-            let matched_body = !title_matches
-                && !url_matches
-                && !desc_matches
-                && !highlights_matches
-                && !comments_matches;
+            let body_text: String = row.get(14)?;
+            let snippet = if body_text.to_lowercase().contains(&query_lower) {
+                match_fields.push("body".to_string());
+                extract_snippet(&body_text, trimmed, 50)
+            } else {
+                None
+            };
+
+            // matched_body = true when ONLY body matched (or nothing matched due to trigram/LIKE divergence)
+            let matched_body = match_fields.is_empty()
+                || (match_fields.len() == 1 && match_fields[0] == "body");
 
             Ok(SearchResult {
                 resource: super::resources::Resource {
@@ -275,6 +318,8 @@ pub fn search_resources(
                     selection_meta: row.get(11)?,
                 },
                 matched_body,
+                match_fields,
+                snippet,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -646,5 +691,74 @@ mod tests {
             search_resources(&conn, "量子计算", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert!(!results[0].matched_body);
+    }
+
+    #[test]
+    fn test_extract_snippet() {
+        let text = "这是一段很长的文本内容，包含了我们要搜索的关键词，关键词出现在文本的中间位置，后面还有一些额外的文字用于测试。";
+        let snippet = extract_snippet(text, "关键词", 20);
+        assert!(snippet.is_some());
+        let s = snippet.unwrap();
+        assert!(s.contains("关键词"));
+    }
+
+    #[test]
+    fn test_extract_snippet_at_start() {
+        let text = "关键词在开头的文本内容还有更多";
+        let snippet = extract_snippet(text, "关键词", 20);
+        assert!(snippet.is_some());
+        let s = snippet.unwrap();
+        assert!(s.starts_with("关键词"));
+    }
+
+    #[test]
+    fn test_extract_snippet_no_match() {
+        let text = "这段文本不包含搜索词";
+        let snippet = extract_snippet(text, "不存在的词", 20);
+        assert!(snippet.is_none());
+    }
+
+    #[test]
+    fn test_extract_snippet_case_insensitive() {
+        let text = "This text contains a Keyword in the middle of a sentence with more words";
+        let snippet = extract_snippet(text, "keyword", 15);
+        assert!(snippet.is_some());
+        assert!(snippet.unwrap().contains("Keyword"));
+    }
+
+    #[test]
+    fn test_search_returns_match_fields_and_snippet() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let r = setup_resource(&conn, &folder.id, "学习笔记", "https://example.com");
+        resources::set_plain_text(
+            &conn,
+            &r.id,
+            "这是一篇关于Rust编程语言的详细教程，包含了很多示例代码和最佳实践",
+        )
+        .unwrap();
+        rebuild_search_index(&conn, &r.id).unwrap();
+
+        let results =
+            search_resources(&conn, "Rust编程", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].match_fields.contains(&"body".to_string()));
+        assert!(results[0].snippet.is_some());
+        assert!(results[0].snippet.as_ref().unwrap().contains("Rust编程"));
+    }
+
+    #[test]
+    fn test_search_match_fields_title() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let r = setup_resource(&conn, &folder.id, "Rust入门指南", "https://example.com");
+        rebuild_search_index(&conn, &r.id).unwrap();
+
+        let results =
+            search_resources(&conn, "Rust入门", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].match_fields.contains(&"title".to_string()));
+        assert!(!results[0].matched_body);
+        assert!(results[0].snippet.is_none());
     }
 }
