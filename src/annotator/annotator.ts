@@ -596,10 +596,22 @@
 
   // ── Hide toolbar on scroll (selection preserved for right-click annotate) ──
   let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastScrollY = 0;
   document.addEventListener("scroll", () => {
     if (scrollTimer) return;
     scrollTimer = setTimeout(() => { scrollTimer = null; }, 100);
-    window.parent.postMessage({ type: "shibei:scroll", source: "shibei" }, "*");
+    const currentScrollY = window.scrollY;
+    const direction = currentScrollY > lastScrollY ? "down" : "up";
+    const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+    const scrollPercent = scrollHeight > 0 ? Math.min(currentScrollY / scrollHeight, 1) : 0;
+    window.parent.postMessage({
+      type: "shibei:scroll",
+      source: "shibei",
+      scrollY: currentScrollY,
+      direction: direction,
+      scrollPercent: scrollPercent,
+    }, "*");
+    lastScrollY = currentScrollY;
   }, true);
 
   // ── Right-click handling ──

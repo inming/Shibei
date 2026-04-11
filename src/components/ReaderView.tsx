@@ -47,6 +47,8 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [iframeKey, setIframeKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [inverted, setInverted] = useState(false);
+  const [metaHidden, setMetaHidden] = useState(false);
+  const [scrollPercent, setScrollPercent] = useState(0);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -126,11 +128,30 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           setHighlightMenu(null);
           break;
 
-        case "shibei:scroll":
-          // Hide menus on scroll; selection is preserved in iframe for right-click
+        case "shibei:scroll": {
+          // Hide menus on scroll
           setSelection(null);
           setHighlightMenu(null);
+          // Auto-hide meta bar based on scroll direction
+          const { scrollY, direction, scrollPercent: pct } = msg as {
+            scrollY?: number;
+            direction?: string;
+            scrollPercent?: number;
+          };
+          if (typeof scrollY === "number") {
+            if (scrollY <= 10) {
+              setMetaHidden(false);
+            } else if (direction === "down") {
+              setMetaHidden(true);
+            } else if (direction === "up") {
+              setMetaHidden(false);
+            }
+          }
+          if (typeof pct === "number") {
+            setScrollPercent(pct);
+          }
           break;
+        }
 
         case "shibei:context-menu":
           // Right-click with active selection → show toolbar near mouse position
@@ -357,8 +378,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   return (
     <div ref={containerRef} className={styles.container}>
       <div className={styles.reader}>
+        {/* Progress bar */}
+        <div className={styles.progressBar} style={{ width: `${scrollPercent * 100}%` }} />
         {/* Meta bar */}
-        <div className={styles.metaBar}>
+        <div className={`${styles.metaBar} ${metaHidden ? styles.metaBarHidden : ''}`}>
           <span className={styles.metaTitle}>{resource.title}</span>
           <a
             className={styles.metaUrl}

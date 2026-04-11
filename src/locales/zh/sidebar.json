@@ -95,5 +95,11 @@
   "tagOperationFailed": "标签操作失败",
   "tagNamePlaceholder": "标签名称",
   "tagCancel": "取消",
-  "tagSave": "保存"
+  "tagSave": "保存",
+
+  "previewSummary": "摘要",
+  "previewStats": "{{highlights}} 条高亮 · {{comments}} 条评论 · {{notes}} 条笔记",
+  "previewNoDescription": "暂无摘要",
+  "previewOpenReader": "在阅读器中打开",
+  "previewTags": "标签"
 }

@@ -95,5 +95,11 @@
   "tagOperationFailed": "Tag operation failed",
   "tagNamePlaceholder": "Tag name",
   "tagCancel": "Cancel",
-  "tagSave": "Save"
+  "tagSave": "Save",
+
+  "previewSummary": "Summary",
+  "previewStats": "{{highlights}} highlights · {{comments}} comments · {{notes}} notes",
+  "previewNoDescription": "No summary",
+  "previewOpenReader": "Open in reader",
+  "previewTags": "Tags"
 }
