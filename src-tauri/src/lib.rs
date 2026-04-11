@@ -181,6 +181,7 @@ pub fn run() {
                 .as_ref()
                 .map(|id| sync::hlc::HlcClock::new(id.clone()));
             let fts_pool = pool.clone();
+            let fts_base_dir = base_dir.clone();
             let server_state = Arc::new(server::AppState {
                 pool,
                 base_dir: server_base_dir,
@@ -212,6 +213,17 @@ pub fn run() {
                     if let Ok(conn) = fts_pool.get() {
                         match db::search::is_fts_initialized(&conn) {
                             Ok(false) => {
+                                // Backfill plain_text for resources missing it
+                                match db::search::backfill_plain_text(&conn, &fts_base_dir) {
+                                    Ok(n) if n > 0 => {
+                                        eprintln!("[shibei] Backfilled plain_text for {} resources", n);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[shibei] plain_text backfill failed: {}", e);
+                                    }
+                                    _ => {}
+                                }
+                                // Rebuild FTS index (now includes body_text)
                                 if let Err(e) = db::search::rebuild_all_search_index(&conn) {
                                     eprintln!("[shibei] FTS index rebuild failed: {}", e);
                                 } else if let Err(e) = db::search::mark_fts_initialized(&conn) {

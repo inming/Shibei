@@ -82,6 +82,37 @@ pub fn delete_search_index(conn: &Connection, resource_id: &str) -> Result<(), D
     Ok(())
 }
 
+/// Backfill plain_text for resources that don't have it yet.
+/// Reads snapshot HTML from disk, extracts text, and stores in DB.
+/// Best-effort: skips resources whose snapshot files can't be read.
+pub fn backfill_plain_text(conn: &Connection, base_dir: &std::path::Path) -> Result<u32, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM resources WHERE plain_text IS NULL AND deleted_at IS NULL",
+    )?;
+    let ids: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut filled = 0u32;
+    for id in &ids {
+        let html_path = base_dir.join("storage").join(id).join("snapshot.html");
+        match std::fs::read_to_string(&html_path) {
+            Ok(html) => {
+                let text = crate::plain_text::extract_plain_text(&html);
+                if !text.is_empty() {
+                    let _ = super::resources::set_plain_text(conn, id, &text);
+                    filled += 1;
+                }
+            }
+            Err(e) => {
+                eprintln!("[shibei] backfill: skip {}, read failed: {}", id, e);
+            }
+        }
+    }
+
+    Ok(filled)
+}
+
 /// Rebuild FTS index for all non-deleted resources.
 pub fn rebuild_all_search_index(conn: &Connection) -> Result<(), DbError> {
     conn.execute("DELETE FROM search_index", [])?;
