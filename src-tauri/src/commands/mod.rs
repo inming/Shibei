@@ -348,7 +348,7 @@ pub async fn cmd_search_resources(
     tag_ids: Vec<String>,
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
-) -> Result<Vec<resources::Resource>, CommandError> {
+) -> Result<Vec<db::search::SearchResult>, CommandError> {
     let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
     let sort_by_str = match sort_by.unwrap_or(resources::SortBy::CreatedAt) {
         resources::SortBy::CreatedAt => "created_at",

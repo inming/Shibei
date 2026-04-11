@@ -778,7 +778,8 @@ async fn handle_list_resources(
                 sort_order_str,
             )
             .map_err(map_db_error)?;
-            return Ok(Json(results));
+            let resources = results.into_iter().map(|sr| sr.resource).collect();
+            return Ok(Json(resources));
         }
     }
 

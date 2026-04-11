@@ -1,6 +1,15 @@
 use rusqlite::{params, Connection};
+use serde::Serialize;
 
 use super::DbError;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResult {
+    #[serde(flatten)]
+    pub resource: super::resources::Resource,
+    pub matched_body: bool,
+}
 
 /// Escape user input for FTS5 MATCH: wrap in double quotes, escape internal quotes.
 fn escape_fts_query(input: &str) -> String {
@@ -11,11 +20,11 @@ fn escape_fts_query(input: &str) -> String {
 /// Rebuild the FTS index for a single resource.
 pub fn rebuild_search_index(conn: &Connection, resource_id: &str) -> Result<(), DbError> {
     // Read resource metadata
-    let (title, url, description): (String, String, Option<String>) = conn
+    let (title, url, description, plain_text): (String, String, Option<String>, Option<String>) = conn
         .query_row(
-            "SELECT title, url, description FROM resources WHERE id = ?1 AND deleted_at IS NULL",
+            "SELECT title, url, description, plain_text FROM resources WHERE id = ?1 AND deleted_at IS NULL",
             params![resource_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .map_err(|e| match e {
             rusqlite::Error::QueryReturnedNoRows => {
@@ -48,8 +57,8 @@ pub fn rebuild_search_index(conn: &Connection, resource_id: &str) -> Result<(), 
         params![resource_id],
     )?;
     conn.execute(
-        "INSERT INTO search_index (resource_id, title, url, description, highlights_text, comments_text)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO search_index (resource_id, title, url, description, highlights_text, comments_text, body_text)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             resource_id,
             title,
@@ -57,6 +66,7 @@ pub fn rebuild_search_index(conn: &Connection, resource_id: &str) -> Result<(), 
             description.unwrap_or_default(),
             highlights_joined,
             comments_joined,
+            plain_text.unwrap_or_default(),
         ],
     )?;
 
@@ -97,7 +107,7 @@ pub fn search_resources(
     tag_ids: &[String],
     sort_by: &str,
     sort_order: &str,
-) -> Result<Vec<super::resources::Resource>, DbError> {
+) -> Result<Vec<SearchResult>, DbError> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Ok(vec![]);
@@ -120,7 +130,8 @@ pub fn search_resources(
         let fts_query = escape_fts_query(trimmed);
         sql = String::from(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
-             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, \
+             si.highlights_text, si.comments_text \
              FROM resources r \
              JOIN search_index si ON r.id = si.resource_id \
              WHERE r.deleted_at IS NULL \
@@ -132,7 +143,8 @@ pub fn search_resources(
         let like_pattern = format!("%{}%", trimmed);
         sql = String::from(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
-             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, \
+             si.highlights_text, si.comments_text \
              FROM resources r \
              JOIN search_index si ON r.id = si.resource_id \
              WHERE r.deleted_at IS NULL \
@@ -189,27 +201,53 @@ pub fn search_resources(
     let params_refs: Vec<&dyn rusqlite::types::ToSql> =
         param_values.iter().map(|p| p.as_ref()).collect();
 
+    let query_lower = trimmed.to_lowercase();
+
     let mut stmt = conn.prepare(&sql)?;
-    let resources = stmt
+    let results = stmt
         .query_map(params_refs.as_slice(), |row| {
-            Ok(super::resources::Resource {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                url: row.get(2)?,
-                domain: row.get(3)?,
-                author: row.get(4)?,
-                description: row.get(5)?,
-                folder_id: row.get(6)?,
-                resource_type: row.get(7)?,
-                file_path: row.get(8)?,
-                created_at: row.get(9)?,
-                captured_at: row.get(10)?,
-                selection_meta: row.get(11)?,
+            let title: String = row.get(1)?;
+            let url: String = row.get(2)?;
+            let description: Option<String> = row.get(5)?;
+            let highlights_text: String = row.get(12)?;
+            let comments_text: String = row.get(13)?;
+
+            let title_matches = title.to_lowercase().contains(&query_lower);
+            let url_matches = url.to_lowercase().contains(&query_lower);
+            let desc_matches = description
+                .as_deref()
+                .map(|d| d.to_lowercase().contains(&query_lower))
+                .unwrap_or(false);
+            let highlights_matches = highlights_text.to_lowercase().contains(&query_lower);
+            let comments_matches = comments_text.to_lowercase().contains(&query_lower);
+
+            let matched_body = !title_matches
+                && !url_matches
+                && !desc_matches
+                && !highlights_matches
+                && !comments_matches;
+
+            Ok(SearchResult {
+                resource: super::resources::Resource {
+                    id: row.get(0)?,
+                    title,
+                    url,
+                    domain: row.get(3)?,
+                    author: row.get(4)?,
+                    description,
+                    folder_id: row.get(6)?,
+                    resource_type: row.get(7)?,
+                    file_path: row.get(8)?,
+                    created_at: row.get(9)?,
+                    captured_at: row.get(10)?,
+                    selection_meta: row.get(11)?,
+                },
+                matched_body,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(resources)
+    Ok(results)
 }
 
 /// Check if FTS index has been initialized.
@@ -291,7 +329,7 @@ mod tests {
         let results =
             search_resources(&conn, "深度学习", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r1.id);
+        assert_eq!(results[0].resource.id, r1.id);
     }
 
     #[test]
@@ -315,7 +353,7 @@ mod tests {
         let results =
             search_resources(&conn, "高亮文本", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r.id);
+        assert_eq!(results[0].resource.id, r.id);
     }
 
     #[test]
@@ -331,7 +369,7 @@ mod tests {
         let results =
             search_resources(&conn, "启发性", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r.id);
+        assert_eq!(results[0].resource.id, r.id);
     }
 
     #[test]
@@ -361,7 +399,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r1.id);
+        assert_eq!(results[0].resource.id, r1.id);
     }
 
     #[test]
@@ -393,7 +431,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r1.id);
+        assert_eq!(results[0].resource.id, r1.id);
     }
 
     #[test]
@@ -435,16 +473,16 @@ mod tests {
         // Verify individual resources are searchable
         let results = search_resources(&conn, "First", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r1.id);
+        assert_eq!(results[0].resource.id, r1.id);
 
         let results =
             search_resources(&conn, "Second", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r2.id);
+        assert_eq!(results[0].resource.id, r2.id);
 
         let results = search_resources(&conn, "Third", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r3.id);
+        assert_eq!(results[0].resource.id, r3.id);
     }
 
     #[test]
@@ -459,7 +497,7 @@ mod tests {
         let results =
             search_resources(&conn, "AND Rust OR", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r.id);
+        assert_eq!(results[0].resource.id, r.id);
     }
 
     #[test]
@@ -475,7 +513,7 @@ mod tests {
         // 2-char Chinese query should work via LIKE fallback
         let results = search_resources(&conn, "算法", None, &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].id, r1.id);
+        assert_eq!(results[0].resource.id, r1.id);
 
         // Single char should also work
         let results = search_resources(&conn, "算", None, &[], "created_at", "desc").unwrap();
@@ -499,5 +537,56 @@ mod tests {
         // Idempotent
         mark_fts_initialized(&conn).unwrap();
         assert!(is_fts_initialized(&conn).unwrap());
+    }
+
+    #[test]
+    fn test_search_by_body_text() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let r = setup_resource(&conn, &folder.id, "Generic Title", "https://a.com");
+        resources::set_plain_text(&conn, &r.id, "这篇文章详细介绍了量子计算的基本原理").unwrap();
+        rebuild_search_index(&conn, &r.id).unwrap();
+        let results =
+            search_resources(&conn, "量子计算", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].resource.id, r.id);
+    }
+
+    #[test]
+    fn test_search_body_text_null_plain_text() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let r = setup_resource(&conn, &folder.id, "Article Without Body", "https://a.com");
+        rebuild_search_index(&conn, &r.id).unwrap();
+        let results =
+            search_resources(&conn, "Without Body", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].resource.id, r.id);
+    }
+
+    #[test]
+    fn test_matched_body_flag_body_only() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let r = setup_resource(&conn, &folder.id, "Generic Title", "https://a.com");
+        resources::set_plain_text(&conn, &r.id, "深度学习神经网络反向传播算法").unwrap();
+        rebuild_search_index(&conn, &r.id).unwrap();
+        let results =
+            search_resources(&conn, "反向传播", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].matched_body);
+    }
+
+    #[test]
+    fn test_matched_body_flag_title_also_matches() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let r = setup_resource(&conn, &folder.id, "量子计算入门", "https://a.com");
+        resources::set_plain_text(&conn, &r.id, "本文介绍量子计算的基础知识").unwrap();
+        rebuild_search_index(&conn, &r.id).unwrap();
+        let results =
+            search_resources(&conn, "量子计算", None, &[], "created_at", "desc").unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].matched_body);
     }
 }
