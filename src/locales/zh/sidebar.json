@@ -101,5 +101,10 @@
   "previewStats": "{{highlights}} 条高亮 · {{comments}} 条评论 · {{notes}} 条笔记",
   "previewNoDescription": "暂无摘要",
   "previewOpenReader": "在阅读器中打开",
-  "previewTags": "标签"
+  "previewTags": "标签",
+
+  "emptyLibraryTitle": "资料库还是空的",
+  "emptyLibraryHint": "安装浏览器插件，开始收集网页快照",
+  "noSearchResultsHint": "试试更短的关键词，或切换到「全部资料」搜索",
+  "emptyFolderHint": "将资料拖到此文件夹，或通过浏览器插件保存时选择此文件夹"
 }

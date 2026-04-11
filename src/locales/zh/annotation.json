@@ -32,5 +32,6 @@
   "createCommentFailed": "创建评论失败",
   "deleteCommentFailed": "删除评论失败",
   "editCommentFailed": "编辑评论失败",
-  "createHighlightFailed": "创建高亮失败"
+  "createHighlightFailed": "创建高亮失败",
+  "emptyAnnotationsHint": "选中文字后右键，即可创建高亮标注"
 }

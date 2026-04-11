@@ -296,8 +296,18 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
       )}
       {loading && <ResourceListSkeleton />}
       {folderId && !loading && filteredResources.length === 0 && (
-        <div className={styles.empty}>
-          {searchQuery.length >= MIN_SEARCH_CHARS ? t('noSearchResults') : t('emptyFolder')}
+        <div className={styles.emptyState}>
+          {searchQuery.length >= MIN_SEARCH_CHARS ? (
+            <>
+              <div className={styles.emptyTitle}>{t('noSearchResults')}</div>
+              <div className={styles.emptyHint}>{t('noSearchResultsHint')}</div>
+            </>
+          ) : (
+            <>
+              <div className={styles.emptyTitle}>{t('emptyFolder')}</div>
+              <div className={styles.emptyHint}>{t('emptyFolderHint')}</div>
+            </>
+          )}
         </div>
       )}
       <div

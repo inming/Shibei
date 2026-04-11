@@ -101,5 +101,10 @@
   "previewStats": "{{highlights}} highlights · {{comments}} comments · {{notes}} notes",
   "previewNoDescription": "No summary",
   "previewOpenReader": "Open in reader",
-  "previewTags": "Tags"
+  "previewTags": "Tags",
+
+  "emptyLibraryTitle": "Your library is empty",
+  "emptyLibraryHint": "Install the browser extension to start collecting web snapshots",
+  "noSearchResultsHint": "Try shorter keywords, or switch to \"All Resources\" to search everywhere",
+  "emptyFolderHint": "Drag resources here, or select this folder when saving from the browser extension"
 }
