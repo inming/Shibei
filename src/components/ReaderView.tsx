@@ -390,7 +390,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
             target="_blank"
             rel="noopener noreferrer"
           >
-            {resource.domain ?? new URL(resource.url).hostname}
+            {resource.domain ?? (() => { try { return new URL(resource.url).hostname; } catch { return resource.url; } })()}
           </a>
           <span className={styles.metaTime}>
             {new Date(resource.created_at).toLocaleDateString()}

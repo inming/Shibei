@@ -294,6 +294,15 @@ pub async fn cmd_get_tags_for_resource(
 }
 
 #[tauri::command]
+pub async fn cmd_get_tags_for_resources(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_ids: Vec<String>,
+) -> Result<std::collections::HashMap<String, Vec<tags::Tag>>, CommandError> {
+    let conn = state.conn()?;
+    tags::get_tags_for_resources(&conn, &resource_ids).map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn cmd_add_tag_to_resource(
     state: tauri::State<'_, Arc<AppState>>,
     app: tauri::AppHandle,

@@ -93,7 +93,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
           {tags.slice(0, 3).map(tag => (
             <span key={tag.id} className={styles.tagDot} style={{ backgroundColor: tag.color }} />
           ))}
-          {searchQuery.length >= 2 ? highlightMatch(resource.domain ?? new URL(resource.url).hostname, searchQuery) : (resource.domain ?? new URL(resource.url).hostname)}
+          {(() => { let host = resource.domain; if (!host) { try { host = new URL(resource.url).hostname; } catch { host = resource.url; } } return searchQuery.length >= 2 ? highlightMatch(host, searchQuery) : host; })()}
         </span>
         <span className={styles.metaRight}>
           {highlightCount > 0 && (

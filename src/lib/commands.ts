@@ -132,6 +132,10 @@ export function getTagsForResource(resourceId: string): Promise<Tag[]> {
   return invoke("cmd_get_tags_for_resource", { resourceId });
 }
 
+export function getTagsForResources(resourceIds: string[]): Promise<Record<string, Tag[]>> {
+  return invoke("cmd_get_tags_for_resources", { resourceIds });
+}
+
 export function addTagToResource(resourceId: string, tagId: string): Promise<void> {
   return invoke("cmd_add_tag_to_resource", { resourceId, tagId });
 }

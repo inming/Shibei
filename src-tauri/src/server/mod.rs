@@ -479,6 +479,9 @@ async fn handle_save(
         }
     }
 
+    // Build search index (best-effort)
+    let _ = search::rebuild_search_index(&conn, &resource.id);
+
     // Notify desktop app that a new resource was saved (best-effort, outside transaction)
     let _ = state.app_handle.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({
         "action": "created",

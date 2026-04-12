@@ -281,6 +281,44 @@ pub fn get_tags_for_resource(
     Ok(tags)
 }
 
+pub fn get_tags_for_resources(
+    conn: &Connection,
+    resource_ids: &[String],
+) -> Result<std::collections::HashMap<String, Vec<Tag>>, DbError> {
+    if resource_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let placeholders: Vec<&str> = resource_ids.iter().map(|_| "?").collect();
+    let sql = format!(
+        "SELECT rt.resource_id, t.id, t.name, t.color FROM tags t
+         JOIN resource_tags rt ON t.id = rt.tag_id
+         WHERE rt.resource_id IN ({}) AND t.deleted_at IS NULL AND rt.deleted_at IS NULL
+         ORDER BY t.name",
+        placeholders.join(", ")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> = resource_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+    let rows = stmt.query_map(params.as_slice(), |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            Tag {
+                id: row.get(1)?,
+                name: row.get(2)?,
+                color: row.get(3)?,
+            },
+        ))
+    })?;
+    let mut map: std::collections::HashMap<String, Vec<Tag>> = std::collections::HashMap::new();
+    for row in rows {
+        let (resource_id, tag) = row?;
+        map.entry(resource_id).or_default().push(tag);
+    }
+    Ok(map)
+}
+
 pub fn get_resources_by_tag(
     conn: &Connection,
     tag_id: &str,

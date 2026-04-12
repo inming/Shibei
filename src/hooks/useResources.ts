@@ -61,14 +61,13 @@ export function useResources(
       setMatchedBodyMap(bodyMap);
       setSnippetMap(snippets);
       setMatchFieldsMap(matchFields);
-      // Fetch tags for all resources in parallel
-      const tagEntries = await Promise.all(
-        list.map(async (r) => {
-          const tags = await cmd.getTagsForResource(r.id);
-          return [r.id, tags] as const;
-        }),
-      );
-      setResourceTags(Object.fromEntries(tagEntries));
+      // Batch fetch tags for all resources
+      if (list.length > 0) {
+        const tagsMap = await cmd.getTagsForResources(list.map(r => r.id));
+        setResourceTags(tagsMap);
+      } else {
+        setResourceTags({});
+      }
       // Batch fetch annotation counts
       if (list.length > 0) {
         const counts = await cmd.getAnnotationCounts(list.map(r => r.id));

@@ -123,6 +123,7 @@ pub fn run() {
             commands::cmd_create_tag,
             commands::cmd_delete_tag,
             commands::cmd_get_tags_for_resource,
+            commands::cmd_get_tags_for_resources,
             commands::cmd_add_tag_to_resource,
             commands::cmd_remove_tag_from_resource,
             commands::cmd_update_tag,
