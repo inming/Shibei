@@ -154,6 +154,10 @@ export function getAnnotationCounts(resourceIds: string[]): Promise<Record<strin
   return invoke("cmd_get_annotation_counts", { resourceIds });
 }
 
+export function getResourceSummary(resourceId: string, maxChars?: number): Promise<string | null> {
+  return invoke("cmd_get_resource_summary", { resourceId, maxChars: maxChars ?? 200 });
+}
+
 // ── Highlights ──
 
 export function getHighlights(resourceId: string): Promise<Highlight[]> {

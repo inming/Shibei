@@ -1417,6 +1417,28 @@ pub async fn cmd_get_annotation_counts(
     Ok(result)
 }
 
+// ── Plain Text Summary ──
+
+#[tauri::command]
+pub async fn cmd_get_resource_summary(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+    max_chars: Option<usize>,
+) -> Result<Option<String>, CommandError> {
+    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let text = resources::get_plain_text(&conn, &resource_id)?;
+    let limit = max_chars.unwrap_or(200);
+    Ok(text.map(|t| {
+        let total = t.chars().count();
+        let chars: String = t.chars().take(limit).collect();
+        if total > limit {
+            format!("{}...", chars)
+        } else {
+            chars
+        }
+    }))
+}
+
 // ── Debug ──
 
 #[tauri::command]

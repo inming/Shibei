@@ -382,7 +382,6 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
             <PreviewPanel
               key={selectedResource.id}
               resource={selectedResource}
-              onOpenInReader={(highlightId) => onOpenResource(selectedResource, highlightId)}
               onNavigateToFolder={(folderId) => setSelectedFolderId(folderId)}
             />
           ) : (

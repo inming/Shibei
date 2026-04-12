@@ -293,7 +293,7 @@ pub fn search_resources(
             let body_text: String = row.get(14)?;
             let snippet = if body_text.to_lowercase().contains(&query_lower) {
                 match_fields.push("body".to_string());
-                extract_snippet(&body_text, trimmed, 50)
+                extract_snippet(&body_text, trimmed, 20)
             } else {
                 None
             };

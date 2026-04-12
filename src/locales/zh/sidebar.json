@@ -106,10 +106,11 @@
   "tagSave": "保存",
 
   "previewSummary": "摘要",
-  "previewStats": "{{highlights}} 条高亮 · {{comments}} 条评论 · {{notes}} 条笔记",
   "previewNoDescription": "暂无摘要",
-  "previewOpenReader": "在阅读器中打开",
   "previewTags": "标签",
+  "statHighlights": "高亮",
+  "statComments": "评论",
+  "statNotes": "笔记",
 
   "emptyLibraryTitle": "资料库还是空的",
   "emptyLibraryHint": "安装浏览器插件，开始收集网页快照",

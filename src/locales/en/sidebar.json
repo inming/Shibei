@@ -106,10 +106,11 @@
   "tagSave": "Save",
 
   "previewSummary": "Summary",
-  "previewStats": "{{highlights}} highlights · {{comments}} comments · {{notes}} notes",
   "previewNoDescription": "No summary",
-  "previewOpenReader": "Open in reader",
   "previewTags": "Tags",
+  "statHighlights": "Highlights",
+  "statComments": "Comments",
+  "statNotes": "Notes",
 
   "emptyLibraryTitle": "Your library is empty",
   "emptyLibraryHint": "Install the browser extension to start collecting web snapshots",

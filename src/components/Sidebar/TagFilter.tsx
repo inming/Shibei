@@ -92,7 +92,6 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
       >
         <span className={styles.sectionHeaderIcon}>🏷️</span>
         <span className={styles.sectionHeaderLabel}>{t('tags')}</span>
-        <span className={styles.sectionSubtitle}>{t('tagsSubtitle')}</span>
         <button
           className={styles.addBtn}
           onClick={(e) => { e.stopPropagation(); handleAddClick(e); }}

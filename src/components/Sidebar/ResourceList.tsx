@@ -75,10 +75,19 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
       <div className={styles.itemTitle}>
         {resource.selection_meta && <span className={styles.clipBadge} title={t('clipBadgeTitle')}>&#9986;</span>}
         {searchQuery.length >= 2 ? highlightMatch(resource.title, searchQuery) : resource.title}
-        {matchFields.includes('body') && <span className={styles.matchTag}>{tSearch('bodyMatch')}</span>}
-        {matchFields.includes('highlights') && <span className={styles.matchTag}>{tSearch('highlightsMatch')}</span>}
-        {matchFields.includes('comments') && <span className={styles.matchTag}>{tSearch('commentsMatch')}</span>}
       </div>
+      {matchFields.length > 0 && (
+        <div className={styles.matchTags}>
+          {matchFields.includes('body') && <span className={styles.matchTag}>{tSearch('bodyMatch')}</span>}
+          {matchFields.includes('highlights') && <span className={styles.matchTag}>{tSearch('highlightsMatch')}</span>}
+          {matchFields.includes('comments') && <span className={styles.matchTag}>{tSearch('commentsMatch')}</span>}
+        </div>
+      )}
+      {snippet && (
+        <div className={styles.snippet}>
+          {highlightMatch(snippet, searchQuery)}
+        </div>
+      )}
       <div className={styles.itemMeta}>
         <span className={styles.metaLeft}>
           {tags.slice(0, 3).map(tag => (
@@ -93,11 +102,6 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
           {new Date(resource.created_at).toLocaleDateString()}
         </span>
       </div>
-      {snippet && (
-        <div className={styles.snippet}>
-          {highlightMatch(snippet, searchQuery)}
-        </div>
-      )}
     </div>
   );
 }
