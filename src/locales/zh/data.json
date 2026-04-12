@@ -10,6 +10,6 @@
   "restoreButton": "从备份恢复",
   "restoreInProgress": "正在恢复...",
   "restoreSuccess": "恢复完成，共 {{count}} 个资料",
-  "restoreConfirm": "恢复将覆盖当前所有数据，此操作不可撤销。确认恢复？",
+  "restoreConfirm": "即将从以下备份恢复：\n\n{{file}}\n\n恢复将覆盖当前所有数据，此操作不可撤销。确认恢复？",
   "restoreSyncWarning": "恢复后下次同步会与云端合并，云端较新的变更（包括删除）将覆盖备份中的旧数据。如需保留备份中的数据，请在恢复后先关闭自动同步。"
 }

@@ -6,10 +6,21 @@ import * as cmd from "@/lib/commands";
 import { translateError } from "@/lib/commands";
 import styles from "./Settings.module.css";
 
+function formatError(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err) {
+    return translateError(String((err as { message: string }).message));
+  }
+  return translateError(String(err));
+}
+
+// Module-level state survives component unmount/remount (tab switching)
+let _backingUp = false;
+let _restoring = false;
+
 export function DataPage() {
   const { t } = useTranslation("data");
-  const [backingUp, setBackingUp] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  const [backingUp, setBackingUp] = useState(_backingUp);
+  const [restoring, setRestoring] = useState(_restoring);
 
   const handleBackup = async () => {
     const now = new Date();
@@ -22,13 +33,15 @@ export function DataPage() {
     });
     if (!path) return;
 
+    _backingUp = true;
     setBackingUp(true);
     try {
       const result = await cmd.exportBackup(path);
       toast.success(t("backupSuccess", { count: result.resource_count }));
     } catch (err) {
-      toast.error(translateError(String(err)));
+      toast.error(formatError(err));
     } finally {
+      _backingUp = false;
       setBackingUp(false);
     }
   };
@@ -49,20 +62,23 @@ export function DataPage() {
       // No sync config
     }
 
-    let confirmMsg = t("restoreConfirm");
+    const fileName = (path as string).split("/").pop() || path;
+    let confirmMsg = t("restoreConfirm", { file: fileName });
     if (hasSyncConfig) {
       confirmMsg += "\n\n" + t("restoreSyncWarning");
     }
 
     if (!window.confirm(confirmMsg)) return;
 
+    _restoring = true;
     setRestoring(true);
     try {
       const result = await cmd.importBackup(path as string);
       toast.success(t("restoreSuccess", { count: result.resource_count }));
     } catch (err) {
-      toast.error(translateError(String(err)));
+      toast.error(formatError(err));
     } finally {
+      _restoring = false;
       setRestoring(false);
     }
   };

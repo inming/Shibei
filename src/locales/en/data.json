@@ -10,6 +10,6 @@
   "restoreButton": "Restore from Backup",
   "restoreInProgress": "Restoring...",
   "restoreSuccess": "Restore complete. {{count}} resources restored.",
-  "restoreConfirm": "Restoring will overwrite all current data. This action cannot be undone. Continue?",
+  "restoreConfirm": "Restore from:\n\n{{file}}\n\nThis will overwrite all current data. This action cannot be undone. Continue?",
   "restoreSyncWarning": "After restoring, the next sync will merge with cloud data. Newer changes on the cloud (including deletions) will overwrite data from the backup. To keep the backup data, disable auto-sync after restoring."
 }
