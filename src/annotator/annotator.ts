@@ -113,6 +113,20 @@
       0%, 100% { filter: brightness(1); }
       50% { filter: brightness(0.7); }
     }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(128,128,128,0.3);
+      border-radius: 4px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(128,128,128,0.5);
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+    ::-webkit-scrollbar-corner { background: transparent; }
   `;
   document.documentElement.appendChild(style);
 
