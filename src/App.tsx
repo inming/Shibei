@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { onOpenUrl, getCurrent as getDeepLinkCurrent } from "@tauri-apps/plugin-deep-link";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "react-hot-toast";
 import type { Resource } from "@/types";
@@ -88,7 +88,7 @@ function App() {
     return () => { unlisten.then((f) => f()); };
   }, []);
 
-  // Lock screen: check status on mount
+  // Lock screen: check status on mount + check cold-start deep link
   useEffect(() => {
     let mounted = true;
     async function init() {
@@ -100,13 +100,33 @@ function App() {
         if (status.enabled) {
           setLocked(true);
         }
+
+        // Check for cold-start deep link URL
+        const initialUrls = await getDeepLinkCurrent();
+        if (!mounted) return;
+        const deepUrl = initialUrls?.find(u => u.startsWith("shibei://"));
+        if (deepUrl) {
+          if (status.enabled) {
+            // App is locked — queue for after unlock
+            pendingDeepLinkRef.current = deepUrl;
+          } else {
+            // App is not locked — open immediately
+            const match = deepUrl.match(/shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?/);
+            if (match) {
+              try {
+                const resource = await cmd.getResource(match[1]);
+                if (resource && mounted) openResource(resource, match[2]);
+              } catch { /* ignore */ }
+            }
+          }
+        }
       } catch {
         // Lock screen not available
       }
     }
     init();
     return () => { mounted = false; };
-  }, []);
+  }, [openResource]);
 
   // Inactivity timer
   useEffect(() => {
