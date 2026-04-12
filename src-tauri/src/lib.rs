@@ -55,6 +55,7 @@ pub fn run() {
     // Initialize database connection pool
     let db_path = base_dir.join("shibei.db");
     let pool = db::init_pool(&db_path).expect("failed to initialize database pool");
+    let shared_pool: db::SharedPool = std::sync::Arc::new(std::sync::RwLock::new(pool));
 
     // Generate a single auth token shared between Tauri commands and HTTP server
     let auth_token = uuid::Uuid::new_v4().to_string();
@@ -67,7 +68,7 @@ pub fn run() {
 
     // Shared state for Tauri commands
     let cmd_state = Arc::new(commands::AppState {
-        pool: pool.clone(),
+        pool: shared_pool.clone(),
         base_dir: base_dir.clone(),
         auth_token: auth_token.clone(),
         sync_clock,
@@ -197,10 +198,10 @@ pub fn run() {
             let server_sync_clock = device_id
                 .as_ref()
                 .map(|id| sync::hlc::HlcClock::new(id.clone()));
-            let fts_pool = pool.clone();
+            let fts_pool = shared_pool.clone();
             let fts_base_dir = base_dir.clone();
             let server_state = Arc::new(server::AppState {
-                pool,
+                pool: shared_pool.clone(),
                 base_dir: server_base_dir,
                 token: server_token,
                 app_handle: app.handle().clone(),
@@ -227,7 +228,14 @@ pub fn run() {
             // Initialize FTS search index if not yet done
             {
                 std::thread::spawn(move || {
-                    if let Ok(conn) = fts_pool.get() {
+                    let pool_guard = match fts_pool.read() {
+                        Ok(g) => g,
+                        Err(e) => {
+                            eprintln!("[shibei] pool lock poisoned: {}", e);
+                            return;
+                        }
+                    };
+                    if let Ok(conn) = pool_guard.get() {
                         match db::search::is_fts_initialized(&conn) {
                             Ok(false) => {
                                 // Backfill plain_text for resources missing it

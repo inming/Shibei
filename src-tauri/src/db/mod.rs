@@ -28,6 +28,7 @@ pub enum DbError {
 }
 
 pub type DbPool = Pool<SqliteConnectionManager>;
+pub type SharedPool = std::sync::Arc<std::sync::RwLock<DbPool>>;
 
 /// Customizer that enables foreign keys on every new connection.
 #[derive(Debug)]

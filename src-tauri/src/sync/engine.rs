@@ -6,7 +6,7 @@ use std::sync::Arc;
 use rusqlite::params;
 use thiserror::Error;
 
-use crate::db::{DbError, DbPool};
+use crate::db::{DbError, SharedPool};
 use crate::sync::backend::{BackendError, SyncBackend};
 use crate::sync::hlc::HlcClock;
 use crate::sync::sync_log::{self, SyncLogEntry};
@@ -49,7 +49,7 @@ pub enum SyncResult {
 }
 
 pub struct SyncEngine {
-    pool: DbPool,
+    pool: SharedPool,
     backend: Arc<dyn SyncBackend>,
     device_id: String,
     clock: Arc<HlcClock>,
@@ -63,7 +63,7 @@ pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
 
 impl SyncEngine {
     pub fn new(
-        pool: DbPool,
+        pool: SharedPool,
         backend: Arc<dyn SyncBackend>,
         device_id: String,
         clock: Arc<HlcClock>,
@@ -79,7 +79,17 @@ impl SyncEngine {
         }
     }
 
-    /// Run the full sync cycle: upload local changes, download and apply remote changes.
+    /// Acquire a pooled database connection through the RwLock-guarded pool.
+    fn conn(&self) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>, SyncError> {
+        let pool = self.pool.read().map_err(|e| {
+            SyncError::Db(DbError::Sqlite(rusqlite::Error::InvalidParameterName(
+                format!("pool lock poisoned: {e}"),
+            )))
+        })?;
+        pool.get().map_err(DbError::Pool).map_err(SyncError::Db)
+    }
+
+/// Run the full sync cycle: upload local changes, download and apply remote changes.
     pub async fn sync(&self, on_progress: Option<&ProgressCallback>) -> Result<SyncResult, SyncError> {
         // Try lock — skip if already syncing
         let _guard = match self.lock.try_lock() {
@@ -104,7 +114,7 @@ impl SyncEngine {
 
         // Update last_sync_at
         {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             sync_state::set(&conn, "last_sync_at", &crate::db::now_iso8601())?;
         }
 
@@ -177,7 +187,7 @@ impl SyncEngine {
         }
 
         // Query DB for all existing resources (including soft-deleted)
-        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let conn = self.conn()?;
         let mut stmt = conn.prepare("SELECT id FROM resources")?;
         let db_ids: std::collections::HashSet<String> = stmt
             .query_map([], |row| row.get::<_, String>(0))?
@@ -253,7 +263,7 @@ impl SyncEngine {
             }
         };
 
-        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let conn = self.conn()?;
         conn.execute_batch("PRAGMA foreign_keys = OFF")?;
         let imported = self.import_snapshot_data(&conn, &snapshot)?;
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
@@ -263,7 +273,7 @@ impl SyncEngine {
 
     async fn run_compaction(&self, files: Vec<super::backend::ObjectInfo>) -> Result<bool, SyncError> {
 
-        let conn = self.pool.get().map_err(|e| SyncError::Db(DbError::Pool(e)))?;
+        let conn = self.conn()?;
 
         // 1. Export full state and upload as snapshot
         let snapshot = super::export::export_full_state(&conn, &self.device_id)?;
@@ -378,7 +388,7 @@ impl SyncEngine {
     async fn ensure_initial_snapshot(&self) -> Result<(), SyncError> {
         // Check if we've ever synced
         {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             if sync_state::get(&conn, "last_sync_at")?.is_some() {
                 return Ok(());
             }
@@ -388,7 +398,7 @@ impl SyncEngine {
 
         // Export full state (scoped to drop conn before await)
         let (snapshot_json, resource_ids, max_id) = {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             let snapshot = super::export::export_full_state(&conn, &self.device_id)?;
             let json = serde_json::to_vec_pretty(&snapshot)?;
 
@@ -414,7 +424,7 @@ impl SyncEngine {
         for resource_id in &resource_ids {
             if let Err(e) = self.upload_snapshot(resource_id).await {
                 eprintln!("[sync] Warning: failed to upload snapshot for {}: {}", resource_id, e);
-                let conn = self.pool.get().map_err(DbError::Pool)?;
+                let conn = self.conn()?;
                 let marker = format!("snapshot_upload:{}", resource_id);
                 sync_state::set(&conn, &marker, "retry")?;
             }
@@ -422,7 +432,7 @@ impl SyncEngine {
 
         // Mark existing sync_log as uploaded
         if max_id > 0 {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             sync_log::mark_uploaded(&conn, max_id)?;
         }
 
@@ -434,7 +444,7 @@ impl SyncEngine {
     async fn upload_local_changes(&self, on_progress: Option<&ProgressCallback>) -> Result<usize, SyncError> {
         // Retry previously failed snapshot uploads
         {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             let retry_list = sync_state::list_by_prefix(&conn, "snapshot_upload:")?;
             if !retry_list.is_empty() {
                 eprintln!("[sync] Phase 1: retrying {} failed snapshot upload(s)", retry_list.len());
@@ -443,7 +453,7 @@ impl SyncEngine {
                     if resource_id.is_empty() { continue; }
                     match self.upload_snapshot(resource_id).await {
                         Ok(()) => {
-                            let conn = self.pool.get().map_err(DbError::Pool)?;
+                            let conn = self.conn()?;
                             sync_state::delete(&conn, key)?;
                             eprintln!("[sync] Phase 1: retry upload succeeded for {}", resource_id);
                         }
@@ -456,7 +466,7 @@ impl SyncEngine {
         }
 
         let pending = {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             sync_log::get_pending(&conn)?
         };
 
@@ -484,7 +494,7 @@ impl SyncEngine {
         // Mark entries as uploaded
         let max_id = pending.last().map(|e| e.id).unwrap_or(0);
         {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             sync_log::mark_uploaded(&conn, max_id)?;
             sync_state::set(&conn, "last_uploaded_log_id", &max_id.to_string())?;
         }
@@ -507,7 +517,7 @@ impl SyncEngine {
                     "warning: failed to upload snapshot for {}: {}",
                     entry.entity_id, e
                 );
-                let conn = self.pool.get().map_err(DbError::Pool)?;
+                let conn = self.conn()?;
                 let marker = format!("snapshot_upload:{}", entry.entity_id);
                 sync_state::set(&conn, &marker, "retry")?;
             }
@@ -523,7 +533,7 @@ impl SyncEngine {
     async fn maybe_import_snapshot(&self) -> Result<usize, SyncError> {
         // Only run if we've never synced before
         {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             if sync_state::get(&conn, "last_sync_at")?.is_some() {
                 return Ok(0);
             }
@@ -567,7 +577,7 @@ impl SyncEngine {
             latest_per_device.insert(snapshot.device_id.clone(), (snapshot_key.clone(), snapshot));
         }
 
-        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let conn = self.conn()?;
         // Temporarily disable FK checks — snapshot import is in topo order but
         // some cross-references may not resolve until the full import completes
         conn.execute_batch("PRAGMA foreign_keys = OFF")?;
@@ -602,7 +612,7 @@ impl SyncEngine {
                     }
                 }
             }
-            let seq_conn = self.pool.get().map_err(DbError::Pool)?;
+            let seq_conn = self.conn()?;
             for (device_id, latest_fname) in &device_latest {
                 if device_id != &self.device_id {
                     let key = format!("remote:{}:last_seq", device_id);
@@ -711,7 +721,7 @@ impl SyncEngine {
         // directory may be empty (all files cleaned by compaction), but we
         // still need to check for gaps and fall back to snapshot import.
         {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             let known = sync_state::list_by_prefix(&conn, "remote:")?;
             for (key, _) in &known {
                 // key format: "remote:{device_id}:last_seq"
@@ -740,7 +750,7 @@ impl SyncEngine {
         for device in &remote_devices {
             let last_seq_key = format!("remote:{}:last_seq", device);
             let last_seq = {
-                let conn = self.pool.get().map_err(DbError::Pool)?;
+                let conn = self.conn()?;
                 sync_state::get(&conn, &last_seq_key)?
             };
 
@@ -775,7 +785,7 @@ impl SyncEngine {
                     // After snapshot recovery, clear last_seq so we don't re-detect
                     // the same gap on next sync. All available JSONL will be processed
                     // below (files is unfiltered when last_seq is effectively cleared).
-                    let conn = self.pool.get().map_err(DbError::Pool)?;
+                    let conn = self.conn()?;
                     if let Some(latest) = files.last().and_then(|f| f.key.rsplit('/').next()) {
                         // Set last_seq to the latest available JSONL — they'll be
                         // processed below and we won't re-detect a gap next time.
@@ -838,7 +848,7 @@ impl SyncEngine {
 
             // Update last_seq for this device
             if let Some(seq) = latest_seq {
-                let conn = self.pool.get().map_err(DbError::Pool)?;
+                let conn = self.conn()?;
                 sync_state::set(&conn, &df.last_seq_key, &seq)?;
             }
         }
@@ -860,7 +870,7 @@ impl SyncEngine {
         // Topo-sort: assign order based on (operation, entity_type)
         entries.sort_by_key(|e| topo_order(&e.operation, &e.entity_type));
 
-        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let conn = self.conn()?;
         conn.execute_batch("PRAGMA foreign_keys = OFF")?;
         let mut applied = 0usize;
         let mut affected_resource_ids = HashSet::new();
@@ -1357,7 +1367,7 @@ impl SyncEngine {
     /// Best-effort: failures are logged but don't abort sync.
     async fn download_pending_snapshots(&self, on_progress: Option<&ProgressCallback>) {
         let pending_ids = {
-            let conn = match self.pool.get() {
+            let conn = match self.conn() {
                 Ok(c) => c,
                 Err(_) => return,
             };
@@ -1373,7 +1383,7 @@ impl SyncEngine {
         for (i, resource_id) in pending_ids.iter().enumerate() {
             if let Err(e) = self.download_snapshot(resource_id).await {
                 // If the resource no longer exists locally, clear the stale pending marker
-                let should_clear = match self.pool.get() {
+                let should_clear = match self.conn() {
                     Ok(conn) => {
                         let exists: bool = conn.query_row(
                             "SELECT COUNT(*) > 0 FROM resources WHERE id = ?1 AND deleted_at IS NULL",
@@ -1386,7 +1396,7 @@ impl SyncEngine {
                 };
                 if should_clear {
                     eprintln!("[sync] Clearing stale pending marker for deleted resource {}", resource_id);
-                    if let Ok(conn) = self.pool.get() {
+                    if let Ok(conn) = self.conn() {
                         let key = format!("snapshot:{}", resource_id);
                         let _ = sync_state::delete(&conn, &key);
                     }
@@ -1405,7 +1415,7 @@ impl SyncEngine {
     pub async fn migrate_snapshots_to_gzip(&self) -> Result<(), SyncError> {
         // Check if already migrated
         {
-            let conn = self.pool.get().map_err(DbError::Pool)?;
+            let conn = self.conn()?;
             if sync_state::get(&conn, "config:snapshots_gzip_migrated")? == Some("done".to_string()) {
                 return Ok(());
             }
@@ -1455,7 +1465,7 @@ impl SyncEngine {
         }
 
         // Mark migration complete
-        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let conn = self.conn()?;
         sync_state::set(&conn, "config:snapshots_gzip_migrated", "done")?;
 
         eprintln!("[sync] Snapshot gzip migration complete.");
@@ -1498,7 +1508,7 @@ impl SyncEngine {
         std::fs::write(&local_path, &data)?;
 
         // Update sync_state to "synced"
-        let conn = self.pool.get().map_err(DbError::Pool)?;
+        let conn = self.conn()?;
         let state_key = format!("snapshot:{}", resource_id);
         sync_state::set(&conn, &state_key, "synced")?;
 
@@ -1578,15 +1588,16 @@ mod tests {
     use super::*;
     use crate::sync::backend::mock::MockBackend;
 
-    fn test_pool() -> (tempfile::TempDir, DbPool) {
+    fn test_pool() -> (tempfile::TempDir, SharedPool) {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("test.db");
         let pool = crate::db::init_pool(&db_path).unwrap();
-        (dir, pool)
+        let shared = std::sync::Arc::new(std::sync::RwLock::new(pool));
+        (dir, shared)
     }
 
     fn make_engine(
-        pool: DbPool,
+        pool: SharedPool,
         backend: Arc<dyn SyncBackend>,
         device_id: &str,
         base_dir: PathBuf,
@@ -1596,8 +1607,9 @@ mod tests {
     }
 
     /// Mark a pool as "already synced" so ensure_initial_snapshot is skipped.
-    fn mark_synced(pool: &DbPool) {
-        let conn = pool.get().unwrap();
+    fn mark_synced(pool: &SharedPool) {
+        let guard = pool.read().unwrap();
+        let conn = guard.get().unwrap();
         sync_state::set(&conn, "last_sync_at", "2026-01-01T00:00:00Z").unwrap();
     }
 
@@ -1631,7 +1643,7 @@ mod tests {
 
         // Insert a sync_log entry
         {
-            let conn = pool.get().unwrap();
+            let conn = pool.read().unwrap().get().unwrap();
             let payload = serde_json::json!({
                 "id": "f1",
                 "name": "Test Folder",
@@ -1667,7 +1679,7 @@ mod tests {
 
         // Verify entry is marked as uploaded
         {
-            let conn = pool.get().unwrap();
+            let conn = pool.read().unwrap().get().unwrap();
             let pending = sync_log::get_pending(&conn).unwrap();
             assert!(pending.is_empty());
         }
@@ -1683,7 +1695,7 @@ mod tests {
         let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
 
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
             let payload = serde_json::json!({
                 "id": "f1",
                 "name": "Shared Folder",
@@ -1729,7 +1741,7 @@ mod tests {
 
         // Verify folder exists on Device B
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             let name: String = conn
                 .query_row(
                     "SELECT name FROM folders WHERE id = 'f1'",
@@ -1750,7 +1762,7 @@ mod tests {
         let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
 
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
             let payload = serde_json::json!({
                 "id": "f1",
                 "name": "Old Name",
@@ -1778,7 +1790,7 @@ mod tests {
         let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
 
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             // Insert the folder locally with a newer HLC
             conn.execute(
                 "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at, hlc)
@@ -1792,7 +1804,7 @@ mod tests {
 
         // Verify that Device B's local (newer) name is preserved
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             let name: String = conn
                 .query_row("SELECT name FROM folders WHERE id = 'f1'", [], |row| {
                     row.get(0)
@@ -1813,7 +1825,7 @@ mod tests {
 
         // Create and upload
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
             let payload = serde_json::json!({
                 "id": "f1",
                 "name": "To Delete",
@@ -1837,7 +1849,7 @@ mod tests {
 
         // Delete and upload
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
             let payload = serde_json::json!({
                 "id": "f1",
                 "deleted_at": "2026-04-02T00:00:00Z"
@@ -1863,7 +1875,7 @@ mod tests {
 
         // Verify folder is soft-deleted on Device B
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             let deleted_at: Option<String> = conn
                 .query_row(
                     "SELECT deleted_at FROM folders WHERE id = 'f1'",
@@ -1915,7 +1927,7 @@ mod tests {
 
         // Verify sync_state updated
         {
-            let conn = pool2.get().unwrap();
+            let conn = pool2.read().unwrap().get().unwrap();
             let state = sync_state::get(&conn, "snapshot:res-1").unwrap();
             assert_eq!(state, Some("synced".to_string()));
         }
@@ -1949,7 +1961,7 @@ mod tests {
         let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
 
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
             let payload = serde_json::json!({
                 "name": "reading",
                 "color": "#808080"
@@ -1974,7 +1986,7 @@ mod tests {
         let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
 
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             // Insert local tag "reading" with id "tag-b" (older HLC)
             conn.execute(
                 "INSERT INTO tags (id, name, color, hlc, deleted_at) VALUES ('tag-b', 'reading', '#808080', '1711987100000-0000-dev-b', NULL)",
@@ -1988,7 +2000,7 @@ mod tests {
 
         // Verify Device A's tag (newer HLC) replaced Device B's local tag
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             let (id, name): (String, String) = conn
                 .query_row(
                     "SELECT id, name FROM tags WHERE name = 'reading' AND deleted_at IS NULL",
@@ -2025,7 +2037,7 @@ mod tests {
         let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
 
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
 
             // Create folder f1
             let folder_payload = serde_json::json!({
@@ -2074,7 +2086,7 @@ mod tests {
 
         // Delete folder f1 and sync again
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
             let delete_payload = serde_json::json!({
                 "id": "f1",
                 "deleted_at": "2026-04-02T00:00:00Z"
@@ -2101,7 +2113,7 @@ mod tests {
 
         // Verify folder f1 is soft-deleted on Device B
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             let deleted_at: Option<String> = conn
                 .query_row(
                     "SELECT deleted_at FROM folders WHERE id = 'f1'",
@@ -2114,7 +2126,7 @@ mod tests {
 
         // Verify resource r1 is also cascade soft-deleted on Device B
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             let deleted_at: Option<String> = conn
                 .query_row(
                     "SELECT deleted_at FROM resources WHERE id = 'r1'",
@@ -2145,7 +2157,7 @@ mod tests {
         std::fs::write(snap_dir.join("snapshot.html"), b"<html>hello</html>").unwrap();
 
         {
-            let conn = pool_a.get().unwrap();
+            let conn = pool_a.read().unwrap().get().unwrap();
             let payload = serde_json::json!({
                 "id": "res-1", "title": "Test", "url": "https://example.com",
                 "folder_id": "__root__", "resource_type": "webpage",
@@ -2172,7 +2184,7 @@ mod tests {
 
         // Verify: sync_state shows "synced" not "pending"
         {
-            let conn = pool_b.get().unwrap();
+            let conn = pool_b.read().unwrap().get().unwrap();
             let status = sync_state::get(&conn, "snapshot:res-1").unwrap();
             assert_eq!(status, Some("synced".to_string()));
         }
@@ -2211,7 +2223,7 @@ mod tests {
 
         // Verify: sync_state flag set
         {
-            let conn = pool.get().unwrap();
+            let conn = pool.read().unwrap().get().unwrap();
             let flag = sync_state::get(&conn, "config:snapshots_gzip_migrated").unwrap();
             assert_eq!(flag, Some("done".to_string()));
         }

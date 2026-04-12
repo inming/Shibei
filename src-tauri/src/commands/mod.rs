@@ -12,7 +12,7 @@ use crate::storage;
 
 /// Shared application state managed by Tauri.
 pub struct AppState {
-    pub pool: db::DbPool,
+    pub pool: db::SharedPool,
     pub base_dir: std::path::PathBuf,
     pub auth_token: String,
     pub sync_clock: Option<crate::sync::hlc::HlcClock>,
@@ -27,6 +27,11 @@ impl AppState {
             (Some(clock), Some(device_id)) => Some(crate::sync::SyncContext { clock, device_id }),
             _ => None,
         }
+    }
+
+    pub fn conn(&self) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>, CommandError> {
+        let pool = self.pool.read().map_err(|e| CommandError { message: format!("pool lock poisoned: {e}") })?;
+        pool.get().map_err(|e| CommandError { message: e.to_string() })
     }
 }
 
@@ -58,7 +63,7 @@ pub async fn cmd_list_folders(
     state: tauri::State<'_, Arc<AppState>>,
     parent_id: String,
 ) -> Result<Vec<folders::Folder>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     folders::list_children(&conn, &parent_id).map_err(Into::into)
 }
 
@@ -69,7 +74,7 @@ pub async fn cmd_create_folder(
     name: String,
     parent_id: String,
 ) -> Result<folders::Folder, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let folder = folders::create_folder(&conn, &name, &parent_id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "created", "parent_id": parent_id }));
@@ -83,7 +88,7 @@ pub async fn cmd_rename_folder(
     id: String,
     name: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     folders::rename_folder(&conn, &id, &name, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "updated", "folder_id": id }));
@@ -96,7 +101,7 @@ pub async fn cmd_delete_folder(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<Vec<String>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let resource_ids = folders::delete_folder(&conn, &id, sync_ctx.as_ref())?;
     // Snapshot files are kept until purge, so restore can still access them.
@@ -112,7 +117,7 @@ pub async fn cmd_move_folder(
     id: String,
     new_parent_id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     folders::move_folder(&conn, &id, &new_parent_id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "moved", "folder_id": id }));
@@ -124,7 +129,7 @@ pub async fn cmd_get_folder(
     state: tauri::State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<folders::Folder, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     folders::get_folder(&conn, &id).map_err(Into::into)
 }
 
@@ -133,7 +138,7 @@ pub async fn cmd_get_folder_path(
     state: tauri::State<'_, Arc<AppState>>,
     folder_id: String,
 ) -> Result<Vec<folders::Folder>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     folders::get_folder_path(&conn, &folder_id).map_err(Into::into)
 }
 
@@ -144,7 +149,7 @@ pub async fn cmd_reorder_folder(
     id: String,
     new_sort_order: i64,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     folders::reorder_folder(&conn, &id, new_sort_order, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "reordered", "folder_id": id }));
@@ -161,7 +166,7 @@ pub async fn cmd_list_resources(
     sort_order: Option<resources::SortOrder>,
     tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     resources::list_resources_by_folder(
         &conn,
         &folder_id,
@@ -177,7 +182,7 @@ pub async fn cmd_get_resource(
     state: tauri::State<'_, Arc<AppState>>,
     id: String,
 ) -> Result<resources::Resource, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     resources::get_resource(&conn, &id).map_err(Into::into)
 }
 
@@ -187,7 +192,7 @@ pub async fn cmd_delete_resource(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let folder_id = resources::get_resource(&conn, &id)?.folder_id;
     let sync_ctx = state.sync_context();
     resources::delete_resource(&conn, &id, sync_ctx.as_ref())?;
@@ -203,7 +208,7 @@ pub async fn cmd_move_resource(
     id: String,
     new_folder_id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     resources::move_resource(&conn, &id, &new_folder_id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "moved", "resource_id": id, "folder_id": new_folder_id }));
@@ -218,7 +223,7 @@ pub async fn cmd_update_resource(
     title: String,
     description: Option<String>,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     resources::update_resource(&conn, &id, &title, description.as_deref(), sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "updated", "resource_id": id }));
@@ -232,7 +237,7 @@ pub async fn cmd_list_all_resources(
     sort_order: Option<resources::SortOrder>,
     tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     resources::list_all_resources(
         &conn,
         sort_by.unwrap_or(resources::SortBy::CreatedAt),
@@ -248,7 +253,7 @@ pub async fn cmd_list_all_resources(
 pub async fn cmd_list_tags(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<Vec<tags::Tag>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     tags::list_tags(&conn).map_err(Into::into)
 }
 
@@ -259,7 +264,7 @@ pub async fn cmd_create_tag(
     name: String,
     color: String,
 ) -> Result<tags::Tag, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let tag = tags::create_tag(&conn, &name, &color, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "created", "tag_id": tag.id }));
@@ -272,7 +277,7 @@ pub async fn cmd_delete_tag(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     tags::delete_tag(&conn, &id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "deleted", "tag_id": id }));
@@ -284,7 +289,7 @@ pub async fn cmd_get_tags_for_resource(
     state: tauri::State<'_, Arc<AppState>>,
     resource_id: String,
 ) -> Result<Vec<tags::Tag>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     tags::get_tags_for_resource(&conn, &resource_id).map_err(Into::into)
 }
 
@@ -295,7 +300,7 @@ pub async fn cmd_add_tag_to_resource(
     resource_id: String,
     tag_id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     tags::add_tag_to_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "updated", "tag_id": tag_id, "resource_id": resource_id }));
@@ -309,7 +314,7 @@ pub async fn cmd_remove_tag_from_resource(
     resource_id: String,
     tag_id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     tags::remove_tag_from_resource(&conn, &resource_id, &tag_id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "updated", "tag_id": tag_id, "resource_id": resource_id }));
@@ -324,7 +329,7 @@ pub async fn cmd_update_tag(
     name: String,
     color: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     tags::update_tag(&conn, &id, &name, &color, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_TAG_CHANGED, serde_json::json!({ "action": "updated", "tag_id": id }));
@@ -336,7 +341,7 @@ pub async fn cmd_get_resources_by_tag(
     state: tauri::State<'_, Arc<AppState>>,
     tag_id: String,
 ) -> Result<Vec<resources::Resource>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     tags::get_resources_by_tag(&conn, &tag_id).map_err(Into::into)
 }
 
@@ -349,7 +354,7 @@ pub async fn cmd_search_resources(
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
 ) -> Result<Vec<db::search::SearchResult>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sort_by_str = match sort_by.unwrap_or(resources::SortBy::CreatedAt) {
         resources::SortBy::CreatedAt => "created_at",
         resources::SortBy::AnnotatedAt => "annotated_at",
@@ -373,7 +378,7 @@ pub async fn cmd_search_resources(
 pub async fn cmd_get_index_stats(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<db::search::IndexStats, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     db::search::get_index_stats(&conn).map_err(Into::into)
 }
 
@@ -384,7 +389,7 @@ pub async fn cmd_get_highlights(
     state: tauri::State<'_, Arc<AppState>>,
     resource_id: String,
 ) -> Result<Vec<highlights::Highlight>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     highlights::get_highlights_for_resource(&conn, &resource_id).map_err(Into::into)
 }
 
@@ -397,7 +402,7 @@ pub async fn cmd_create_highlight(
     anchor: highlights::Anchor,
     color: String,
 ) -> Result<highlights::Highlight, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let highlight = highlights::create_highlight(&conn, &resource_id, &text_content, &anchor, &color, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "created", "resource_id": resource_id }));
@@ -412,7 +417,7 @@ pub async fn cmd_update_highlight_color(
     resource_id: String,
     color: String,
 ) -> Result<highlights::Highlight, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let highlight = highlights::update_highlight_color(&conn, &id, &color, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "updated", "resource_id": resource_id }));
@@ -426,7 +431,7 @@ pub async fn cmd_delete_highlight(
     id: String,
     resource_id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     highlights::delete_highlight(&conn, &id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": resource_id }));
@@ -440,7 +445,7 @@ pub async fn cmd_get_comments(
     state: tauri::State<'_, Arc<AppState>>,
     resource_id: String,
 ) -> Result<Vec<comments::Comment>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     comments::get_comments_for_resource(&conn, &resource_id).map_err(Into::into)
 }
 
@@ -452,7 +457,7 @@ pub async fn cmd_create_comment(
     highlight_id: Option<String>,
     content: String,
 ) -> Result<comments::Comment, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let comment = comments::create_comment(&conn, &resource_id, highlight_id.as_deref(), &content, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "created", "resource_id": resource_id }));
@@ -467,7 +472,7 @@ pub async fn cmd_update_comment(
     resource_id: String,
     content: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     comments::update_comment(&conn, &id, &content, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "updated", "resource_id": resource_id }));
@@ -481,7 +486,7 @@ pub async fn cmd_delete_comment(
     id: String,
     resource_id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     comments::delete_comment(&conn, &id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_ANNOTATION_CHANGED, serde_json::json!({ "action": "deleted", "resource_id": resource_id }));
@@ -492,7 +497,7 @@ pub async fn cmd_delete_comment(
 pub async fn cmd_get_folder_counts(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<std::collections::HashMap<String, i64>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     resources::count_by_folder(&conn).map_err(Into::into)
 }
 
@@ -500,7 +505,7 @@ pub async fn cmd_get_folder_counts(
 pub async fn cmd_get_non_leaf_folder_ids(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<Vec<String>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let set = folders::parent_ids_with_children(&conn).map_err(CommandError::from)?;
     Ok(set.into_iter().collect())
 }
@@ -526,7 +531,7 @@ pub async fn cmd_sync_now(
     // reset sync state to force full snapshot import. This repairs devices that went
     // through the buggy unlock flow where sync state was not properly reset.
     {
-        let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+        let conn = state.conn()?;
         let encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
             .map(|v| v == "true").unwrap_or(false);
         let sync_completed = crate::sync::sync_state::get(&conn, "config:encryption_sync_completed")?
@@ -563,7 +568,7 @@ pub async fn cmd_sync_now(
 
     // Mark first post-encryption sync as completed
     {
-        let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+        let conn = state.conn()?;
         if crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
             .map(|v| v == "true").unwrap_or(false)
         {
@@ -627,7 +632,7 @@ async fn build_sync_engine(
     state: &AppState,
     encryption_state: &crate::sync::EncryptionState,
 ) -> Result<crate::sync::engine::SyncEngine, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
 
     let local_encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
         .map(|v| v == "true")
@@ -698,7 +703,7 @@ async fn build_sync_engine(
 
 /// Build a raw S3Backend (no encryption) for keyring operations.
 fn build_raw_s3_backend(state: &AppState) -> Result<crate::sync::backend::S3Backend, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
         .ok_or_else(|| CommandError { message: "error.syncRegionNotSet".to_string() })?;
     let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
@@ -754,7 +759,7 @@ pub async fn cmd_setup_encryption(
     }
 
     // 4. Reset local sync progress
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     conn.execute("UPDATE sync_log SET uploaded = 0", [])
         .map_err(|e| CommandError { message: e.to_string() })?;
     let remote_keys = crate::sync::sync_state::list_by_prefix(&conn, "remote:")?;
@@ -801,7 +806,7 @@ pub async fn cmd_unlock_encryption(
         other => CommandError { message: format!("error.unlockFailed: {}", other) },
     })?;
 
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
 
     // Reset sync progress if first post-encryption sync was never completed.
     // Uses a dedicated flag instead of config:encryption_enabled, which could
@@ -874,7 +879,7 @@ pub async fn cmd_get_encryption_status(
     state: tauri::State<'_, Arc<AppState>>,
     encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
 ) -> Result<serde_json::Value, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
         .map(|v| v == "true")
         .unwrap_or(false);
@@ -966,12 +971,7 @@ pub async fn cmd_auto_unlock(
     } else {
         // MK is stale — another device reset encryption
         let _ = os_keystore::delete_master_key();
-        let conn = state
-            .pool
-            .get()
-            .map_err(|e| CommandError {
-                message: e.to_string(),
-            })?;
+        let conn = state.conn()?;
         let _ = crate::sync::sync_state::delete(&conn, "config:remember_encryption_key");
         Ok(AutoUnlockResult::KeyMismatch)
     }
@@ -986,12 +986,7 @@ pub async fn cmd_set_remember_key(
 ) -> Result<(), CommandError> {
     use crate::sync::os_keystore;
 
-    let conn = state
-        .pool
-        .get()
-        .map_err(|e| CommandError {
-            message: e.to_string(),
-        })?;
+    let conn = state.conn()?;
 
     if remember {
         let mk = encryption_state.get_key().ok_or_else(|| CommandError {
@@ -1017,12 +1012,7 @@ pub async fn cmd_set_remember_key(
 pub async fn cmd_get_remember_key(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<bool, CommandError> {
-    let conn = state
-        .pool
-        .get()
-        .map_err(|e| CommandError {
-            message: e.to_string(),
-        })?;
+    let conn = state.conn()?;
     let remember = crate::sync::sync_state::get(&conn, "config:remember_encryption_key")?
         .map(|v| v == "true")
         .unwrap_or(false);
@@ -1039,7 +1029,7 @@ pub async fn cmd_save_sync_config(
     access_key: String,
     secret_key: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     crate::sync::sync_state::set(&conn, "config:s3_endpoint", &endpoint)?;
     crate::sync::sync_state::set(&conn, "config:s3_region", &region)?;
     crate::sync::sync_state::set(&conn, "config:s3_bucket", &bucket)?;
@@ -1056,7 +1046,7 @@ pub async fn cmd_save_sync_config(
 pub async fn cmd_get_sync_config(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
     let region = crate::sync::sync_state::get(&conn, "config:s3_region")?.unwrap_or_default();
     let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?.unwrap_or_default();
@@ -1089,7 +1079,7 @@ pub async fn cmd_test_s3_connection(
         return Err(CommandError { message: "Region and Bucket are required".to_string() });
     }
     // If credentials are placeholder, load from DB
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let (ak, sk) = if access_key == "__keep__" || secret_key == "__keep__" {
         crate::sync::credentials::load_credentials(&conn)?
             .ok_or_else(|| CommandError { message: "Credentials not configured".to_string() })?
@@ -1129,7 +1119,7 @@ pub async fn cmd_get_snapshot_status(
     state: tauri::State<'_, Arc<AppState>>,
     resource_id: String,
 ) -> Result<String, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let status = crate::sync::sync_state::get(&conn, &format!("snapshot:{}", resource_id))?
         .unwrap_or_else(|| "synced".to_string());
     Ok(status)
@@ -1141,7 +1131,7 @@ pub async fn cmd_set_sync_interval(
     app: tauri::AppHandle,
     minutes: i64,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     crate::sync::sync_state::set(&conn, "config:sync_interval", &minutes.to_string())?;
     let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "sync" }));
     Ok(())
@@ -1153,7 +1143,7 @@ pub async fn cmd_set_sync_interval(
 pub async fn cmd_list_deleted_resources(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<Vec<resources::DeletedResource>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     resources::list_deleted_resources(&conn).map_err(Into::into)
 }
 
@@ -1161,7 +1151,7 @@ pub async fn cmd_list_deleted_resources(
 pub async fn cmd_list_deleted_folders(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<Vec<folders::DeletedFolder>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     folders::list_deleted_folders(&conn).map_err(Into::into)
 }
 
@@ -1171,7 +1161,7 @@ pub async fn cmd_restore_resource(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<resources::Resource, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let resource = resources::restore_resource(&conn, &id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "updated", "resource_id": id }));
@@ -1185,7 +1175,7 @@ pub async fn cmd_restore_folder(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<folders::Folder, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let sync_ctx = state.sync_context();
     let folder = folders::restore_folder(&conn, &id, sync_ctx.as_ref())?;
     let _ = app.emit(events::DATA_FOLDER_CHANGED, serde_json::json!({ "action": "created", "folder_id": id }));
@@ -1198,7 +1188,7 @@ pub async fn cmd_purge_resource(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     resources::purge_resource(&conn, &id)?;
     // Write PURGE to sync_log so other devices also hard-delete
     if let Some(ctx) = state.sync_context() {
@@ -1218,7 +1208,7 @@ pub async fn cmd_purge_folder(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let result = folders::purge_folder(&conn, &id)?;
     // Write PURGE to sync_log for folder, child folders, and resources
     if let Some(ctx) = state.sync_context() {
@@ -1247,7 +1237,7 @@ pub async fn cmd_purge_all_deleted(
     state: tauri::State<'_, Arc<AppState>>,
     app: tauri::AppHandle,
 ) -> Result<(), CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
 
     // Collect IDs before purging (need them for sync_log)
     let deleted_folder_ids: Vec<String> = folders::list_deleted_folder_ids(&conn)?;
@@ -1405,7 +1395,7 @@ pub async fn cmd_get_annotation_counts(
     state: tauri::State<'_, Arc<AppState>>,
     resource_ids: Vec<String>,
 ) -> Result<std::collections::HashMap<String, AnnotationCount>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let hl_counts = highlights::count_by_resource_ids(&conn, &resource_ids)?;
 
     let mut result = std::collections::HashMap::new();
@@ -1425,7 +1415,7 @@ pub async fn cmd_get_resource_summary(
     resource_id: String,
     max_chars: Option<usize>,
 ) -> Result<Option<String>, CommandError> {
-    let conn = state.pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+    let conn = state.conn()?;
     let text = resources::get_plain_text(&conn, &resource_id)?;
     let limit = max_chars.unwrap_or(200);
     Ok(text.map(|t| {

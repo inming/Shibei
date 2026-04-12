@@ -20,7 +20,7 @@ use crate::storage;
 
 /// Shared state for the HTTP server.
 pub struct AppState {
-    pub pool: db::DbPool,
+    pub pool: db::SharedPool,
     pub base_dir: PathBuf,
     pub token: String,
     pub app_handle: tauri::AppHandle,
@@ -238,14 +238,7 @@ async fn handle_folders(
 ) -> Result<Json<Vec<FolderNode>>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
 
-    let conn = state.pool.get().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    let conn = get_conn(&state)?;
     let tree = build_folder_tree(&conn, "__root__", 0).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -284,14 +277,7 @@ async fn handle_tags(
 ) -> Result<Json<Vec<tags::Tag>>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
 
-    let conn = state.pool.get().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    let conn = get_conn(&state)?;
     let tag_list = tags::list_tags(&conn).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -309,14 +295,7 @@ async fn handle_folder_counts(
 ) -> Result<Json<std::collections::HashMap<String, i64>>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
 
-    let conn = state.pool.get().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    let conn = get_conn(&state)?;
     let counts = resources::count_by_folder(&conn).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -344,14 +323,7 @@ async fn handle_check_url(
     axum::extract::Query(query): axum::extract::Query<CheckUrlQuery>,
 ) -> Result<Json<CheckUrlResponse>, (StatusCode, Json<ErrorResponse>)> {
     verify_token(&headers, &state.token)?;
-    let conn = state.pool.get().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    let conn = get_conn(&state)?;
     let matches = resources::find_by_url(&conn, &query.url).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -406,14 +378,7 @@ async fn handle_save(
             )
         })?;
 
-    let conn = state.pool.get().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    let conn = get_conn(&state)?;
 
     conn.execute_batch("BEGIN").map_err(|e| {
         (
@@ -582,14 +547,7 @@ async fn handle_save_raw(
             )
         })?;
 
-    let conn = state.pool.get().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    let conn = get_conn(&state)?;
 
     conn.execute_batch("BEGIN").map_err(|e| {
         (
@@ -727,7 +685,15 @@ fn get_conn(
     state: &AppState,
 ) -> Result<r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>, (StatusCode, Json<ErrorResponse>)>
 {
-    state.pool.get().map_err(|e| {
+    let pool = state.pool.read().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "pool lock poisoned".to_string(),
+            }),
+        )
+    })?;
+    pool.get().map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
