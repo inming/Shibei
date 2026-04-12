@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { save, open, ask } from "@tauri-apps/plugin-dialog";
 import toast from "react-hot-toast";
@@ -13,16 +13,28 @@ function formatError(err: unknown): string {
   return translateError(String(err));
 }
 
-// Module-level state survives component unmount/remount (tab switching)
+// Module-level state + listeners to notify all mounted instances
 let _backingUp = false;
 let _restoring = false;
+let _listeners = new Set<() => void>();
+
+function setBusy(type: "backup" | "restore", value: boolean) {
+  if (type === "backup") _backingUp = value;
+  else _restoring = value;
+  _listeners.forEach((fn) => fn());
+}
 
 export function DataPage() {
   const { t } = useTranslation("data");
-  const [backingUp, setBackingUp] = useState(_backingUp);
-  const [restoring, setRestoring] = useState(_restoring);
+  const [, forceUpdate] = useState(0);
 
-  const handleBackup = async () => {
+  useEffect(() => {
+    const listener = () => forceUpdate((n) => n + 1);
+    _listeners.add(listener);
+    return () => { _listeners.delete(listener); };
+  }, []);
+
+  const handleBackup = useCallback(async () => {
     const now = new Date();
     const ts = now.toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
     const defaultName = `shibei-backup-${ts}.zip`;
@@ -33,20 +45,18 @@ export function DataPage() {
     });
     if (!path) return;
 
-    _backingUp = true;
-    setBackingUp(true);
+    setBusy("backup", true);
     try {
       const result = await cmd.exportBackup(path);
       toast.success(t("backupSuccess", { count: result.resource_count }));
     } catch (err) {
       toast.error(formatError(err));
     } finally {
-      _backingUp = false;
-      setBackingUp(false);
+      setBusy("backup", false);
     }
-  };
+  }, [t]);
 
-  const handleRestore = async () => {
+  const handleRestore = useCallback(async () => {
     const path = await open({
       filters: [{ name: "Zip", extensions: ["zip"] }],
       multiple: false,
@@ -74,18 +84,16 @@ export function DataPage() {
     });
     if (!confirmed) return;
 
-    _restoring = true;
-    setRestoring(true);
+    setBusy("restore", true);
     try {
       const result = await cmd.importBackup(path as string);
       toast.success(t("restoreSuccess", { count: result.resource_count }));
     } catch (err) {
       toast.error(formatError(err));
     } finally {
-      _restoring = false;
-      setRestoring(false);
+      setBusy("restore", false);
     }
-  };
+  }, [t]);
 
   return (
     <div>
@@ -98,9 +106,9 @@ export function DataPage() {
           <button
             className={styles.primary}
             onClick={handleBackup}
-            disabled={backingUp || restoring}
+            disabled={_backingUp || _restoring}
           >
-            {backingUp ? t("backupInProgress") : t("backupButton")}
+            {_backingUp ? t("backupInProgress") : t("backupButton")}
           </button>
         </div>
       </div>
@@ -112,9 +120,9 @@ export function DataPage() {
           <button
             className={styles.danger}
             onClick={handleRestore}
-            disabled={backingUp || restoring}
+            disabled={_backingUp || _restoring}
           >
-            {restoring ? t("restoreInProgress") : t("restoreButton")}
+            {_restoring ? t("restoreInProgress") : t("restoreButton")}
           </button>
         </div>
       </div>
