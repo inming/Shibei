@@ -1429,6 +1429,26 @@ pub async fn cmd_get_resource_summary(
     }))
 }
 
+// ── Backup ──
+
+#[tauri::command]
+pub async fn cmd_export_backup(
+    state: tauri::State<'_, Arc<AppState>>,
+    path: String,
+) -> Result<crate::backup::BackupResult, CommandError> {
+    let db_path = state.base_dir.join("shibei.db");
+    let base_dir = state.base_dir.clone();
+    let device_id = state.device_id.clone().unwrap_or_default();
+    let output_path = std::path::PathBuf::from(&path);
+
+    tokio::task::spawn_blocking(move || {
+        crate::backup::export_backup(&db_path, &base_dir, &output_path, &device_id)
+    })
+    .await
+    .map_err(|e| CommandError { message: e.to_string() })?
+    .map_err(|e| CommandError { message: e })
+}
+
 // ── Debug ──
 
 #[tauri::command]

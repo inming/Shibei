@@ -1,3 +1,4 @@
+mod backup;
 mod commands;
 mod db;
 mod events;
@@ -171,6 +172,7 @@ pub fn run() {
             commands::cmd_get_index_stats,
             commands::cmd_get_annotation_counts,
             commands::cmd_get_resource_summary,
+            commands::cmd_export_backup,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();
