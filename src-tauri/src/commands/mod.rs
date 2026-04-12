@@ -1449,6 +1449,34 @@ pub async fn cmd_export_backup(
     .map_err(|e| CommandError { message: e })
 }
 
+#[tauri::command]
+pub async fn cmd_import_backup(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<crate::backup::RestoreResult, CommandError> {
+    let shared_pool = state.pool.clone();
+    let base_dir = state.base_dir.clone();
+    let zip_path = std::path::PathBuf::from(&path);
+
+    let result = tokio::task::spawn_blocking(move || {
+        crate::backup::import_backup(&shared_pool, &base_dir, &zip_path)
+    })
+    .await
+    .map_err(|e| CommandError { message: e.to_string() })?
+    .map_err(|e| CommandError { message: e })?;
+
+    // Emit all domain events for full UI refresh
+    use crate::events::*;
+    let _ = app.emit(DATA_RESOURCE_CHANGED, serde_json::json!({"action": "restored"}));
+    let _ = app.emit(DATA_FOLDER_CHANGED, serde_json::json!({"action": "restored"}));
+    let _ = app.emit(DATA_TAG_CHANGED, serde_json::json!({"action": "restored"}));
+    let _ = app.emit(DATA_ANNOTATION_CHANGED, serde_json::json!({"action": "restored"}));
+    let _ = app.emit(DATA_CONFIG_CHANGED, serde_json::json!({"scope": "restore"}));
+
+    Ok(result)
+}
+
 // ── Debug ──
 
 #[tauri::command]

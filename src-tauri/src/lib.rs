@@ -173,6 +173,7 @@ pub fn run() {
             commands::cmd_get_annotation_counts,
             commands::cmd_get_resource_summary,
             commands::cmd_export_backup,
+            commands::cmd_import_backup,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

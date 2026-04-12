@@ -365,6 +365,15 @@ pub struct IndexStats {
     pub fts_initialized: bool,
 }
 
+/// Clear FTS initialized flag (used before restore to force full rebuild).
+pub fn clear_fts_initialized(conn: &Connection) -> Result<(), DbError> {
+    conn.execute(
+        "DELETE FROM sync_state WHERE key = 'config:fts_initialized'",
+        [],
+    )?;
+    Ok(())
+}
+
 /// Mark FTS index as initialized.
 pub fn mark_fts_initialized(conn: &Connection) -> Result<(), DbError> {
     conn.execute(
