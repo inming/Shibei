@@ -1,0 +1,15 @@
+{
+  "title": "Data Management",
+  "backupTitle": "Backup",
+  "backupDesc": "Export the entire library as a zip file, including all resources and snapshots.",
+  "backupButton": "Create Backup",
+  "backupInProgress": "Backing up...",
+  "backupSuccess": "Backup complete. {{count}} resources exported.",
+  "restoreTitle": "Restore",
+  "restoreDesc": "Restore the library from a backup file. Current data will be overwritten.",
+  "restoreButton": "Restore from Backup",
+  "restoreInProgress": "Restoring...",
+  "restoreSuccess": "Restore complete. {{count}} resources restored.",
+  "restoreConfirm": "Restoring will overwrite all current data. This action cannot be undone. Continue?",
+  "restoreSyncWarning": "After restoring, the next sync will merge with cloud data. Newer changes on the cloud (including deletions) will overwrite data from the backup. To keep the backup data, disable auto-sync after restoring."
+}

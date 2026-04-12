@@ -8,6 +8,7 @@ import type zhSync from '../locales/zh/sync.json';
 import type zhEncryption from '../locales/zh/encryption.json';
 import type zhLock from '../locales/zh/lock.json';
 import type zhSearch from '../locales/zh/search.json';
+import type zhData from '../locales/zh/data.json';
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -22,6 +23,7 @@ declare module 'i18next' {
       encryption: typeof zhEncryption;
       lock: typeof zhLock;
       search: typeof zhSearch;
+      data: typeof zhData;
     };
   }
 }

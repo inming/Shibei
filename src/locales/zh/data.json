@@ -1,0 +1,15 @@
+{
+  "title": "数据管理",
+  "backupTitle": "备份",
+  "backupDesc": "将资料库完整导出为 zip 文件，包含所有资料和快照。",
+  "backupButton": "创建备份",
+  "backupInProgress": "正在备份...",
+  "backupSuccess": "备份完成，共 {{count}} 个资料",
+  "restoreTitle": "恢复",
+  "restoreDesc": "从备份文件恢复资料库，当前数据将被覆盖。",
+  "restoreButton": "从备份恢复",
+  "restoreInProgress": "正在恢复...",
+  "restoreSuccess": "恢复完成，共 {{count}} 个资料",
+  "restoreConfirm": "恢复将覆盖当前所有数据，此操作不可撤销。确认恢复？",
+  "restoreSyncWarning": "恢复后下次同步会与云端合并，云端较新的变更（包括删除）将覆盖备份中的旧数据。如需保留备份中的数据，请在恢复后先关闭自动同步。"
+}

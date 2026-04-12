@@ -30,6 +30,12 @@
     "keychainSaveFailed": "Failed to save to system keychain",
     "pinMustBe4Digits": "PIN must be 4 digits",
     "pinNotSet": "PIN not set",
-    "pinIncorrect": "PIN is incorrect"
+    "pinIncorrect": "PIN is incorrect",
+    "backup_write_failed": "Failed to write backup file",
+    "backup_temp_failed": "Failed to create temporary file",
+    "restore_invalid_format": "Invalid backup file format",
+    "restore_version_unsupported": "Unsupported backup version",
+    "restore_db_missing": "Database file missing from backup",
+    "restore_failed": "Restore failed"
   }
 }

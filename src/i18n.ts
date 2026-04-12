@@ -11,6 +11,7 @@ import zhSync from './locales/zh/sync.json';
 import zhEncryption from './locales/zh/encryption.json';
 import zhLock from './locales/zh/lock.json';
 import zhSearch from './locales/zh/search.json';
+import zhData from './locales/zh/data.json';
 
 import enCommon from './locales/en/common.json';
 import enSidebar from './locales/en/sidebar.json';
@@ -21,6 +22,7 @@ import enSync from './locales/en/sync.json';
 import enEncryption from './locales/en/encryption.json';
 import enLock from './locales/en/lock.json';
 import enSearch from './locales/en/search.json';
+import enData from './locales/en/data.json';
 
 i18n
   .use(LanguageDetector)
@@ -30,12 +32,12 @@ i18n
       zh: {
         common: zhCommon, sidebar: zhSidebar, reader: zhReader,
         annotation: zhAnnotation, settings: zhSettings, sync: zhSync,
-        encryption: zhEncryption, lock: zhLock, search: zhSearch,
+        encryption: zhEncryption, lock: zhLock, search: zhSearch, data: zhData,
       },
       en: {
         common: enCommon, sidebar: enSidebar, reader: enReader,
         annotation: enAnnotation, settings: enSettings, sync: enSync,
-        encryption: enEncryption, lock: enLock, search: enSearch,
+        encryption: enEncryption, lock: enLock, search: enSearch, data: enData,
       },
     },
     fallbackLng: 'zh',

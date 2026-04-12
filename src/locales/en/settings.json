@@ -7,5 +7,6 @@
   "navAppearance": "Appearance",
   "navSync": "Sync",
   "navEncryption": "Encryption",
-  "navSecurity": "Security"
+  "navSecurity": "Security",
+  "navData": "Data"
 }

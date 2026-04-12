@@ -30,6 +30,12 @@
     "keychainSaveFailed": "保存到系统钥匙串失败",
     "pinMustBe4Digits": "PIN 必须为 4 位数字",
     "pinNotSet": "未设置 PIN",
-    "pinIncorrect": "PIN 不正确"
+    "pinIncorrect": "PIN 不正确",
+    "backup_write_failed": "备份文件写入失败",
+    "backup_temp_failed": "临时文件创建失败",
+    "restore_invalid_format": "备份文件格式无效",
+    "restore_version_unsupported": "不支持的备份版本",
+    "restore_db_missing": "备份中缺少数据库文件",
+    "restore_failed": "恢复失败"
   }
 }
