@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { save, open } from "@tauri-apps/plugin-dialog";
+import { save, open, ask } from "@tauri-apps/plugin-dialog";
 import toast from "react-hot-toast";
 import * as cmd from "@/lib/commands";
 import { translateError } from "@/lib/commands";
@@ -68,7 +68,11 @@ export function DataPage() {
       confirmMsg += "\n\n" + t("restoreSyncWarning");
     }
 
-    if (!window.confirm(confirmMsg)) return;
+    const confirmed = await ask(confirmMsg, {
+      title: t("restoreTitle"),
+      kind: "warning",
+    });
+    if (!confirmed) return;
 
     _restoring = true;
     setRestoring(true);
