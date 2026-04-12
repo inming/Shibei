@@ -146,31 +146,60 @@ function App() {
     return () => { unlisten.then((f) => f()); };
   }, []);
 
+  // Pending deep link: stored when app is locked, processed after unlock
+  const pendingDeepLinkRef = useRef<string | null>(null);
+
+  const handleDeepLinkUrl = useCallback(async (url: string) => {
+    const match = url.match(/shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?/);
+    if (!match) return;
+    const resourceId = match[1];
+    const highlightId = match[2] || undefined;
+    try {
+      const resource = await cmd.getResource(resourceId);
+      if (resource) {
+        openResource(resource, highlightId);
+      }
+    } catch (err) {
+      console.error("Deep link: resource not found", resourceId, err);
+    }
+  }, [openResource]);
+
   // Deep link handler: shibei://open/resource/{id}?highlight={hlId}
   useEffect(() => {
-    async function handleDeepLinks(urls: string[]) {
+    // From tauri-plugin-deep-link (cold start)
+    const u1 = onOpenUrl((urls: string[]) => {
       for (const url of urls) {
-        const match = url.match(/shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?/);
-        if (!match) continue;
-        const resourceId = match[1];
-        const highlightId = match[2] || undefined;
-        try {
-          const resource = await cmd.getResource(resourceId);
-          if (resource) {
-            openResource(resource, highlightId);
-          }
-        } catch (err) {
-          console.error("Deep link: resource not found", resourceId, err);
+        if (locked) {
+          pendingDeepLinkRef.current = url;
+        } else {
+          handleDeepLinkUrl(url);
         }
       }
-    }
-    const unlisten = onOpenUrl(handleDeepLinks);
-    return () => { unlisten.then((f) => f()); };
-  }, [openResource]);
+    });
+    // From tauri-plugin-single-instance (second instance forwarding)
+    const u2 = listen<string>("deep-link-received", (event) => {
+      const url = event.payload;
+      if (locked) {
+        pendingDeepLinkRef.current = url;
+      } else {
+        handleDeepLinkUrl(url);
+      }
+    });
+    return () => {
+      u1.then((f) => f());
+      u2.then((f) => f());
+    };
+  }, [openResource, locked, handleDeepLinkUrl]);
 
   const handleUnlock = useCallback(() => {
     setLocked(false);
-  }, []);
+    // Process any deep link that arrived while locked
+    if (pendingDeepLinkRef.current) {
+      const url = pendingDeepLinkRef.current;
+      pendingDeepLinkRef.current = null;
+      handleDeepLinkUrl(url);
+    }
+  }, [handleDeepLinkUrl]);
 
   const tabs: TabItem[] = [
     { id: LIBRARY_TAB_ID, label: t('libraryTab'), closable: false },

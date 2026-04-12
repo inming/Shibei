@@ -8,6 +8,7 @@ pub mod sync;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::{Emitter, Manager};
 
 fn get_app_base_dir() -> PathBuf {
     dirs::data_local_dir()
@@ -86,6 +87,18 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // When a second instance is launched (e.g. via deep link),
+            // forward the URL to the existing window via event.
+            if let Some(url) = argv.iter().find(|a| a.starts_with("shibei://")) {
+                let _ = app.emit("deep-link-received", url.clone());
+            }
+            // Focus the existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(cmd_state)
         .manage(Arc::new(sync::EncryptionState::new()))
         .invoke_handler(tauri::generate_handler![
