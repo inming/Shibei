@@ -154,6 +154,8 @@ pub fn run() {
             commands::cmd_disable_lock_pin,
             commands::cmd_search_resources,
             commands::cmd_get_index_stats,
+            commands::cmd_get_annotation_counts,
+            commands::cmd_get_resource_summary,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

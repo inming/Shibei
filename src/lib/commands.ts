@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult } from "@/types";
+import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts } from "@/types";
 
 // ── Folders ──
 
@@ -146,6 +146,16 @@ export function updateTag(id: string, name: string, color: string): Promise<void
 
 export function getResourcesByTag(tagId: string): Promise<Resource[]> {
   return invoke("cmd_get_resources_by_tag", { tagId });
+}
+
+// ── Annotation Counts ──
+
+export function getAnnotationCounts(resourceIds: string[]): Promise<Record<string, AnnotationCounts>> {
+  return invoke("cmd_get_annotation_counts", { resourceIds });
+}
+
+export function getResourceSummary(resourceId: string, maxChars?: number): Promise<string | null> {
+  return invoke("cmd_get_resource_summary", { resourceId, maxChars: maxChars ?? 200 });
 }
 
 // ── Highlights ──

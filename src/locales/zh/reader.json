@@ -7,5 +7,7 @@
   "snapshotDownloadFailed": "快照下载失败: {{message}}",
   "openedInBrowser": "已在浏览器中打开",
   "lightPage": "浅色页面",
-  "darkPage": "深色页面"
+  "darkPage": "深色页面",
+  "collapsePanel": "折叠标注面板",
+  "expandPanel": "展开标注面板"
 }

@@ -198,3 +198,82 @@
   vertical-align: middle;
   flex-shrink: 0;
 }
+
+.matchTags {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.matchTag {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--color-accent-light, #e8f0fe);
+  color: var(--color-accent, #1a73e8);
+  flex-shrink: 0;
+}
+
+.emptyState {
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.emptyTitle {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.emptyHint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.tagDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 3px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.metaLeft {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metaRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.annotationCount {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-tertiary);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.snippet {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

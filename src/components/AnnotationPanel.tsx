@@ -110,7 +110,7 @@ export function AnnotationPanel({
       <div ref={scrollAreaRef} className={styles.scrollArea}>
         <div className={styles.list}>
           {highlights.length === 0 && (
-            <div className={styles.empty}>{t('selectTextToAnnotate')}</div>
+            <div className={styles.empty}>{t('emptyAnnotationsHint')}</div>
           )}
           {highlights.map((hl) => (
             <HighlightEntry

@@ -9,12 +9,6 @@
   padding: var(--spacing-lg);
 }
 
-.divider {
-  border: none;
-  border-top: 1px solid var(--color-border-light);
-  margin: 0 0 var(--spacing-md) 0;
-}
-
 .sectionLabel {
   font-size: var(--font-size-sm);
   font-weight: 600;
@@ -24,17 +18,39 @@
   margin-bottom: var(--spacing-sm);
 }
 
-.highlightItem {
-  padding: var(--spacing-sm);
-  margin-bottom: var(--spacing-sm);
-  border-radius: 4px;
-  border-left: 3px solid transparent;
-  cursor: pointer;
-  transition: background 0.15s;
+.empty {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: var(--spacing-xl);
 }
 
-.highlightItem:hover {
-  background: var(--color-bg-hover);
+.summarySection {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.summaryText {
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: var(--spacing-xs) 0 0;
+}
+
+.annotationsSection {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.highlightItem {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  border-left: 3px solid transparent;
+  border-radius: 2px;
 }
 
 .highlightText {
@@ -46,58 +62,20 @@
   overflow: hidden;
 }
 
-.highlightMeta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: var(--spacing-xs);
-  font-size: 11px;
-  color: var(--color-text-muted);
-}
-
-.commentToggle {
-  color: var(--color-accent);
-  cursor: pointer;
-  font-size: 11px;
-}
-
-.commentToggle:hover {
-  text-decoration: underline;
-}
-
-.commentList {
+.commentItem {
   margin-top: var(--spacing-xs);
   padding-left: var(--spacing-sm);
   border-left: 1px solid var(--color-border-light);
-}
-
-.commentItem {
-  padding: var(--spacing-xs) 0;
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
 }
 
-.empty {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-  text-align: center;
-  padding: var(--spacing-xl);
-}
-
 .noteItem {
-  padding: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
   margin-bottom: var(--spacing-sm);
   background: var(--color-bg-secondary);
   border-radius: 4px;
-}
-
-.noteContent {
   font-size: var(--font-size-sm);
-  line-height: 1.4;
 }
 
-.noteMeta {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-top: var(--spacing-xs);
-}
+

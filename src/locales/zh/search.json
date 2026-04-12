@@ -1,5 +1,7 @@
 {
   "placeholder": "搜索...",
   "clearSearch": "清除搜索",
-  "bodyMatch": "正文匹配"
+  "bodyMatch": "正文匹配",
+  "highlightsMatch": "标注匹配",
+  "commentsMatch": "评论匹配"
 }

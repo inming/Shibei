@@ -16,8 +16,10 @@
   "renameFailed": "重命名失败: {{message}}",
   "folderNameLabel": "文件夹名称",
   "create": "创建",
+  "foldersSubtitle": "按位置浏览",
 
   "tags": "标签",
+  "tagsSubtitle": "按属性筛选",
   "noTags": "暂无标签",
   "createTagFailed": "创建标签失败",
   "updateTagFailed": "更新标签失败",
@@ -60,6 +62,12 @@
   "clearTrashBtn": "清空",
   "trashCleared": "回收站已清空",
   "clearTrashFailed": "清空回收站失败",
+  "trashRetentionHint": "删除的资料将在 90 天后永久移除",
+  "trashDaysRemaining": "剩余 {{days}} 天",
+  "trashExpiringSoon": "即将过期",
+  "restoreSelected": "恢复选中 ({{count}})",
+  "selectAll": "全选",
+  "batchRestoreFailed": "部分恢复失败",
 
   "moveResourceFailed": "移动资料失败",
   "moveFolderToSubtree": "不能将文件夹移入自身的子文件夹中",
@@ -95,5 +103,17 @@
   "tagOperationFailed": "标签操作失败",
   "tagNamePlaceholder": "标签名称",
   "tagCancel": "取消",
-  "tagSave": "保存"
+  "tagSave": "保存",
+
+  "previewSummary": "摘要",
+  "previewNoDescription": "暂无摘要",
+  "previewTags": "标签",
+  "statHighlights": "高亮",
+  "statComments": "评论",
+  "statNotes": "笔记",
+
+  "emptyLibraryTitle": "资料库还是空的",
+  "emptyLibraryHint": "安装浏览器插件，开始收集网页快照",
+  "noSearchResultsHint": "试试更短的关键词，或切换到「全部资料」搜索",
+  "emptyFolderHint": "将资料拖到此文件夹，或通过浏览器插件保存时选择此文件夹"
 }

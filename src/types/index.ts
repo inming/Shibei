@@ -27,6 +27,8 @@ export interface Resource {
 
 export interface SearchResult extends Resource {
   matchedBody: boolean;
+  matchFields: string[];
+  snippet: string | null;
 }
 
 export interface Tag {
@@ -90,6 +92,10 @@ export type AutoUnlockResult =
   | "no_stored_key"
   | "keychain_error"
   | "key_mismatch";
+
+export interface AnnotationCounts {
+  highlights: number;
+}
 
 export interface DeletedResource {
   id: string;

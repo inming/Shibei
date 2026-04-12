@@ -5,42 +5,29 @@ import type { Resource } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 import { useAnnotations } from "@/hooks/useAnnotations";
-import { PreviewPanelSkeleton } from "@/components/Skeleton";
 import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import styles from "./PreviewPanel.module.css";
 
-function highlightMatch(text: string, query: string): React.ReactNode {
-  if (!query || query.length < 3) return text;
-  const lowerText = text.toLowerCase();
-  const lowerQuery = query.toLowerCase();
-  const idx = lowerText.indexOf(lowerQuery);
-  if (idx === -1) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark style={{ background: "var(--color-accent-light)", borderRadius: 2, padding: "0 1px" }}>{text.slice(idx, idx + query.length)}</mark>
-      {text.slice(idx + query.length)}
-    </>
-  );
-}
-
 interface PreviewPanelProps {
   resource: Resource;
-  searchQuery?: string;
-  onOpenInReader: (highlightId?: string) => void;
   onNavigateToFolder?: (folderId: string) => void;
 }
 
-export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInReader, onNavigateToFolder }: PreviewPanelProps) {
-  const { t } = useTranslation('annotation');
+export function PreviewPanel({ resource: initialResource, onNavigateToFolder }: PreviewPanelProps) {
+  const { t: tSidebar } = useTranslation('sidebar');
+  const { t: tAnnotation } = useTranslation('annotation');
   const [resource, setResource] = useState<Resource>(initialResource);
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
-  const [expandedHighlightId, setExpandedHighlightId] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
 
   useEffect(() => {
     setResource(initialResource);
   }, [initialResource]);
+
+  useEffect(() => {
+    cmd.getResourceSummary(resource.id, 200).then(setSummary).catch(() => {});
+  }, [resource.id]);
 
   useEffect(() => {
     const u1 = listen(DataEvents.RESOURCE_CHANGED, () => {
@@ -60,78 +47,48 @@ export function PreviewPanel({ resource: initialResource, searchQuery, onOpenInR
       <ResourceMeta resource={resource} onNavigateToFolder={onNavigateToFolder} />
 
       <div className={styles.body}>
-        {/* Highlights section */}
-        <div className={styles.sectionLabel}>
-          {t('annotationsCount', { count: loading ? "..." : highlights.length })}
+        {/* Summary section */}
+        <div className={styles.summarySection}>
+          <div className={styles.sectionLabel}>{tSidebar('previewSummary')}</div>
+          <p className={styles.summaryText}>
+            {resource.description || summary || tSidebar('previewNoDescription')}
+          </p>
         </div>
 
-        {loading && <PreviewPanelSkeleton />}
-
-        {!loading && highlights.length === 0 && (
-          <div className={styles.empty}>{t('noAnnotations')}</div>
+        {/* Highlights & comments */}
+        {!loading && highlights.length > 0 && (
+          <div className={styles.annotationsSection}>
+            <div className={styles.sectionLabel}>
+              {tAnnotation('annotationsCount', { count: highlights.length })}
+            </div>
+            {highlights.map((hl) => {
+              const comments = getCommentsForHighlight(hl.id);
+              return (
+                <div key={hl.id} className={styles.highlightItem} style={{ borderLeftColor: hl.color }}>
+                  <div className={styles.highlightText}>{hl.text_content}</div>
+                  {comments.map((c) => (
+                    <div key={c.id} className={styles.commentItem}>
+                      <MarkdownContent content={c.content} />
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
         )}
 
-        {!loading && highlights.map((hl) => {
-          const comments = getCommentsForHighlight(hl.id);
-          const isExpanded = expandedHighlightId === hl.id;
-
-          return (
-            <div
-              key={hl.id}
-              className={styles.highlightItem}
-              style={{ borderLeftColor: hl.color }}
-              onClick={() => onOpenInReader(hl.id)}
-            >
-              <div className={styles.highlightText}>{searchQuery ? highlightMatch(hl.text_content, searchQuery) : hl.text_content}</div>
-              <div className={styles.highlightMeta}>
-                <span>{new Date(hl.created_at).toLocaleDateString()}</span>
-              </div>
-
-              {comments.length > 0 && (
-                <div className={styles.commentList} onClick={(e) => e.stopPropagation()}>
-                  <div className={styles.commentItem}><MarkdownContent content={comments[0].content} searchQuery={searchQuery} /></div>
-                  {comments.length > 1 && !isExpanded && (
-                    <span
-                      className={styles.commentToggle}
-                      onClick={() => setExpandedHighlightId(hl.id)}
-                    >
-                      {t('viewAllComments', { count: comments.length })}
-                    </span>
-                  )}
-                  {isExpanded && comments.slice(1).map((c) => (
-                    <div key={c.id} className={styles.commentItem}><MarkdownContent content={c.content} searchQuery={searchQuery} /></div>
-                  ))}
-                  {isExpanded && (
-                    <span
-                      className={styles.commentToggle}
-                      onClick={() => setExpandedHighlightId(null)}
-                    >
-                      {t('collapse')}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Notes section */}
+        {/* Notes */}
         {!loading && resourceNotes.length > 0 && (
-          <>
-            <hr className={styles.divider} />
-            <div className={styles.sectionLabel}>
-              {t('notes')} ({resourceNotes.length})
-            </div>
+          <div className={styles.annotationsSection}>
+            <div className={styles.sectionLabel}>{tAnnotation('notes')} ({resourceNotes.length})</div>
             {resourceNotes.map((note) => (
               <div key={note.id} className={styles.noteItem}>
-                <div className={styles.noteContent}><MarkdownContent content={note.content} searchQuery={searchQuery} /></div>
-                <div className={styles.noteMeta}>
-                  {new Date(note.created_at).toLocaleDateString()}
-                </div>
+                <MarkdownContent content={note.content} />
               </div>
             ))}
-          </>
+          </div>
         )}
+
       </div>
     </div>
   );

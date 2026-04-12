@@ -10,6 +10,7 @@
   background: var(--color-border);
   flex-shrink: 0;
   transition: background 0.15s;
+  position: relative;
 }
 
 .resizeHandle:hover {
@@ -33,6 +34,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .metaBar {
@@ -43,6 +45,29 @@
   border-bottom: 1px solid var(--color-border-light);
   background: var(--color-bg-secondary);
   flex-shrink: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  z-index: 10;
+}
+
+.metaBarHidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.progressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--color-success, #16a34a);
+  z-index: 20;
+  transition: width 0.1s linear;
+  pointer-events: none;
 }
 
 .metaTitle {
@@ -137,5 +162,61 @@
 
 .iframeInverted {
   filter: invert(0.85) hue-rotate(180deg);
+}
+
+.collapsedPanel {
+  width: 32px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  background: var(--color-bg-secondary);
+  border-left: 1px solid var(--color-border);
+  cursor: pointer;
+  overflow-y: auto;
+}
+
+.collapsedPanel:hover {
+  background: var(--color-bg-hover);
+}
+
+.collapsedHighlights {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.collapsedDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.collapsedCount {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.collapseBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.resizeHandle:hover .collapseBtn {
+  opacity: 1;
 }
 

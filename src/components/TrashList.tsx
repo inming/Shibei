@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import type { DeletedResource, DeletedFolder } from "@/types";
@@ -8,10 +8,21 @@ import { Modal } from "@/components/Modal";
 import toast from "react-hot-toast";
 import styles from "./TrashList.module.css";
 
+const RETENTION_DAYS = 90;
+const EXPIRING_THRESHOLD = 7;
+
+function daysRemaining(deletedAt: string): number {
+  const deleted = new Date(deletedAt);
+  const expiry = new Date(deleted.getTime() + RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const now = new Date();
+  return Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
 export function TrashList() {
   const { t } = useTranslation('sidebar');
   const [resources, setResources] = useState<DeletedResource[]>([]);
   const [folders, setFolders] = useState<DeletedFolder[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [purgeTarget, setPurgeTarget] = useState<{
     type: "resource" | "folder";
     id: string;
@@ -21,6 +32,7 @@ export function TrashList() {
   const refresh = useCallback(() => {
     cmd.listDeletedResources().then(setResources).catch(() => setResources([]));
     cmd.listDeletedFolders().then(setFolders).catch(() => setFolders([]));
+    setSelectedIds(new Set());
   }, []);
 
   useEffect(() => {
@@ -38,6 +50,32 @@ export function TrashList() {
     };
   }, [refresh]);
 
+  const allItemIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const f of folders) ids.push(`folder:${f.id}`);
+    for (const r of resources) ids.push(`resource:${r.id}`);
+    return ids;
+  }, [folders, resources]);
+
+  const allSelected = allItemIds.length > 0 && allItemIds.every((id) => selectedIds.has(id));
+
+  const toggleItem = (compositeId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(compositeId)) next.delete(compositeId);
+      else next.add(compositeId);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allItemIds));
+    }
+  };
+
   const handleRestore = async (type: "resource" | "folder", id: string) => {
     try {
       if (type === "resource") await cmd.restoreResource(id);
@@ -45,6 +83,25 @@ export function TrashList() {
       toast.success(t('restored'));
     } catch {
       toast.error(t('restoreFailed'));
+    }
+  };
+
+  const handleBatchRestore = async () => {
+    if (selectedIds.size === 0) return;
+    let failed = 0;
+    for (const compositeId of selectedIds) {
+      const [type, id] = compositeId.split(":", 2) as ["resource" | "folder", string];
+      try {
+        if (type === "resource") await cmd.restoreResource(id);
+        else await cmd.restoreFolder(id);
+      } catch {
+        failed++;
+      }
+    }
+    if (failed > 0) {
+      toast.error(t('batchRestoreFailed'));
+    } else {
+      toast.success(t('restored'));
     }
   };
 
@@ -62,9 +119,48 @@ export function TrashList() {
 
   const empty = resources.length === 0 && folders.length === 0;
 
+  const renderDays = (deletedAt: string) => {
+    const days = daysRemaining(deletedAt);
+    const isExpiring = days <= EXPIRING_THRESHOLD;
+    return (
+      <span className={isExpiring ? styles.daysExpiring : styles.daysRemaining}>
+        {isExpiring ? t('trashExpiringSoon') : t('trashDaysRemaining', { days })}
+      </span>
+    );
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>{t('trash')}</div>
+
+      {!empty && (
+        <div className={styles.retentionHint}>
+          <span className={styles.retentionIcon}>&#9432;</span>
+          {t('trashRetentionHint')}
+        </div>
+      )}
+
+      {!empty && (
+        <div className={styles.batchBar}>
+          <label className={styles.selectAllLabel}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+            />
+            {t('selectAll')}
+          </label>
+          {selectedIds.size > 0 && (
+            <button
+              className={styles.batchRestoreBtn}
+              onClick={handleBatchRestore}
+            >
+              {t('restoreSelected', { count: selectedIds.size })}
+            </button>
+          )}
+        </div>
+      )}
+
       {empty && <div className={styles.empty}>{t('trashEmpty')}</div>}
 
       {folders.length > 0 && (
@@ -72,11 +168,15 @@ export function TrashList() {
           <div className={styles.sectionLabel}>{t('trashFolders')}</div>
           {folders.map((f) => (
             <div key={f.id} className={styles.item}>
+              <input
+                type="checkbox"
+                className={styles.itemCheckbox}
+                checked={selectedIds.has(`folder:${f.id}`)}
+                onChange={() => toggleItem(`folder:${f.id}`)}
+              />
               <div className={styles.itemInfo}>
                 <span className={styles.itemName}>{f.name}</span>
-                <span className={styles.itemDate}>
-                  {new Date(f.deleted_at).toLocaleDateString()}
-                </span>
+                {renderDays(f.deleted_at)}
               </div>
               <div className={styles.itemActions}>
                 <button onClick={() => handleRestore("folder", f.id)}>{t('restore')}</button>
@@ -99,11 +199,15 @@ export function TrashList() {
           <div className={styles.sectionLabel}>{t('trashResources')}</div>
           {resources.map((r) => (
             <div key={r.id} className={styles.item}>
+              <input
+                type="checkbox"
+                className={styles.itemCheckbox}
+                checked={selectedIds.has(`resource:${r.id}`)}
+                onChange={() => toggleItem(`resource:${r.id}`)}
+              />
               <div className={styles.itemInfo}>
                 <span className={styles.itemName}>{r.title}</span>
-                <span className={styles.itemDate}>
-                  {new Date(r.deleted_at).toLocaleDateString()}
-                </span>
+                {renderDays(r.deleted_at)}
               </div>
               <div className={styles.itemActions}>
                 <button onClick={() => handleRestore("resource", r.id)}>{t('restore')}</button>

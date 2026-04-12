@@ -47,6 +47,9 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [iframeKey, setIframeKey] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [inverted, setInverted] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [metaHidden, setMetaHidden] = useState(false);
+  const [scrollPercent, setScrollPercent] = useState(0);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -126,11 +129,30 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           setHighlightMenu(null);
           break;
 
-        case "shibei:scroll":
-          // Hide menus on scroll; selection is preserved in iframe for right-click
+        case "shibei:scroll": {
+          // Hide menus on scroll
           setSelection(null);
           setHighlightMenu(null);
+          // Auto-hide meta bar based on scroll direction
+          const { scrollY, direction, scrollPercent: pct } = msg as {
+            scrollY?: number;
+            direction?: string;
+            scrollPercent?: number;
+          };
+          if (typeof scrollY === "number") {
+            if (scrollY <= 10) {
+              setMetaHidden(false);
+            } else if (direction === "down") {
+              setMetaHidden(true);
+            } else if (direction === "up") {
+              setMetaHidden(false);
+            }
+          }
+          if (typeof pct === "number") {
+            setScrollPercent(pct);
+          }
           break;
+        }
 
         case "shibei:context-menu":
           // Right-click with active selection → show toolbar near mouse position
@@ -357,8 +379,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   return (
     <div ref={containerRef} className={styles.container}>
       <div className={styles.reader}>
+        {/* Progress bar */}
+        <div className={styles.progressBar} style={{ width: `${scrollPercent * 100}%` }} />
         {/* Meta bar */}
-        <div className={styles.metaBar}>
+        <div className={`${styles.metaBar} ${metaHidden ? styles.metaBarHidden : ''}`}>
           <span className={styles.metaTitle}>{resource.title}</span>
           <a
             className={styles.metaUrl}
@@ -433,25 +457,54 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         />
       )}
 
-      {/* Resize handle */}
-      <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown} />
+      {panelCollapsed ? (
+        <div
+          className={styles.collapsedPanel}
+          onClick={() => setPanelCollapsed(false)}
+          title={t('expandPanel')}
+        >
+          <div className={styles.collapsedHighlights}>
+            {highlights.map(h => (
+              <div
+                key={h.id}
+                className={styles.collapsedDot}
+                style={{ backgroundColor: h.color }}
+              />
+            ))}
+          </div>
+          <span className={styles.collapsedCount}>{highlights.length}</span>
+        </div>
+      ) : (
+        <>
+          {/* Resize handle with collapse button */}
+          <div className={styles.resizeHandle} onMouseDown={handleResizeMouseDown}>
+            <button
+              className={styles.collapseBtn}
+              onClick={(e) => { e.stopPropagation(); setPanelCollapsed(true); }}
+              title={t('collapsePanel')}
+            >
+              ›
+            </button>
+          </div>
 
-      {/* Annotation panel */}
-      <AnnotationPanel
-        resource={resource}
-        style={{ width: panelWidth }}
-        highlights={highlights}
-        getCommentsForHighlight={getCommentsForHighlight}
-        resourceNotes={resourceNotes}
-        activeHighlightId={activeHighlightId}
-        failedHighlightIds={failedHighlightIds}
-        onClickHighlight={handlePanelClickHighlight}
-        onDeleteHighlight={handleDeleteHighlight}
-        onChangeHighlightColor={handleChangeHighlightColor}
-        onAddComment={(hlId, content) => addComment(hlId, content)}
-        onDeleteComment={removeComment}
-        onEditComment={editComment}
-      />
+          {/* Annotation panel */}
+          <AnnotationPanel
+            resource={resource}
+            style={{ width: panelWidth }}
+            highlights={highlights}
+            getCommentsForHighlight={getCommentsForHighlight}
+            resourceNotes={resourceNotes}
+            activeHighlightId={activeHighlightId}
+            failedHighlightIds={failedHighlightIds}
+            onClickHighlight={handlePanelClickHighlight}
+            onDeleteHighlight={handleDeleteHighlight}
+            onChangeHighlightColor={handleChangeHighlightColor}
+            onAddComment={(hlId, content) => addComment(hlId, content)}
+            onDeleteComment={removeComment}
+            onEditComment={editComment}
+          />
+        </>
+      )}
     </div>
   );
 }
