@@ -33,10 +33,10 @@ input, textarea {
   background: var(--color-bg-primary);
 }
 
-/* Scrollbar styling for Windows/Linux (WebKit) */
+/* Scrollbar styling — thin, inset, theme-aware */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -45,11 +45,15 @@ input, textarea {
 
 ::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 3px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-muted);
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-corner {
