@@ -383,3 +383,23 @@ export function translateError(message: string): string {
   }
   return message;
 }
+
+// ── Backup ──
+
+export interface BackupResult {
+  resource_count: number;
+  snapshot_count: number;
+  file_size: number;
+}
+
+export interface RestoreResult {
+  resource_count: number;
+}
+
+export function exportBackup(path: string): Promise<BackupResult> {
+  return invoke("cmd_export_backup", { path });
+}
+
+export function importBackup(path: string): Promise<RestoreResult> {
+  return invoke("cmd_import_backup", { path });
+}

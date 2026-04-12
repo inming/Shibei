@@ -5,16 +5,18 @@ import { AppearancePage } from "@/components/Settings/AppearancePage";
 import { SyncPage } from "@/components/Settings/SyncPage";
 import { EncryptionPage } from "@/components/Settings/EncryptionPage";
 import { LockScreenPage } from "@/components/Settings/LockScreenPage";
+import { DataPage } from "@/components/Settings/DataPage";
 import type { ThemeMode } from "@/hooks/useTheme";
 import styles from "./SettingsView.module.css";
 
-type SettingsSection = "appearance" | "sync" | "encryption" | "security";
+type SettingsSection = "appearance" | "sync" | "encryption" | "security" | "data";
 
 const NAV_KEYS = [
   { id: "appearance", key: "navAppearance" },
   { id: "sync", key: "navSync" },
   { id: "encryption", key: "navEncryption" },
   { id: "security", key: "navSecurity" },
+  { id: "data", key: "navData" },
 ] as const;
 
 interface SettingsViewProps {
@@ -62,6 +64,7 @@ export function SettingsView({ initialSection, themeMode, onThemeModeChange }: S
           {section === "security" && (
             <LockScreenPage />
           )}
+          {section === "data" && <DataPage />}
         </div>
       </div>
     </div>
