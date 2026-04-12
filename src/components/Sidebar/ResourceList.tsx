@@ -308,47 +308,49 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           </button>
         </div>
       </div>
-      {!folderId && (
-        <div className={styles.empty}>{t('selectFolderHint')}</div>
-      )}
-      {loading && <ResourceListSkeleton />}
-      {folderId && !loading && filteredResources.length === 0 && (
-        <div className={styles.emptyState}>
-          {searchQuery.length >= MIN_SEARCH_CHARS ? (
-            <>
-              <div className={styles.emptyTitle}>{t('noSearchResults')}</div>
-              <div className={styles.emptyHint}>{t('noSearchResultsHint')}</div>
-            </>
-          ) : (
-            <>
-              <div className={styles.emptyTitle}>{t('emptyFolder')}</div>
-              <div className={styles.emptyHint}>{t('emptyFolderHint')}</div>
-            </>
-          )}
+      <div className={styles.listScroll}>
+        {!folderId && (
+          <div className={styles.empty}>{t('selectFolderHint')}</div>
+        )}
+        {loading && <ResourceListSkeleton />}
+        {folderId && !loading && filteredResources.length === 0 && (
+          <div className={styles.emptyState}>
+            {searchQuery.length >= MIN_SEARCH_CHARS ? (
+              <>
+                <div className={styles.emptyTitle}>{t('noSearchResults')}</div>
+                <div className={styles.emptyHint}>{t('noSearchResultsHint')}</div>
+              </>
+            ) : (
+              <>
+                <div className={styles.emptyTitle}>{t('emptyFolder')}</div>
+                <div className={styles.emptyHint}>{t('emptyFolderHint')}</div>
+              </>
+            )}
+          </div>
+        )}
+        <div
+          ref={listRef}
+          tabIndex={0}
+          role="listbox"
+          aria-label={t('resourceList')}
+          onKeyDown={handleKeyDown}
+        >
+          {filteredResources.map((resource) => (
+            <DraggableResourceItem
+              key={resource.id}
+              resource={resource}
+              isSelected={selectedResourceIds.has(resource.id)}
+              searchQuery={searchQuery}
+              snippet={snippetMap[resource.id] ?? null}
+              matchFields={matchFieldsMap[resource.id] ?? []}
+              tags={resourceTags[resource.id] ?? []}
+              highlightCount={annotationCounts[resource.id]?.highlights ?? 0}
+              onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
+              onDoubleClick={() => onOpen(resource)}
+              onContextMenu={(e) => handleContextMenu(e, resource)}
+            />
+          ))}
         </div>
-      )}
-      <div
-        ref={listRef}
-        tabIndex={0}
-        role="listbox"
-        aria-label={t('resourceList')}
-        onKeyDown={handleKeyDown}
-      >
-        {filteredResources.map((resource) => (
-          <DraggableResourceItem
-            key={resource.id}
-            resource={resource}
-            isSelected={selectedResourceIds.has(resource.id)}
-            searchQuery={searchQuery}
-            snippet={snippetMap[resource.id] ?? null}
-            matchFields={matchFieldsMap[resource.id] ?? []}
-            tags={resourceTags[resource.id] ?? []}
-            highlightCount={annotationCounts[resource.id]?.highlights ?? 0}
-            onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
-            onDoubleClick={() => onOpen(resource)}
-            onContextMenu={(e) => handleContextMenu(e, resource)}
-          />
-        ))}
       </div>
 
       {contextMenu && folderId && (
