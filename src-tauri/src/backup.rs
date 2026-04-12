@@ -289,3 +289,144 @@ fn add_directory_to_zip(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    fn setup_test_db(dir: &Path) -> PathBuf {
+        let db_path = dir.join("shibei.db");
+        let pool = db::init_pool(&db_path).unwrap();
+        let pool_read = pool.get().unwrap();
+        // Insert a test resource
+        pool_read.execute(
+            "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at)
+             VALUES ('test-folder', 'Test', '__root__', 0, '2026-01-01', '2026-01-01')",
+            [],
+        ).unwrap();
+        pool_read.execute(
+            "INSERT INTO resources (id, title, url, domain, folder_id, resource_type, file_path, created_at, captured_at)
+             VALUES ('res-1', 'Test Page', 'https://example.com', 'example.com', 'test-folder', 'page', 'storage/res-1/snapshot.html', '2026-01-01', '2026-01-01')",
+            [],
+        ).unwrap();
+        // Create snapshot file
+        let snapshot_dir = dir.join("storage/res-1");
+        fs::create_dir_all(&snapshot_dir).unwrap();
+        fs::write(snapshot_dir.join("snapshot.html"), "<html><body>Hello</body></html>").unwrap();
+        db_path
+    }
+
+    #[test]
+    fn test_export_backup_creates_valid_zip() {
+        let tmp = TempDir::new().unwrap();
+        let base_dir = tmp.path();
+        let db_path = setup_test_db(base_dir);
+        let output = base_dir.join("backup.zip");
+
+        let result = export_backup(&db_path, base_dir, &output, "test-device").unwrap();
+
+        assert_eq!(result.resource_count, 1);
+        assert_eq!(result.snapshot_count, 1);
+        assert!(result.file_size > 0);
+        assert!(output.exists());
+
+        // Verify zip contents
+        let file = fs::File::open(&output).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        assert!(archive.by_name("manifest.json").is_ok());
+        assert!(archive.by_name("shibei.db").is_ok());
+        assert!(archive.by_name("storage/res-1/snapshot.html").is_ok());
+
+        // Verify manifest
+        let manifest: BackupManifest = {
+            let mut f = archive.by_name("manifest.json").unwrap();
+            let mut buf = String::new();
+            io::Read::read_to_string(&mut f, &mut buf).unwrap();
+            serde_json::from_str(&buf).unwrap()
+        };
+        assert_eq!(manifest.version, 1);
+        assert_eq!(manifest.resource_count, 1);
+        assert_eq!(manifest.device_id, "test-device");
+    }
+
+    #[test]
+    fn test_import_backup_restores_data() {
+        // Setup source
+        let src_tmp = TempDir::new().unwrap();
+        let src_dir = src_tmp.path();
+        let src_db = setup_test_db(src_dir);
+        let backup_path = src_dir.join("backup.zip");
+        export_backup(&src_db, src_dir, &backup_path, "src-device").unwrap();
+
+        // Setup destination (empty)
+        let dst_tmp = TempDir::new().unwrap();
+        let dst_dir = dst_tmp.path();
+        let dst_db_path = dst_dir.join("shibei.db");
+        let dst_pool = db::init_pool(&dst_db_path).unwrap();
+        let shared_pool: db::SharedPool = std::sync::Arc::new(std::sync::RwLock::new(dst_pool));
+
+        // Create storage dir
+        fs::create_dir_all(dst_dir.join("storage")).unwrap();
+
+        let result = import_backup(&shared_pool, dst_dir, &backup_path).unwrap();
+
+        assert_eq!(result.resource_count, 1);
+
+        // Verify data was restored
+        let pool_read = shared_pool.read().unwrap();
+        let conn = pool_read.get().unwrap();
+        let title: String = conn.query_row(
+            "SELECT title FROM resources WHERE id = 'res-1'", [], |row| row.get(0)
+        ).unwrap();
+        assert_eq!(title, "Test Page");
+
+        // Verify snapshot was restored
+        assert!(dst_dir.join("storage/res-1/snapshot.html").exists());
+    }
+
+    #[test]
+    fn test_import_rejects_invalid_zip() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        let db_path = dir.join("shibei.db");
+        let pool = db::init_pool(&db_path).unwrap();
+        let shared_pool: db::SharedPool = std::sync::Arc::new(std::sync::RwLock::new(pool));
+        fs::create_dir_all(dir.join("storage")).unwrap();
+
+        // Write a non-zip file
+        let fake_zip = dir.join("fake.zip");
+        fs::write(&fake_zip, "not a zip file").unwrap();
+
+        let result = import_backup(&shared_pool, dir, &fake_zip);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("error.restore_invalid_format"));
+    }
+
+    #[test]
+    fn test_import_rejects_path_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        let db_path = dir.join("shibei.db");
+        let pool = db::init_pool(&db_path).unwrap();
+        let shared_pool: db::SharedPool = std::sync::Arc::new(std::sync::RwLock::new(pool));
+        fs::create_dir_all(dir.join("storage")).unwrap();
+
+        // Create a zip with path traversal
+        let malicious_zip = dir.join("evil.zip");
+        {
+            let file = fs::File::create(&malicious_zip).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options = SimpleFileOptions::default();
+            zip.start_file("../../../etc/passwd", options).unwrap();
+            zip.write_all(b"evil content").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let result = import_backup(&shared_pool, dir, &malicious_zip);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("error.restore_invalid_format"));
+    }
+}
