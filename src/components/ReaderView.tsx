@@ -431,8 +431,18 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
                 },
               });
             }}
+            onClearSelection={() => {
+              setSelection(null);
+              setHighlightMenu(null);
+            }}
             onHighlightClick={(id) => setActiveHighlightId(id)}
+            onHighlightContextMenu={(id, pos) => {
+              setHighlightMenu({ id, top: pos.top, left: pos.left });
+              setActiveHighlightId(id);
+            }}
             onScroll={({ scrollPercent: pct, direction }) => {
+              setSelection(null);
+              setHighlightMenu(null);
               setScrollPercent(pct);
               if (direction === "down") setMetaHidden(true);
               else setMetaHidden(false);

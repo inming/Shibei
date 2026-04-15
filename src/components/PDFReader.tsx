@@ -32,7 +32,9 @@ interface PDFReaderProps {
     anchor: PdfAnchor;
     rect: DOMRect;
   }) => void;
+  onClearSelection: () => void;
   onHighlightClick: (id: string) => void;
+  onHighlightContextMenu: (id: string, position: { top: number; left: number }) => void;
   onScroll: (info: {
     scrollPercent: number;
     direction: "up" | "down";
@@ -74,7 +76,9 @@ export function PDFReader({
   highlights,
   activeHighlightId,
   onSelection,
+  onClearSelection,
   onHighlightClick,
+  onHighlightContextMenu,
   onScroll,
   onReady,
 }: PDFReaderProps) {
@@ -327,6 +331,15 @@ export function PDFReader({
 
   // Show selection toolbar on right-click (matches HTML reader behavior)
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    // Check if right-clicked on an existing highlight overlay
+    const target = e.target as HTMLElement;
+    const hlId = target.dataset.highlightId;
+    if (hlId) {
+      e.preventDefault();
+      onHighlightContextMenu(hlId, { top: e.clientY, left: e.clientX });
+      return;
+    }
+
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return;
 
@@ -404,6 +417,7 @@ export function PDFReader({
         for (const rect of rects) {
           const div = document.createElement("div");
           div.className = styles.highlight;
+          div.dataset.highlightId = hl.id;
           div.style.left = `${rect.left}px`;
           div.style.top = `${rect.top}px`;
           div.style.width = `${rect.width}px`;
@@ -511,6 +525,7 @@ export function PDFReader({
       ref={containerRef}
       className={styles.container}
       onContextMenu={handleContextMenu}
+      onClick={onClearSelection}
     >
       {pageInfos.map((info, idx) => {
         const container = containerRef.current;
