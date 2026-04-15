@@ -1118,7 +1118,17 @@ pub async fn cmd_download_snapshot(
     resource_id: String,
 ) -> Result<bool, CommandError> {
     let engine = build_sync_engine(&state, &encryption_state).await?;
-    engine.download_snapshot(&resource_id).await
+    // Query resource_type from DB to determine snapshot file format
+    let resource_type = {
+        let pool = state.pool.read().map_err(|e| CommandError { message: format!("pool lock: {e}") })?;
+        let conn = pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+        conn.query_row(
+            "SELECT resource_type FROM resources WHERE id = ?1",
+            rusqlite::params![&resource_id],
+            |row| row.get::<_, String>(0),
+        ).unwrap_or_else(|_| "html".to_string())
+    };
+    engine.download_snapshot(&resource_id, &resource_type).await
         .map_err(|e| CommandError { message: e.to_string() })?;
     Ok(true)
 }
