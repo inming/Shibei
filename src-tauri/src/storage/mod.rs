@@ -20,6 +20,23 @@ pub fn resource_dir(base_path: &Path, resource_id: &str) -> PathBuf {
     base_path.join("storage").join(resource_id)
 }
 
+/// Save a snapshot file with a specified extension (e.g., "html", "pdf").
+pub fn save_snapshot_ext(
+    base_path: &Path,
+    resource_id: &str,
+    content: &[u8],
+    extension: &str,
+) -> Result<PathBuf, StorageError> {
+    let dir = resource_dir(base_path, resource_id);
+    fs::create_dir_all(&dir)?;
+    let filename = format!("snapshot.{}", extension);
+    let file_path = dir.join(&filename);
+    fs::write(&file_path, content)?;
+    Ok(PathBuf::from("storage")
+        .join(resource_id)
+        .join(filename))
+}
+
 /// Save snapshot content to disk.
 /// Creates `{base}/storage/{resource_id}/snapshot.html` and returns the relative path.
 pub fn save_snapshot(
@@ -78,5 +95,30 @@ mod tests {
         let abs_path = dir.path().join(&rel_path);
         let read_back = fs::read(&abs_path).unwrap();
         assert_eq!(read_back, content);
+    }
+
+    #[test]
+    fn test_save_snapshot_with_extension_pdf() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = b"%PDF-1.4 fake pdf content";
+        let rel = save_snapshot_ext(tmp.path(), "res-pdf-1", content, "pdf").unwrap();
+        assert_eq!(
+            rel,
+            PathBuf::from("storage").join("res-pdf-1").join("snapshot.pdf")
+        );
+        let abs = tmp.path().join("storage").join("res-pdf-1").join("snapshot.pdf");
+        assert!(abs.exists());
+        assert_eq!(std::fs::read(&abs).unwrap(), content);
+    }
+
+    #[test]
+    fn test_save_snapshot_with_extension_html() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = b"<html>hello</html>";
+        let rel = save_snapshot_ext(tmp.path(), "res-html-1", content, "html").unwrap();
+        assert_eq!(
+            rel,
+            PathBuf::from("storage").join("res-html-1").join("snapshot.html")
+        );
     }
 }
