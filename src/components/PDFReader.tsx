@@ -262,6 +262,13 @@ export function PDFReader({
         viewport,
       });
       await tl.render();
+
+      // PDF.js sets textLayer width/height via CSS variables (--total-scale-factor).
+      // If these variables aren't resolved correctly, the textLayer dimensions
+      // won't match the canvas, causing span positions to drift.
+      // Force exact dimensions to match canvas CSS size.
+      textDiv.style.width = `${viewport.width}px`;
+      textDiv.style.height = `${viewport.height}px`;
     },
     [pageInfos],
   );
