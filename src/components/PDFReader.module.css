@@ -42,21 +42,23 @@
   left: 0;
   right: 0;
   bottom: 0;
-  overflow: hidden;
+  overflow: clip;
   opacity: 0.25;
   line-height: 1;
-  z-index: 1;
-  -webkit-user-select: text;
-  user-select: text;
+  z-index: 2;
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 
 .textLayer :is(span, br) {
   position: absolute;
   white-space: pre;
   color: transparent;
-  pointer-events: all;
+  pointer-events: auto;
   cursor: text;
   transform-origin: 0% 0%;
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
 
 .textLayer ::selection {

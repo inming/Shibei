@@ -214,11 +214,14 @@ export function PDFReader({
       const pageDiv = pageContainerMapRef.current.get(pageIndex);
       if (!pageDiv) return;
 
-      // Canvas — pointer-events: none so text layer on top receives mouse events
+      // Canvas — pointer-events: none, low z-index so text layer receives mouse events
       let canvas = canvasMapRef.current.get(pageIndex);
       if (!canvas) {
         canvas = document.createElement("canvas");
         canvas.style.pointerEvents = "none";
+        canvas.style.position = "relative";
+        canvas.style.zIndex = "0";
+        canvas.style.display = "block";
         canvasMapRef.current.set(pageIndex, canvas);
       }
       canvas.width = hiDpiViewport.width;
