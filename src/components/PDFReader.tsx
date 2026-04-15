@@ -426,6 +426,35 @@ export function PDFReader({
     }
   }, [highlights, activeHighlightId, renderHighlights]);
 
+  // Scroll to active highlight when it changes (e.g. clicked in AnnotationPanel)
+  const prevActiveRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeHighlightId || activeHighlightId === prevActiveRef.current) return;
+    prevActiveRef.current = activeHighlightId;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Find the highlight's anchor to determine its page
+    const hl = highlights.find((h) => h.id === activeHighlightId);
+    if (!hl) return;
+    const anchor = hl.anchor as PdfAnchor;
+    if (anchor.type !== "pdf") return;
+
+    const pageIndex = anchor.page;
+    const pageDiv = pageContainerMapRef.current.get(pageIndex);
+    if (!pageDiv) return;
+
+    // Find the highlight overlay div on this page
+    const hlDiv = pageDiv.querySelector(`.${styles.highlight}[style*="outline"]`) as HTMLElement | null;
+    if (hlDiv) {
+      hlDiv.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      // Fallback: scroll to the page
+      pageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [activeHighlightId, highlights]);
+
   // ── Password form ──
 
   const handlePasswordSubmit = useCallback(
