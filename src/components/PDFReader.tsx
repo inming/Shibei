@@ -11,7 +11,6 @@ import { TextLayer } from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
-import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -254,19 +253,12 @@ export function PDFReader({
       // Use streamTextContent() instead of getTextContent().
       const textContentSource = page.streamTextContent();
 
-      try {
-        const tl = new TextLayer({
-          textContentSource,
-          container: textDiv,
-          viewport,
-        });
-        await tl.render();
-      } catch (err) {
-        debugLog("pdf-textlayer-error", {
-          pageIndex,
-          error: String(err),
-        });
-      }
+      const tl = new TextLayer({
+        textContentSource,
+        container: textDiv,
+        viewport,
+      });
+      await tl.render();
     },
     [pageInfos],
   );
@@ -348,33 +340,12 @@ export function PDFReader({
     // walker (SHOW_TEXT) doesn't visit, causing index drift.
     const startCharIndex = computeCharIndex(textDiv, range.startContainer, range.startOffset);
     const endCharIndex = computeCharIndex(textDiv, range.endContainer, range.endOffset);
-
-    // Debug: dump text layer structure and selection info
-    const spans = textDiv.querySelectorAll("span");
-    const spanTexts = Array.from(spans).map((s, i) => `[${i}]"${s.textContent}"`);
-    const fullText = collectTextContent(textDiv);
-    debugLog("pdf-selection", {
-      selText,
-      selTextLength: selText.length,
-      startContainer: range.startContainer.textContent?.slice(0, 50),
-      startOffset: range.startOffset,
-      endContainer: range.endContainer.textContent?.slice(0, 50),
-      endOffset: range.endOffset,
-      startCharIndex,
-      endCharIndex,
-      spanCount: spans.length,
-      spanTexts: spanTexts.slice(0, 20), // first 20 spans
-      fullTextLength: fullText.length,
-      textContentLength: (textDiv.textContent ?? "").length,
-      fullTextSlice: fullText.slice(startCharIndex, startCharIndex + (endCharIndex - startCharIndex)),
-      textContentSlice: (textDiv.textContent ?? "").slice(startCharIndex, startCharIndex + (endCharIndex - startCharIndex)),
-    });
-
     if (startCharIndex < 0 || endCharIndex < 0 || endCharIndex <= startCharIndex) return;
 
     const length = endCharIndex - startCharIndex;
 
     // Build fullText from tree-walked text nodes (same source as charIndex)
+    const fullText = collectTextContent(textDiv);
     const exact = fullText.slice(startCharIndex, startCharIndex + length);
     const prefix = fullText.slice(Math.max(0, startCharIndex - 32), startCharIndex);
     const suffix = fullText.slice(startCharIndex + length, startCharIndex + length + 32);
@@ -414,16 +385,6 @@ export function PDFReader({
       for (const hl of pageHighlights) {
         const anchor = hl.anchor as PdfAnchor;
         const rects = getHighlightRects(textDiv, anchor.charIndex, anchor.length);
-
-        debugLog("pdf-highlight-render", {
-          highlightId: hl.id,
-          textContent: hl.text_content?.slice(0, 50),
-          anchorCharIndex: anchor.charIndex,
-          anchorLength: anchor.length,
-          exact: anchor.textQuote?.exact?.slice(0, 50),
-          rectsCount: rects.length,
-          rects: rects.map(r => ({ l: Math.round(r.left), t: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) })),
-        });
 
         for (const rect of rects) {
           const div = document.createElement("div");
@@ -625,6 +586,9 @@ function getHighlightRects(
 
   for (let i = 0; i < clientRects.length; i++) {
     const r = clientRects[i];
+    // Filter out phantom zero-width rects that getClientRects() produces
+    // at element boundaries when a Range spans multiple spans.
+    if (r.width < 1 || r.height < 1) continue;
     result.push({
       left: r.left - containerRect.left,
       top: r.top - containerRect.top,
