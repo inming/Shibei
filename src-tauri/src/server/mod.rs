@@ -538,17 +538,37 @@ async fn handle_save_raw(
 
     let content_bytes: Vec<u8> = body.to_vec();
 
+    let content_type = headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("text/html");
+    let is_pdf = content_type.starts_with("application/pdf");
+
     // Generate resource_id and save to filesystem
     let resource_id = uuid::Uuid::new_v4().to_string();
-    let rel_path =
-        storage::save_snapshot(&state.base_dir, &resource_id, &content_bytes).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: format!("storage error: {}", e),
-                }),
-            )
-        })?;
+    let (rel_path, resource_type) = if is_pdf {
+        let rel = storage::save_snapshot_ext(&state.base_dir, &resource_id, &content_bytes, "pdf")
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("storage error: {}", e),
+                    }),
+                )
+            })?;
+        (rel, "pdf".to_string())
+    } else {
+        let rel =
+            storage::save_snapshot(&state.base_dir, &resource_id, &content_bytes).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("storage error: {}", e),
+                    }),
+                )
+            })?;
+        (rel, "html".to_string())
+    };
 
     let conn = get_conn(&state)?;
 
@@ -572,7 +592,7 @@ async fn handle_save_raw(
             author,
             description,
             folder_id,
-            resource_type: "html".to_string(),
+            resource_type,
             file_path: rel_path.to_string_lossy().to_string(),
             captured_at,
             selection_meta,
@@ -643,8 +663,12 @@ async fn handle_save_raw(
 
     // Extract and store plain text (best-effort)
     {
-        let html_str = String::from_utf8_lossy(&content_bytes);
-        let text = plain_text::extract_plain_text(&html_str);
+        let text = if is_pdf {
+            crate::pdf_text::extract_plain_text(&content_bytes)
+        } else {
+            let html_str = String::from_utf8_lossy(&content_bytes);
+            plain_text::extract_plain_text(&html_str)
+        };
         if !text.is_empty() {
             let _ = resources::set_plain_text(&conn, &resource.id, &text);
         }
