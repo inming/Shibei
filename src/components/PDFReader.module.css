@@ -1,0 +1,102 @@
+.container {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  background: var(--bg-secondary);
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--text-error);
+}
+
+.pageContainer {
+  position: relative;
+  margin: 0 auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  background: white;
+}
+
+.pageContainer + .pageContainer {
+  margin-top: 8px;
+}
+
+.textLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 0.25;
+  line-height: 1;
+}
+
+.textLayer > span {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  pointer-events: all;
+}
+
+.textLayer ::selection {
+  background: rgba(0, 100, 200, 0.3);
+}
+
+.highlight {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  mix-blend-mode: multiply;
+  border-radius: 2px;
+}
+
+[data-theme="dark"] .pageContainer {
+  background: var(--bg-primary);
+}
+
+.placeholder {
+  background: var(--bg-secondary);
+}
+
+.passwordDialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+}
+
+.passwordDialog input {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  width: 240px;
+}
+
+.passwordDialog button {
+  padding: 6px 16px;
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
