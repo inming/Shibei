@@ -214,6 +214,11 @@ export function PDFReader({
       const pageDiv = pageContainerMapRef.current.get(pageIndex);
       if (!pageDiv) return;
 
+      // Set --scale-factor CSS variable that pdfjs-dist/web/pdf_viewer.css needs.
+      // PDF.js TextLayer derives --total-scale-factor from this to size the text
+      // layer and position spans. Without it, it defaults to 1 and misaligns.
+      pageDiv.style.setProperty("--scale-factor", String(scale));
+
       // Canvas — pointer-events: none, low z-index so text layer receives mouse events
       let canvas = canvasMapRef.current.get(pageIndex);
       if (!canvas) {
@@ -262,13 +267,6 @@ export function PDFReader({
         viewport,
       });
       await tl.render();
-
-      // PDF.js sets textLayer width/height via CSS variables (--total-scale-factor).
-      // If these variables aren't resolved correctly, the textLayer dimensions
-      // won't match the canvas, causing span positions to drift.
-      // Force exact dimensions to match canvas CSS size.
-      textDiv.style.width = `${viewport.width}px`;
-      textDiv.style.height = `${viewport.height}px`;
     },
     [pageInfos],
   );
