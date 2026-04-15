@@ -215,10 +215,14 @@ export function PDFReader({
       const pageDiv = pageContainerMapRef.current.get(pageIndex);
       if (!pageDiv) return;
 
-      // Set --scale-factor CSS variable that pdfjs-dist/web/pdf_viewer.css needs.
-      // PDF.js TextLayer derives --total-scale-factor from this to size the text
-      // layer and position spans. Without it, it defaults to 1 and misaligns.
+      // PDF.js v5 CSS variables for text layer sizing:
+      // - --scale-factor: viewport scale (set by PDFPageView in official viewer)
+      // - --total-scale-factor: used in width/height calc and font-size calc
+      //   (set by PDFPageView, NOT by TextLayer — we must set it ourselves)
+      // Without --total-scale-factor, all calc() expressions are invalid and
+      // fonts fall back to browser default (14px), making all spans misaligned.
       pageDiv.style.setProperty("--scale-factor", String(scale));
+      pageDiv.style.setProperty("--total-scale-factor", String(scale));
 
       // Canvas — pointer-events: none, low z-index so text layer receives mouse events
       let canvas = canvasMapRef.current.get(pageIndex);
