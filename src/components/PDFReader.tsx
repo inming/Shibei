@@ -328,16 +328,17 @@ export function PDFReader({
     if (!textDiv) return;
 
     // Compute both start and end charIndex from the DOM tree walk.
-    // This avoids mismatch between sel.toString().length and textContent indexing
-    // (PDF.js text layer spans can have whitespace that sel.toString() collapses).
+    // We build fullText from the same tree walk to ensure consistency —
+    // textDiv.textContent includes \n from <br> elements that the tree
+    // walker (SHOW_TEXT) doesn't visit, causing index drift.
     const startCharIndex = computeCharIndex(textDiv, range.startContainer, range.startOffset);
     const endCharIndex = computeCharIndex(textDiv, range.endContainer, range.endOffset);
     if (startCharIndex < 0 || endCharIndex < 0 || endCharIndex <= startCharIndex) return;
 
     const length = endCharIndex - startCharIndex;
 
-    // Use textContent for exact text (consistent with charIndex-based indexing)
-    const fullText = textDiv.textContent ?? "";
+    // Build fullText from tree-walked text nodes (same source as charIndex)
+    const fullText = collectTextContent(textDiv);
     const exact = fullText.slice(startCharIndex, startCharIndex + length);
     const prefix = fullText.slice(Math.max(0, startCharIndex - 32), startCharIndex);
     const suffix = fullText.slice(startCharIndex + length, startCharIndex + length + 32);
@@ -489,6 +490,22 @@ export function PDFReader({
 }
 
 // ── Utility functions ──
+
+/**
+ * Collect text content by walking only text nodes (SHOW_TEXT).
+ * This is consistent with computeCharIndex — unlike textContent which
+ * includes \n from <br> elements that the tree walker skips.
+ */
+function collectTextContent(container: HTMLElement): string {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let result = "";
+  let node = walker.nextNode();
+  while (node) {
+    result += node.textContent ?? "";
+    node = walker.nextNode();
+  }
+  return result;
+}
 
 /**
  * Walk text nodes in a container to compute the character offset

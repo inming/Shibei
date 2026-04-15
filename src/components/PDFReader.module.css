@@ -47,11 +47,13 @@
   line-height: 1;
 }
 
-.textLayer > span {
+.textLayer :is(span, br) {
   position: absolute;
   white-space: pre;
   color: transparent;
   pointer-events: all;
+  cursor: text;
+  transform-origin: 0% 0%;
 }
 
 .textLayer ::selection {
