@@ -250,34 +250,22 @@ export function PDFReader({
         pageDiv.appendChild(textDiv);
       }
 
-      const textContent = await page.getTextContent();
-      debugLog("pdf-textlayer-pre", {
-        pageIndex,
-        itemCount: textContent.items.length,
-        firstItems: textContent.items.slice(0, 5).map((it: Record<string, unknown>) => (it as { str?: string }).str),
-        textDivChildren: textDiv.childElementCount,
-      });
+      // pdfjs-dist v5 TextLayer expects a ReadableStream, not the resolved object.
+      // Use streamTextContent() instead of getTextContent().
+      const textContentSource = page.streamTextContent();
 
       try {
         const tl = new TextLayer({
-          textContentSource: textContent,
+          textContentSource,
           container: textDiv,
           viewport,
         });
         await tl.render();
-        debugLog("pdf-textlayer-post", {
-          pageIndex,
-          textDivChildren: textDiv.childElementCount,
-          firstChild: textDiv.firstElementChild?.tagName,
-          firstChildText: textDiv.firstElementChild?.textContent?.slice(0, 30),
-          textDivs: tl.textDivs?.length,
-        });
       } catch (err) {
         debugLog("pdf-textlayer-error", {
           pageIndex,
           error: String(err),
         });
-        console.error("[PDFReader] TextLayer.render() failed:", err);
       }
     },
     [pageInfos],
