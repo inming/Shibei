@@ -251,12 +251,34 @@ export function PDFReader({
       }
 
       const textContent = await page.getTextContent();
-      const textLayer = new TextLayer({
-        textContentSource: textContent,
-        container: textDiv,
-        viewport,
+      debugLog("pdf-textlayer-pre", {
+        pageIndex,
+        itemCount: textContent.items.length,
+        firstItems: textContent.items.slice(0, 5).map((it: Record<string, unknown>) => (it as { str?: string }).str),
+        textDivChildren: textDiv.childElementCount,
       });
-      await textLayer.render();
+
+      try {
+        const tl = new TextLayer({
+          textContentSource: textContent,
+          container: textDiv,
+          viewport,
+        });
+        await tl.render();
+        debugLog("pdf-textlayer-post", {
+          pageIndex,
+          textDivChildren: textDiv.childElementCount,
+          firstChild: textDiv.firstElementChild?.tagName,
+          firstChildText: textDiv.firstElementChild?.textContent?.slice(0, 30),
+          textDivs: tl.textDivs?.length,
+        });
+      } catch (err) {
+        debugLog("pdf-textlayer-error", {
+          pageIndex,
+          error: String(err),
+        });
+        console.error("[PDFReader] TextLayer.render() failed:", err);
+      }
     },
     [pageInfos],
   );
