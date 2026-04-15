@@ -325,9 +325,12 @@ export function PDFReader({
 
   // ── Text selection ──
 
-  const handleMouseUp = useCallback(() => {
+  // Show selection toolbar on right-click (matches HTML reader behavior)
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+
+    e.preventDefault();
 
     const range = sel.getRangeAt(0);
     const selText = sel.toString().trim();
@@ -507,7 +510,7 @@ export function PDFReader({
     <div
       ref={containerRef}
       className={styles.container}
-      onMouseUp={handleMouseUp}
+      onContextMenu={handleContextMenu}
     >
       {pageInfos.map((info, idx) => {
         const container = containerRef.current;
