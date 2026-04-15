@@ -109,6 +109,8 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
 export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
   const { t } = useTranslation('sidebar');
   const { t: tSearch } = useTranslation('search');
+  const { t: tCommon } = useTranslation('common');
+  const { t: tReader } = useTranslation('reader');
   const [inputValue, setInputValue] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const composingRef = useRef(false);
@@ -219,6 +221,23 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
 
   const isSingleSelect = contextResourceIds.length === 1;
 
+  const handleImportPdf = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+      if (!selected) return;
+
+      const filePath = typeof selected === "string" ? selected : (selected as { path: string }).path;
+      await cmd.importPdf(filePath, folderId || "root");
+      toast.success(tCommon("saveSuccess"));
+    } catch (err) {
+      toast.error(String(err));
+    }
+  };
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (filteredResources.length === 0) return;
 
@@ -291,6 +310,13 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           )}
         </span>
         <div className={styles.sortControls}>
+          <button
+            className={styles.importBtn}
+            onClick={handleImportPdf}
+            title={tReader("importPdf")}
+          >
+            PDF+
+          </button>
           <select
             className={styles.sortSelect}
             value={sortBy}

@@ -10,6 +10,7 @@
   "operationFailed": "操作失败",
   "create": "创建",
   "restore": "恢复",
+  "saveSuccess": "保存成功",
   "error": {
     "syncRegionNotSet": "请先配置同步设置（Region 未设置）",
     "syncBucketNotSet": "请先配置同步设置（Bucket 未设置）",
