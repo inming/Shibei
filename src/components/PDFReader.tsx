@@ -90,9 +90,14 @@ export function PDFReader({
   const [needsPassword, setNeedsPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [pageInfos, setPageInfos] = useState<PageInfo[]>([]);
+  // Tracks container width — triggers JSX re-render on resize so page
+  // container divs update their inline width/height styles.
+  const [layoutWidth, setLayoutWidth] = useState(0);
 
   // Refs (mutable state that doesn't trigger renders)
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
+  const layoutWidthRef = useRef(0);
+  const scrollRestoreRef = useRef<{ page: number; progress: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
@@ -157,6 +162,8 @@ export function PDFReader({
           infos.push({ width: vp.width, height: vp.height });
         }
         setPageInfos(infos);
+        layoutWidthRef.current = containerRef.current?.clientWidth ?? 0;
+        setLayoutWidth(layoutWidthRef.current);
         setLoading(false);
         onReady();
       } catch (err: unknown) {
@@ -331,7 +338,11 @@ export function PDFReader({
     const handleResize = () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        // Remember which page is currently visible before re-render
+        if (!container) return;
+        const newWidth = container.clientWidth;
+        if (newWidth === layoutWidthRef.current) return; // no actual change
+
+        // Remember which page is currently visible
         const heights = pageHeights();
         const offsets = pageOffsets();
         let currentPage = 0;
@@ -345,22 +356,12 @@ export function PDFReader({
         const progressInPage = heights[currentPage] > 0
           ? (st - offsets[currentPage]) / heights[currentPage]
           : 0;
+        scrollRestoreRef.current = { page: currentPage, progress: progressInPage };
 
-        // Clear render cache so pages re-render at new scale
+        // Clear render cache and trigger JSX re-render
         renderedPagesRef.current.clear();
-        updateVisiblePages();
-
-        // Restore scroll position to the same page after layout recalc
-        requestAnimationFrame(() => {
-          const newOffsets = pageOffsets();
-          const newHeights = pageHeights();
-          if (newOffsets[currentPage] !== undefined) {
-            container.scrollTop =
-              newOffsets[currentPage] +
-              newHeights[currentPage] * progressInPage -
-              container.clientHeight / 3;
-          }
-        });
+        layoutWidthRef.current = newWidth;
+        setLayoutWidth(newWidth);
       }, 200);
     };
     window.addEventListener("resize", handleResize);
@@ -370,7 +371,29 @@ export function PDFReader({
       window.removeEventListener("resize", handleResize);
       clearTimeout(resizeTimer);
     };
-  }, [pageInfos, onScroll, updateVisiblePages]);
+  }, [pageInfos, onScroll, updateVisiblePages, pageHeights, pageOffsets]);
+
+  // After resize re-render: restore scroll position and re-render visible pages
+  useEffect(() => {
+    if (layoutWidth === 0 || pageInfos.length === 0) return;
+    updateVisiblePages();
+
+    const restore = scrollRestoreRef.current;
+    if (restore) {
+      scrollRestoreRef.current = null;
+      const container = containerRef.current;
+      if (container) {
+        const newOffsets = pageOffsets();
+        const newHeights = pageHeights();
+        if (newOffsets[restore.page] !== undefined) {
+          container.scrollTop =
+            newOffsets[restore.page] +
+            newHeights[restore.page] * restore.progress -
+            container.clientHeight / 3;
+        }
+      }
+    }
+  }, [layoutWidth, pageInfos, updateVisiblePages, pageOffsets, pageHeights]);
 
   // ── Text selection ──
 
