@@ -325,7 +325,24 @@ export function PDFReader({
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+
+    // Re-render on window resize — scale changes with container width.
+    let resizeTimer: ReturnType<typeof setTimeout>;
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        // Clear render cache so pages re-render at new scale
+        renderedPagesRef.current.clear();
+        updateVisiblePages();
+      }, 200);
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleResize);
+      clearTimeout(resizeTimer);
+    };
   }, [pageInfos, onScroll, updateVisiblePages]);
 
   // ── Text selection ──
