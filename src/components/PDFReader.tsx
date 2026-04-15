@@ -92,6 +92,7 @@ export function PDFReader({
   const [pageInfos, setPageInfos] = useState<PageInfo[]>([]);
 
   // Refs (mutable state that doesn't trigger renders)
+  const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
@@ -329,29 +330,40 @@ export function PDFReader({
 
   // ── Text selection ──
 
-  // All right-click logic in mousedown (button===2), matching annotator.js.
-  // At mousedown time the existing selection is still intact — the browser
-  // hasn't modified it yet. preventDefault() stops the browser from
-  // changing the selection on right-click.
+  // Mousedown(button===2): only detect highlight right-clicks.
+  // preventDefault() stops the browser from creating a new selection
+  // that would replace the existing one (matching annotator.js behavior).
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 2) return;
-
-    // 1. Right-click on highlight → show highlight context menu
     const target = e.target as HTMLElement;
     const hlId = target.dataset.highlightId;
     if (hlId) {
       e.preventDefault();
       window.getSelection()?.removeAllRanges();
-      onHighlightContextMenu(hlId, { top: e.clientY, left: e.clientX });
+      pendingHlRef.current = { id: hlId, top: e.clientY, left: e.clientX };
+    } else {
+      pendingHlRef.current = null;
+    }
+  }, []);
+
+  // Contextmenu: show highlight context menu or selection toolbar.
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+
+    // 1. If mousedown detected a highlight → show highlight context menu
+    if (pendingHlRef.current) {
+      const { id, top, left } = pendingHlRef.current;
+      pendingHlRef.current = null;
+      onHighlightContextMenu(id, { top, left });
       return;
     }
 
-    // 2. Right-click with active text selection → show selection toolbar
+    // 2. Active text selection → show selection toolbar
     const sel = window.getSelection();
-    const selText = sel?.toString().trim() ?? "";
-    if (!selText || !sel || sel.isCollapsed || !sel.rangeCount) return;
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return;
 
-    e.preventDefault();
+    const selText = sel.toString().trim();
+    if (!selText) return;
 
     const range = sel.getRangeAt(0);
     if (!selText) return;
@@ -400,6 +412,7 @@ export function PDFReader({
     const rect = range.getBoundingClientRect();
     onSelection({ text: selText, anchor, rect });
   }, [onSelection, onHighlightContextMenu]);
+
 
   // ── Highlight rendering ──
 
@@ -532,7 +545,7 @@ export function PDFReader({
       ref={containerRef}
       className={styles.container}
       onMouseDown={handleMouseDown}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={handleContextMenu}
       onClick={onClearSelection}
     >
       {pageInfos.map((info, idx) => {
