@@ -1047,14 +1047,14 @@ mod tests {
         let resource = create_test_resource_with_ctx(&conn, &folder.id, Some(&ctx));
 
         // Create a highlight and comment
-        let anchor = crate::db::highlights::Anchor {
-            text_position: crate::db::highlights::TextPosition { start: 0, end: 5 },
-            text_quote: crate::db::highlights::TextQuote {
-                exact: "hello".to_string(),
-                prefix: "".to_string(),
-                suffix: "".to_string(),
-            },
-        };
+        let anchor = serde_json::json!({
+            "text_position": { "start": 0, "end": 5 },
+            "text_quote": {
+                "exact": "hello",
+                "prefix": "",
+                "suffix": ""
+            }
+        });
         let h = crate::db::highlights::create_highlight(
             &conn, &resource.id, "hello", &anchor, "#FFEB3B", Some(&ctx),
         ).unwrap();

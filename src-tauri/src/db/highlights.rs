@@ -4,24 +4,10 @@ use serde::{Deserialize, Serialize};
 use super::{now_iso8601, DbError};
 use crate::sync::{self, SyncContext};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TextPosition {
-    pub start: u64,
-    pub end: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TextQuote {
-    pub exact: String,
-    pub prefix: String,
-    pub suffix: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Anchor {
-    pub text_position: TextPosition,
-    pub text_quote: TextQuote,
-}
+/// Anchor is stored as opaque JSON — the backend does not interpret its structure.
+/// HTML anchors have `{ text_position, text_quote }`.
+/// PDF anchors have `{ type: "pdf", page, charIndex, length, textQuote }`.
+pub type Anchor = serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Highlight {
@@ -284,17 +270,14 @@ mod tests {
     use crate::db::{comments, folders, resources, test_db};
 
     fn test_anchor() -> Anchor {
-        Anchor {
-            text_position: TextPosition {
-                start: 100,
-                end: 150,
-            },
-            text_quote: TextQuote {
-                exact: "highlighted text".to_string(),
-                prefix: "before ".to_string(),
-                suffix: " after".to_string(),
-            },
-        }
+        serde_json::json!({
+            "text_position": { "start": 100, "end": 150 },
+            "text_quote": {
+                "exact": "highlighted text",
+                "prefix": "before ",
+                "suffix": " after"
+            }
+        })
     }
 
     fn setup_resource(conn: &Connection) -> resources::Resource {
@@ -347,11 +330,12 @@ mod tests {
         create_highlight(&conn, &resource.id, "test", &anchor, "#FF0", None).unwrap();
 
         let highlights = get_highlights_for_resource(&conn, &resource.id).unwrap();
-        assert_eq!(highlights[0].anchor.text_position.start, 100);
-        assert_eq!(highlights[0].anchor.text_position.end, 150);
-        assert_eq!(highlights[0].anchor.text_quote.exact, "highlighted text");
-        assert_eq!(highlights[0].anchor.text_quote.prefix, "before ");
-        assert_eq!(highlights[0].anchor.text_quote.suffix, " after");
+        let a = &highlights[0].anchor;
+        assert_eq!(a["text_position"]["start"], 100);
+        assert_eq!(a["text_position"]["end"], 150);
+        assert_eq!(a["text_quote"]["exact"], "highlighted text");
+        assert_eq!(a["text_quote"]["prefix"], "before ");
+        assert_eq!(a["text_quote"]["suffix"], " after");
     }
 
     #[test]
@@ -432,14 +416,14 @@ mod tests {
         )
         .unwrap();
 
-        let anchor = Anchor {
-            text_position: TextPosition { start: 0, end: 5 },
-            text_quote: TextQuote {
-                exact: "test".to_string(),
-                prefix: "".to_string(),
-                suffix: "".to_string(),
-            },
-        };
+        let anchor = serde_json::json!({
+            "text_position": { "start": 0, "end": 5 },
+            "text_quote": {
+                "exact": "test",
+                "prefix": "",
+                "suffix": ""
+            }
+        });
         create_highlight(&conn, &r1.id, "hl1", &anchor, "#FF0000", None).unwrap();
         create_highlight(&conn, &r1.id, "hl2", &anchor, "#00FF00", None).unwrap();
 
