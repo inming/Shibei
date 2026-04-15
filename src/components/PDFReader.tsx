@@ -686,21 +686,25 @@ function getHighlightRects(
     height: number;
   }> = [];
 
+  // Vertical inset (px) to prevent sub-pixel overlap between adjacent lines
+  const INSET = 1;
+
   for (let i = 0; i < clientRects.length; i++) {
     const r = clientRects[i];
     // Filter out phantom zero-width rects that getClientRects() produces
     // at element boundaries when a Range spans multiple spans.
     if (r.width < 1 || r.height < 1) continue;
+    const h = r.height - INSET * 2;
+    if (h < 1) continue;
     result.push({
       left: r.left - containerRect.left,
-      top: r.top - containerRect.top,
+      top: r.top - containerRect.top + INSET,
       width: r.width,
-      height: r.height,
+      height: h,
     });
   }
 
-  // Shrink rects vertically to avoid overlap between adjacent lines.
-  // getClientRects() heights often exceed line spacing by a few pixels.
+  // Clamp rects that still overlap after inset (Windows can have larger rects).
   if (result.length > 1) {
     for (let i = 0; i < result.length - 1; i++) {
       const gap = result[i + 1].top - result[i].top;

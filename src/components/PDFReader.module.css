@@ -47,8 +47,8 @@
   position: absolute;
   pointer-events: auto;
   cursor: pointer;
-  mix-blend-mode: multiply;
   border-radius: 2px;
+  opacity: 0.35;
 }
 
 [data-theme="dark"] .pageContainer {
