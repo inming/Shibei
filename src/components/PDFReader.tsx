@@ -12,6 +12,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
+import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -267,6 +268,36 @@ export function PDFReader({
         viewport,
       });
       await tl.render();
+
+      // Debug: compare textLayer vs canvas dimensions and span positioning
+      const tlRect = textDiv.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const firstSpan = textDiv.querySelector("span") as HTMLElement | null;
+      const computedTL = getComputedStyle(textDiv);
+      cmd.debugLog("pdf-textlayer-layout", {
+        pageIndex,
+        scale,
+        canvasCSS: { w: Math.round(canvasRect.width), h: Math.round(canvasRect.height) },
+        textLayerRect: { w: Math.round(tlRect.width), h: Math.round(tlRect.height) },
+        textLayerComputed: {
+          width: computedTL.width,
+          height: computedTL.height,
+          totalScaleFactor: computedTL.getPropertyValue("--total-scale-factor"),
+          scaleFactor: computedTL.getPropertyValue("--scale-factor"),
+          minFontSize: computedTL.getPropertyValue("--min-font-size"),
+        },
+        textLayerInlineStyle: textDiv.getAttribute("style"),
+        firstSpan: firstSpan ? {
+          inlineStyle: firstSpan.getAttribute("style"),
+          computedLeft: getComputedStyle(firstSpan).left,
+          computedTop: getComputedStyle(firstSpan).top,
+          computedFontSize: getComputedStyle(firstSpan).fontSize,
+          computedTransform: getComputedStyle(firstSpan).transform,
+          computedTransformOrigin: getComputedStyle(firstSpan).transformOrigin,
+          rect: (() => { const r = firstSpan.getBoundingClientRect(); return { l: Math.round(r.left - tlRect.left), t: Math.round(r.top - tlRect.top), w: Math.round(r.width), h: Math.round(r.height) }; })(),
+        } : null,
+        pageDivScaleFactor: pageDiv.style.getPropertyValue("--scale-factor"),
+      });
     },
     [pageInfos],
   );
