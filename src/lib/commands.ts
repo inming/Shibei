@@ -388,6 +388,16 @@ export function translateError(message: string): string {
   return message;
 }
 
+// ── PDF ──
+
+export function readPdfBytes(resourceId: string): Promise<number[]> {
+  return invoke("cmd_read_pdf_bytes", { resourceId });
+}
+
+export function importPdf(filePath: string, folderId: string): Promise<Resource> {
+  return invoke("cmd_import_pdf", { filePath, folderId });
+}
+
 // ── Backup ──
 
 export interface BackupResult {

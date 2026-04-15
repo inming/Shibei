@@ -36,6 +36,8 @@
     "restore_invalid_format": "Invalid backup file format",
     "restore_version_unsupported": "Unsupported backup version",
     "restore_db_missing": "Database file missing from backup",
-    "restore_failed": "Restore failed"
+    "restore_failed": "Restore failed",
+    "readPdfFailed": "Failed to read PDF",
+    "readFileFailed": "Failed to read file"
   }
 }
