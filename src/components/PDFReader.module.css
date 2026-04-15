@@ -36,33 +36,11 @@
   margin-top: 8px;
 }
 
+/* Base text layer styles come from pdfjs-dist/web/pdf_viewer.css via
+   the global "textLayer" class. These are our overrides only. */
 .textLayer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: clip;
   opacity: 0.25;
-  line-height: 1;
   z-index: 2;
-  -webkit-user-select: text !important;
-  user-select: text !important;
-}
-
-.textLayer :is(span, br) {
-  position: absolute;
-  white-space: pre;
-  color: transparent;
-  pointer-events: auto;
-  cursor: text;
-  transform-origin: 0% 0%;
-  -webkit-user-select: text !important;
-  user-select: text !important;
-}
-
-.textLayer ::selection {
-  background: rgba(0, 100, 200, 0.3);
 }
 
 .highlight {

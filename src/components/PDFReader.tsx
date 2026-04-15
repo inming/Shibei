@@ -8,6 +8,7 @@ import {
 import { useTranslation } from "react-i18next";
 import * as pdfjsLib from "pdfjs-dist";
 import { TextLayer } from "pdfjs-dist";
+import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
@@ -239,7 +240,9 @@ export function PDFReader({
       let textDiv = textLayerMapRef.current.get(pageIndex);
       if (!textDiv) {
         textDiv = document.createElement("div");
-        textDiv.className = styles.textLayer;
+        // "textLayer" class is required by pdfjs-dist/web/pdf_viewer.css
+        // styles.textLayer adds our own overrides (z-index, opacity, etc.)
+        textDiv.className = `textLayer ${styles.textLayer}`;
         textLayerMapRef.current.set(pageIndex, textDiv);
       }
       // Clear previous text content
