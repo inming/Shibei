@@ -6,6 +6,7 @@ import { useAnnotations } from "@/hooks/useAnnotations";
 import { SelectionToolbar } from "@/components/SelectionToolbar";
 import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightContextMenu } from "@/components/HighlightContextMenu";
+import { PDFReader } from "@/components/PDFReader";
 import * as cmd from "@/lib/commands";
 import styles from "./ReaderView.module.css";
 
@@ -223,6 +224,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   // Only fires on initial load — individual adds/removes use their own messages.
   const didSendInitialHighlights = useRef(false);
   useEffect(() => {
+    if (resource.resource_type === "pdf") return;
     if (iframeReady && highlights.length > 0 && !didSendInitialHighlights.current && iframeRef.current?.contentWindow) {
       didSendInitialHighlights.current = true;
       iframeRef.current.contentWindow.postMessage(
@@ -230,10 +232,11 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         "*",
       );
     }
-  }, [iframeReady, highlights]);
+  }, [iframeReady, highlights, resource.resource_type]);
 
   // Scroll to initial highlight if specified (once only)
   useEffect(() => {
+    if (resource.resource_type === "pdf") return;
     if (
       initialHighlightId &&
       iframeReady &&
@@ -248,7 +251,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         "*",
       );
     }
-  }, [initialHighlightId, iframeReady, highlights]);
+  }, [initialHighlightId, iframeReady, highlights, resource.resource_type]);
 
   // Handle color selection → create highlight
   const handleCreateHighlight = useCallback(
@@ -263,11 +266,13 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         );
         addHighlight(hl);
 
-        // Tell iframe to render the new highlight
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "shibei:add-highlight", source: "shibei", highlight: hl },
-          "*",
-        );
+        // Tell iframe to render the new highlight (HTML only, PDF handles its own rendering)
+        if (resource.resource_type !== "pdf") {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: "shibei:add-highlight", source: "shibei", highlight: hl },
+            "*",
+          );
+        }
 
         setSelection(null);
       } catch (err) {
@@ -282,7 +287,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const handleChangeHighlightColor = useCallback(
     async (id: string, color: string) => {
       const updated = await updateHighlightColor(id, color);
-      if (updated) {
+      if (updated && resource.resource_type !== "pdf") {
         // Tell iframe to update the highlight color
         iframeRef.current?.contentWindow?.postMessage(
           { type: "shibei:update-highlight-color", source: "shibei", id, color },
@@ -290,20 +295,22 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
         );
       }
     },
-    [updateHighlightColor],
+    [updateHighlightColor, resource.resource_type],
   );
 
   // Handle delete highlight
   const handleDeleteHighlight = useCallback(
     async (id: string) => {
       await removeHighlight(id);
-      iframeRef.current?.contentWindow?.postMessage(
-        { type: "shibei:remove-highlight", source: "shibei", id },
-        "*",
-      );
+      if (resource.resource_type !== "pdf") {
+        iframeRef.current?.contentWindow?.postMessage(
+          { type: "shibei:remove-highlight", source: "shibei", id },
+          "*",
+        );
+      }
       if (activeHighlightId === id) setActiveHighlightId(null);
     },
-    [removeHighlight, activeHighlightId],
+    [removeHighlight, activeHighlightId, resource.resource_type],
   );
 
   // Layout constants — see CLAUDE.md "阅读器双栏布局约束"
@@ -367,14 +374,14 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   // Handle click on annotation panel → scroll iframe to highlight
   const handlePanelClickHighlight = useCallback((id: string) => {
     setActiveHighlightId(id);
-    // Don't scroll to highlight if it failed to anchor in the DOM
-    if (!failedHighlightIds.has(id)) {
+    // Don't scroll to highlight if it failed to anchor in the DOM (HTML iframe only)
+    if (resource.resource_type !== "pdf" && !failedHighlightIds.has(id)) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: "shibei:scroll-to-highlight", source: "shibei", id },
         "*",
       );
     }
-  }, [failedHighlightIds]);
+  }, [failedHighlightIds, resource.resource_type]);
 
   return (
     <div ref={containerRef} className={styles.container}>
@@ -395,17 +402,44 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           <span className={styles.metaTime}>
             {new Date(resource.created_at).toLocaleDateString()}
           </span>
-          <button
-            className={`${styles.invertBtn} ${inverted ? styles.invertBtnActive : ""}`}
-            onClick={() => setInverted((v) => !v)}
-            title={inverted ? t('restoreOriginalColors') : t('invertColors')}
-          >
-            🌓
-          </button>
+          {resource.resource_type !== "pdf" && (
+            <button
+              className={`${styles.invertBtn} ${inverted ? styles.invertBtnActive : ""}`}
+              onClick={() => setInverted((v) => !v)}
+              title={inverted ? t('restoreOriginalColors') : t('invertColors')}
+            >
+              🌓
+            </button>
+          )}
         </div>
 
-        {/* Snapshot content or loading indicator */}
-        {snapshotStatus === "pending" || downloading ? (
+        {/* Content area: PDF or HTML iframe */}
+        {resource.resource_type === "pdf" ? (
+          <PDFReader
+            resourceId={resource.id}
+            highlights={highlights}
+            activeHighlightId={activeHighlightId}
+            onSelection={(info) => {
+              setSelection({
+                text: info.text,
+                anchor: info.anchor,
+                rect: {
+                  top: info.rect.top,
+                  left: info.rect.left,
+                  width: info.rect.width,
+                  height: info.rect.height,
+                },
+              });
+            }}
+            onHighlightClick={(id) => setActiveHighlightId(id)}
+            onScroll={({ scrollPercent: pct, direction }) => {
+              setScrollPercent(pct);
+              if (direction === "down") setMetaHidden(true);
+              else setMetaHidden(false);
+            }}
+            onReady={() => setIframeLoading(false)}
+          />
+        ) : snapshotStatus === "pending" || downloading ? (
           <div className={styles.downloadPrompt}>
             <div className={styles.spinner} />
             <p>{t('downloadingSnapshot')}</p>
