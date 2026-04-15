@@ -311,8 +311,8 @@ export function PDFReader({
     if (!sel || sel.isCollapsed || !sel.rangeCount) return;
 
     const range = sel.getRangeAt(0);
-    const text = sel.toString().trim();
-    if (!text) return;
+    const selText = sel.toString().trim();
+    if (!selText) return;
 
     // Find which page's text layer contains the selection start
     let pageIndex = -1;
@@ -327,29 +327,35 @@ export function PDFReader({
     const textDiv = textLayerMapRef.current.get(pageIndex);
     if (!textDiv) return;
 
-    // Walk text nodes to compute charIndex
-    const charIndex = computeCharIndex(textDiv, range.startContainer, range.startOffset);
-    if (charIndex < 0) return;
+    // Compute both start and end charIndex from the DOM tree walk.
+    // This avoids mismatch between sel.toString().length and textContent indexing
+    // (PDF.js text layer spans can have whitespace that sel.toString() collapses).
+    const startCharIndex = computeCharIndex(textDiv, range.startContainer, range.startOffset);
+    const endCharIndex = computeCharIndex(textDiv, range.endContainer, range.endOffset);
+    if (startCharIndex < 0 || endCharIndex < 0 || endCharIndex <= startCharIndex) return;
 
-    // Build context for textQuote
+    const length = endCharIndex - startCharIndex;
+
+    // Use textContent for exact text (consistent with charIndex-based indexing)
     const fullText = textDiv.textContent ?? "";
-    const prefix = fullText.slice(Math.max(0, charIndex - 32), charIndex);
-    const suffix = fullText.slice(charIndex + text.length, charIndex + text.length + 32);
+    const exact = fullText.slice(startCharIndex, startCharIndex + length);
+    const prefix = fullText.slice(Math.max(0, startCharIndex - 32), startCharIndex);
+    const suffix = fullText.slice(startCharIndex + length, startCharIndex + length + 32);
 
     const anchor: PdfAnchor = {
       type: "pdf",
       page: pageIndex,
-      charIndex,
-      length: text.length,
+      charIndex: startCharIndex,
+      length,
       textQuote: {
-        exact: text,
+        exact,
         prefix,
         suffix,
       },
     };
 
     const rect = range.getBoundingClientRect();
-    onSelection({ text, anchor, rect });
+    onSelection({ text: selText, anchor, rect });
   }, [onSelection]);
 
   // ── Highlight rendering ──
