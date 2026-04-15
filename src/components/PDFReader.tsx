@@ -329,24 +329,31 @@ export function PDFReader({
 
   // ── Text selection ──
 
-  // Show selection toolbar on right-click (matches HTML reader behavior)
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    // Check if right-clicked on an existing highlight overlay
+  // All right-click logic in mousedown (button===2), matching annotator.js.
+  // At mousedown time the existing selection is still intact — the browser
+  // hasn't modified it yet. preventDefault() stops the browser from
+  // changing the selection on right-click.
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 2) return;
+
+    // 1. Right-click on highlight → show highlight context menu
     const target = e.target as HTMLElement;
     const hlId = target.dataset.highlightId;
     if (hlId) {
       e.preventDefault();
+      window.getSelection()?.removeAllRanges();
       onHighlightContextMenu(hlId, { top: e.clientY, left: e.clientX });
       return;
     }
 
+    // 2. Right-click with active text selection → show selection toolbar
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+    const selText = sel?.toString().trim() ?? "";
+    if (!selText || !sel || sel.isCollapsed || !sel.rangeCount) return;
 
     e.preventDefault();
 
     const range = sel.getRangeAt(0);
-    const selText = sel.toString().trim();
     if (!selText) return;
 
     // Find which page's text layer contains the selection start
@@ -392,7 +399,7 @@ export function PDFReader({
 
     const rect = range.getBoundingClientRect();
     onSelection({ text: selText, anchor, rect });
-  }, [onSelection]);
+  }, [onSelection, onHighlightContextMenu]);
 
   // ── Highlight rendering ──
 
@@ -524,7 +531,8 @@ export function PDFReader({
     <div
       ref={containerRef}
       className={styles.container}
-      onContextMenu={handleContextMenu}
+      onMouseDown={handleMouseDown}
+      onContextMenu={(e) => e.preventDefault()}
       onClick={onClearSelection}
     >
       {pageInfos.map((info, idx) => {
