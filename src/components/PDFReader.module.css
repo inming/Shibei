@@ -45,6 +45,9 @@
   overflow: hidden;
   opacity: 0.25;
   line-height: 1;
+  z-index: 1;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .textLayer :is(span, br) {
