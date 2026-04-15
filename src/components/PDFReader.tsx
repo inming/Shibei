@@ -330,27 +330,49 @@ export function PDFReader({
 
   // ── Text selection ──
 
-  // Mousedown(button===2): only detect highlight right-clicks.
-  // preventDefault() stops the browser from creating a new selection
-  // that would replace the existing one (matching annotator.js behavior).
+  // Hit-test highlight overlays by coordinates (since textLayer z-index
+  // is above highlights, e.target is always a text layer span, never a
+  // highlight div — so we can't use e.target.dataset.highlightId).
+  const findHighlightAtPoint = useCallback((x: number, y: number): string | null => {
+    for (const pageDiv of pageContainerMapRef.current.values()) {
+      const hlDivs = pageDiv.querySelectorAll<HTMLElement>(`[data-highlight-id]`);
+      for (const div of hlDivs) {
+        const r = div.getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+          return div.dataset.highlightId || null;
+        }
+      }
+    }
+    return null;
+  }, []);
+
+  // Mousedown(button===2): detect highlight and preserve selection.
+  // Matching annotator.js: at mousedown time the selection is still intact.
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 2) return;
-    const target = e.target as HTMLElement;
-    const hlId = target.dataset.highlightId;
+
+    // 1. Check if right-clicked on a highlight overlay
+    const hlId = findHighlightAtPoint(e.clientX, e.clientY);
     if (hlId) {
       e.preventDefault();
       window.getSelection()?.removeAllRanges();
       pendingHlRef.current = { id: hlId, top: e.clientY, left: e.clientX };
-    } else {
-      pendingHlRef.current = null;
+      return;
     }
-  }, []);
+    pendingHlRef.current = null;
 
-  // Contextmenu: show highlight context menu or selection toolbar.
+    // 2. If there's a text selection, prevent browser from modifying it
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) {
+      e.preventDefault();
+    }
+  }, [findHighlightAtPoint]);
+
+  // Contextmenu: show highlight menu or selection toolbar.
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
 
-    // 1. If mousedown detected a highlight → show highlight context menu
+    // 1. Highlight detected in mousedown → show highlight context menu
     if (pendingHlRef.current) {
       const { id, top, left } = pendingHlRef.current;
       pendingHlRef.current = null;
