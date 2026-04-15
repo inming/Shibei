@@ -331,9 +331,36 @@ export function PDFReader({
     const handleResize = () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
+        // Remember which page is currently visible before re-render
+        const heights = pageHeights();
+        const offsets = pageOffsets();
+        let currentPage = 0;
+        const st = container.scrollTop + container.clientHeight / 3;
+        for (let i = 0; i < offsets.length; i++) {
+          if (offsets[i] + heights[i] > st) {
+            currentPage = i;
+            break;
+          }
+        }
+        const progressInPage = heights[currentPage] > 0
+          ? (st - offsets[currentPage]) / heights[currentPage]
+          : 0;
+
         // Clear render cache so pages re-render at new scale
         renderedPagesRef.current.clear();
         updateVisiblePages();
+
+        // Restore scroll position to the same page after layout recalc
+        requestAnimationFrame(() => {
+          const newOffsets = pageOffsets();
+          const newHeights = pageHeights();
+          if (newOffsets[currentPage] !== undefined) {
+            container.scrollTop =
+              newOffsets[currentPage] +
+              newHeights[currentPage] * progressInPage -
+              container.clientHeight / 3;
+          }
+        });
       }, 200);
     };
     window.addEventListener("resize", handleResize);
