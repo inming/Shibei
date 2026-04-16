@@ -8,7 +8,13 @@ function getTokenPath(): string {
   if (process.env.SHIBEI_DATA_DIR) {
     return join(process.env.SHIBEI_DATA_DIR, "mcp-token");
   }
-  // macOS default
+  // OS-specific default data directory
+  if (process.platform === "win32") {
+    // Windows: %LOCALAPPDATA%/shibei/ (matches dirs::data_local_dir)
+    const localAppData = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+    return join(localAppData, "shibei", "mcp-token");
+  }
+  // macOS: ~/Library/Application Support/shibei/
   return join(homedir(), "Library", "Application Support", "shibei", "mcp-token");
 }
 

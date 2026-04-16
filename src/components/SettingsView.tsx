@@ -6,10 +6,11 @@ import { SyncPage } from "@/components/Settings/SyncPage";
 import { EncryptionPage } from "@/components/Settings/EncryptionPage";
 import { LockScreenPage } from "@/components/Settings/LockScreenPage";
 import { DataPage } from "@/components/Settings/DataPage";
+import { AIPage } from "@/components/Settings/AIPage";
 import type { ThemeMode } from "@/hooks/useTheme";
 import styles from "./SettingsView.module.css";
 
-type SettingsSection = "appearance" | "sync" | "encryption" | "security" | "data";
+type SettingsSection = "appearance" | "sync" | "encryption" | "security" | "data" | "ai";
 
 const NAV_KEYS = [
   { id: "appearance", key: "navAppearance" },
@@ -17,6 +18,7 @@ const NAV_KEYS = [
   { id: "encryption", key: "navEncryption" },
   { id: "security", key: "navSecurity" },
   { id: "data", key: "navData" },
+  { id: "ai", key: "navAi" },
 ] as const;
 
 interface SettingsViewProps {
@@ -65,6 +67,7 @@ export function SettingsView({ initialSection, themeMode, onThemeModeChange }: S
             <LockScreenPage />
           )}
           {section === "data" && <DataPage />}
+          {section === "ai" && <AIPage />}
         </div>
       </div>
     </div>

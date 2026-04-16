@@ -1627,3 +1627,152 @@ pub async fn cmd_debug_log(
         .map_err(|e| CommandError { message: e.to_string() })?;
     Ok(())
 }
+
+// ── AI / MCP ──
+
+/// Strip Windows extended-length path prefix (\\?\) for cleaner display and compatibility
+fn strip_win_prefix(p: &std::path::Path) -> String {
+    let s = p.to_string_lossy().to_string();
+    s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+}
+
+#[tauri::command]
+pub async fn cmd_get_mcp_entry_path(
+    app: tauri::AppHandle,
+) -> Result<String, CommandError> {
+    use tauri::Manager;
+    let resource_dir = app.path().resource_dir().map_err(|e| CommandError {
+        message: format!("error.mcp_path: {e}"),
+    })?;
+    // Production: single-file bundle (no node_modules needed)
+    // Tauri maps "../mcp/bundle/index.mjs" → "_up_/mcp/bundle/index.mjs" in resources
+    let bundled = resource_dir.join("_up_").join("mcp").join("bundle").join("index.mjs");
+    if bundled.exists() {
+        return Ok(strip_win_prefix(&bundled));
+    }
+    // Dev mode: use tsc output (needs node_modules)
+    let dev = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("mcp")
+        .join("dist")
+        .join("index.js");
+    if dev.exists() {
+        return Ok(strip_win_prefix(&dev));
+    }
+    Err(CommandError {
+        message: "error.mcp_not_built".to_string(),
+    })
+}
+
+#[tauri::command]
+pub async fn cmd_read_external_file(path: String) -> Result<String, CommandError> {
+    std::fs::read_to_string(&path).map_err(|e| CommandError {
+        message: format!("error.read_file: {e}"),
+    })
+}
+
+#[tauri::command]
+pub async fn cmd_write_external_file(path: String, content: String) -> Result<(), CommandError> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| CommandError {
+            message: format!("error.write_file: {e}"),
+        })?;
+    }
+    std::fs::write(&path, content).map_err(|e| CommandError {
+        message: format!("error.write_file: {e}"),
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct AiToolPath {
+    pub name: String,
+    pub path: String,
+    /// "standard" = mcpServers key, "opencode" = mcp key + type field
+    pub format: String,
+}
+
+#[tauri::command]
+pub async fn cmd_get_ai_tool_paths() -> Result<Vec<AiToolPath>, CommandError> {
+    let mut tools = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = dirs::home_dir() {
+            tools.push(AiToolPath {
+                name: "Claude Desktop".to_string(),
+                path: home
+                    .join("Library/Application Support/Claude/claude_desktop_config.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "standard".to_string(),
+            });
+            tools.push(AiToolPath {
+                name: "Cursor".to_string(),
+                path: home
+                    .join(".cursor/mcp.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "standard".to_string(),
+            });
+            tools.push(AiToolPath {
+                name: "Windsurf".to_string(),
+                path: home
+                    .join(".codeium/windsurf/mcp_config.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "standard".to_string(),
+            });
+            tools.push(AiToolPath {
+                name: "OpenCode".to_string(),
+                path: home
+                    .join(".config/opencode/opencode.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "opencode".to_string(),
+            });
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(appdata) = dirs::config_dir() {
+            tools.push(AiToolPath {
+                name: "Claude Desktop".to_string(),
+                path: appdata
+                    .join("Claude\\claude_desktop_config.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "standard".to_string(),
+            });
+        }
+        if let Some(home) = dirs::home_dir() {
+            tools.push(AiToolPath {
+                name: "Cursor".to_string(),
+                path: home
+                    .join(".cursor\\mcp.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "standard".to_string(),
+            });
+            tools.push(AiToolPath {
+                name: "Windsurf".to_string(),
+                path: home
+                    .join(".codeium\\windsurf\\mcp_config.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "standard".to_string(),
+            });
+            tools.push(AiToolPath {
+                name: "OpenCode".to_string(),
+                path: home
+                    .join(".config\\opencode\\opencode.json")
+                    .to_string_lossy()
+                    .to_string(),
+                format: "opencode".to_string(),
+            });
+        }
+    }
+
+    Ok(tools)
+}

@@ -1,0 +1,132 @@
+.toolList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.toolRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-primary);
+}
+
+.toolInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.toolName {
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.toolPath {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+  margin-left: var(--spacing-md);
+}
+
+.statusBadge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.statusConfigured {
+  background: var(--color-success-bg, #e6f4ea);
+  color: var(--color-success, #1e7e34);
+}
+
+.statusNotConfigured {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-muted);
+}
+
+.statusNotInstalled {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.diffOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.diffModal {
+  background: var(--color-bg-primary);
+  border-radius: 8px;
+  padding: var(--spacing-lg);
+  max-width: 560px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.diffTitle {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.diffDesc {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-md);
+}
+
+.diffFilePath {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-family: monospace;
+  margin-bottom: var(--spacing-sm);
+  word-break: break-all;
+}
+
+.diffContent {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: var(--spacing-sm);
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-y: auto;
+  max-height: 40vh;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.diffAdd {
+  color: var(--color-success, #1e7e34);
+}

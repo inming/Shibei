@@ -421,3 +421,28 @@ export function exportBackup(path: string): Promise<BackupResult> {
 export function importBackup(path: string): Promise<RestoreResult> {
   return invoke("cmd_import_backup", { path });
 }
+
+// ── AI / MCP ──
+
+export function getMcpEntryPath(): Promise<string> {
+  return invoke("cmd_get_mcp_entry_path");
+}
+
+export function readExternalFile(path: string): Promise<string> {
+  return invoke("cmd_read_external_file", { path });
+}
+
+export function writeExternalFile(path: string, content: string): Promise<void> {
+  return invoke("cmd_write_external_file", { path, content });
+}
+
+export interface AiToolPath {
+  name: string;
+  path: string;
+  /** "standard" = mcpServers key, "opencode" = mcp key + type field */
+  format: string;
+}
+
+export function getAiToolPaths(): Promise<AiToolPath[]> {
+  return invoke("cmd_get_ai_tool_paths");
+}

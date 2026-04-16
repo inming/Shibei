@@ -6,6 +6,8 @@ target/
 dist/
 dist-tauri/
 src-tauri/src/annotator.js
+mcp/dist/
+mcp/bundle/
 
 # IDE
 .idea/
