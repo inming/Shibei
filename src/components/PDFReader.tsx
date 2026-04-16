@@ -12,6 +12,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
+import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -209,6 +210,7 @@ export function PDFReader({
       if (renderedPagesRef.current.has(pageIndex)) return;
 
       renderedPagesRef.current.add(pageIndex);
+      debugLog("pdf-renderPage", { pageIndex, containerWidth: container.clientWidth });
 
       const page = await doc.getPage(pageIndex + 1);
       const containerWidth = container.clientWidth;
@@ -371,6 +373,7 @@ export function PDFReader({
 
         // Clear render cache AND remove stale canvas/textLayer elements.
         // Without this, off-screen pages keep old canvases at old scale.
+        const clearedCount = pageContainerMapRef.current.size;
         renderedPagesRef.current.clear();
         for (const pageDiv of pageContainerMapRef.current.values()) {
           while (pageDiv.firstChild) {
@@ -379,6 +382,15 @@ export function PDFReader({
         }
         canvasMapRef.current.clear();
         textLayerMapRef.current.clear();
+
+        debugLog("pdf-resize-handler", {
+          oldWidth,
+          newWidth,
+          savedPage: pageIndex,
+          savedRatio: Math.round(offsetRatio * 100) / 100,
+          clearedPageDivs: clearedCount,
+          renderedPagesCleared: renderedPagesRef.current.size === 0,
+        });
 
         layoutWidthRef.current = newWidth;
         setLayoutWidth(newWidth);
@@ -400,15 +412,38 @@ export function PDFReader({
     const container = containerRef.current;
     const restore = scrollRestoreRef.current;
 
+    debugLog("pdf-resize-effect", {
+      layoutWidth,
+      hasRestore: !!restore,
+      restorePage: restore?.pageIndex,
+      containerWidth: container?.clientWidth,
+      renderedPagesSize: renderedPagesRef.current.size,
+      canvasMapSize: canvasMapRef.current.size,
+    });
+
     if (container && restore) {
       scrollRestoreRef.current = null;
       const newOffsets = pageOffsets();
       const newHeights = pageHeights();
-      if (newOffsets[restore.pageIndex] !== undefined) {
-        container.scrollTop =
-          newOffsets[restore.pageIndex] +
-          newHeights[restore.pageIndex] * restore.offsetRatio;
-      }
+      const targetScrollTop = newOffsets[restore.pageIndex] !== undefined
+        ? newOffsets[restore.pageIndex] + newHeights[restore.pageIndex] * restore.offsetRatio
+        : 0;
+
+      debugLog("pdf-resize-scroll-restore", {
+        pageIndex: restore.pageIndex,
+        offsetRatio: Math.round(restore.offsetRatio * 100) / 100,
+        newPageTop: Math.round(newOffsets[restore.pageIndex] ?? 0),
+        newPageHeight: Math.round(newHeights[restore.pageIndex] ?? 0),
+        targetScrollTop: Math.round(targetScrollTop),
+        scrollTopBefore: Math.round(container.scrollTop),
+      });
+
+      container.scrollTop = targetScrollTop;
+
+      debugLog("pdf-resize-scroll-after", {
+        scrollTopAfterSet: Math.round(container.scrollTop),
+        scrollHeight: Math.round(container.scrollHeight),
+      });
     }
     updateVisiblePages();
   }, [layoutWidth, pageInfos, updateVisiblePages, pageOffsets, pageHeights]);
