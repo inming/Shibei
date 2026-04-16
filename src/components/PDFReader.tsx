@@ -12,7 +12,6 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
-import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -78,6 +77,7 @@ export function PDFReader({
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
+  const renderTaskMapRef = useRef(new Map<number, { cancel: () => void }>());
   const canvasMapRef = useRef(new Map<number, HTMLCanvasElement>());
   const textLayerMapRef = useRef(new Map<number, HTMLDivElement>());
   const pageContainerMapRef = useRef(new Map<number, HTMLDivElement>());
@@ -240,6 +240,13 @@ export function PDFReader({
       const containerWidth = container.clientWidth;
       if (!containerWidth) return;
 
+      // Cancel any in-progress render for this page
+      const existingTask = renderTaskMapRef.current.get(pageIndex);
+      if (existingTask) {
+        existingTask.cancel();
+        renderTaskMapRef.current.delete(pageIndex);
+      }
+
       renderedPagesRef.current.add(pageIndex);
 
       const page = await doc.getPage(pageIndex + 1);
@@ -272,7 +279,16 @@ export function PDFReader({
         pageDiv.appendChild(canvas);
       }
 
-      await page.render({ canvas, viewport: hiDpiViewport }).promise;
+      const renderTask = page.render({ canvas, viewport: hiDpiViewport });
+      renderTaskMapRef.current.set(pageIndex, renderTask);
+      try {
+        await renderTask.promise;
+      } catch {
+        // Render was cancelled (e.g. by resize), skip the rest
+        return;
+      } finally {
+        renderTaskMapRef.current.delete(pageIndex);
+      }
 
       // Text layer
       let textDiv = textLayerMapRef.current.get(pageIndex);
@@ -352,27 +368,12 @@ export function PDFReader({
       const oldWidth = lastWidthRef.current;
       if (!oldWidth || Math.abs(newWidth - oldWidth) < 1) return;
 
-      debugLog("pdf-resize-observer", {
-        oldWidth: Math.round(oldWidth),
-        newWidth: Math.round(newWidth),
-        scrollTopBefore: Math.round(container.scrollTop),
-        scrollHeight: Math.round(container.scrollHeight),
-      });
-
       const ratio = newWidth / oldWidth;
       container.scrollTop = container.scrollTop * ratio;
       lastWidthRef.current = newWidth;
 
-      debugLog("pdf-resize-observer-after", {
-        scrollTopAfter: Math.round(container.scrollTop),
-      });
-
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        debugLog("pdf-resize-debounce", {
-          containerWidth: Math.round(container.clientWidth),
-          renderedBefore: renderedPagesRef.current.size,
-        });
         renderedPagesRef.current.clear();
         renderVisiblePages();
       }, 200);
