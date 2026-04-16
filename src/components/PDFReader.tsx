@@ -155,6 +155,29 @@ export function PDFReader({
         lastWidthRef.current = containerRef.current?.clientWidth ?? 0;
         setLoading(false);
         onReady();
+
+        // Backfill plain text via PDF.js if backend extraction failed.
+        // pdf-extract can panic on some PDFs (UTF-16 ligatures etc.),
+        // so we use PDF.js as a fallback for search indexing.
+        (async () => {
+          try {
+            const parts: string[] = [];
+            for (let i = 1; i <= doc.numPages; i++) {
+              const p = await doc.getPage(i);
+              const tc = await p.getTextContent();
+              const pageText = tc.items
+                .map((item: Record<string, unknown>) => (item as { str?: string }).str ?? "")
+                .join(" ");
+              parts.push(pageText);
+            }
+            const fullText = parts.join("\n");
+            if (fullText.trim()) {
+              await cmd.backfillPlainText(resourceId, fullText.trim());
+            }
+          } catch {
+            // best-effort
+          }
+        })();
       } catch (err: unknown) {
         const pdfErr = err as { name?: string };
         if (pdfErr.name === "PasswordException") {

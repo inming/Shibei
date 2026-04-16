@@ -1498,6 +1498,28 @@ pub async fn cmd_import_backup(
 
 // ── PDF ──
 
+/// Backfill plain_text for a resource (e.g. from frontend PDF.js extraction
+/// when the Rust pdf-extract crate fails). Also rebuilds search index.
+#[tauri::command]
+pub async fn cmd_backfill_plain_text(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+    text: String,
+) -> Result<(), CommandError> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    let conn = state.conn()?;
+    // Only backfill if plain_text is currently empty
+    let existing = resources::get_plain_text(&conn, &resource_id)?;
+    if existing.is_some() && !existing.as_ref().unwrap().is_empty() {
+        return Ok(());
+    }
+    resources::set_plain_text(&conn, &resource_id, &text)?;
+    let _ = crate::db::search::rebuild_search_index(&conn, &resource_id);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn cmd_read_pdf_bytes(
     state: tauri::State<'_, Arc<AppState>>,
