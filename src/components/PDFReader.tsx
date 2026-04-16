@@ -12,7 +12,6 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
-import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -98,7 +97,7 @@ export function PDFReader({
   // Refs (mutable state that doesn't trigger renders)
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
   const layoutWidthRef = useRef(0);
-  const scrollRatioRef = useRef<number | null>(null);
+  const scrollRestoreRef = useRef<{ pageIndex: number; offsetRatio: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
@@ -343,22 +342,22 @@ export function PDFReader({
         const newWidth = container.clientWidth;
         if (newWidth === layoutWidthRef.current) return;
 
-        // Save scroll ratio before layout changes
-        const scrollTop = container.scrollTop;
-        const scrollHeight = container.scrollHeight;
-        const clientHeight = container.clientHeight;
-        const maxScroll = scrollHeight - clientHeight;
-        scrollRatioRef.current = maxScroll > 0 ? scrollTop / maxScroll : 0;
-
-        debugLog("pdf-resize-save", {
-          oldWidth: layoutWidthRef.current,
-          newWidth,
-          scrollTop: Math.round(scrollTop),
-          scrollHeight: Math.round(scrollHeight),
-          clientHeight: Math.round(clientHeight),
-          maxScroll: Math.round(maxScroll),
-          savedRatio: scrollRatioRef.current,
-        });
+        // Find which page is currently visible (topmost page in viewport)
+        const heights = pageHeights();
+        const offsets = pageOffsets();
+        const viewTop = container.scrollTop;
+        let pageIndex = 0;
+        for (let i = 0; i < offsets.length; i++) {
+          if (offsets[i] + heights[i] > viewTop) {
+            pageIndex = i;
+            break;
+          }
+        }
+        // How far into this page the viewport top is (0..1)
+        const offsetRatio = heights[pageIndex] > 0
+          ? (viewTop - offsets[pageIndex]) / heights[pageIndex]
+          : 0;
+        scrollRestoreRef.current = { pageIndex, offsetRatio };
 
         // Clear render cache and trigger JSX re-render
         renderedPagesRef.current.clear();
@@ -376,38 +375,24 @@ export function PDFReader({
   }, [pageInfos, onScroll, updateVisiblePages]);
 
   // After resize: DOM is now updated with new page dimensions.
-  // Restore scroll position, then re-render visible pages.
+  // Scroll to the same page, then re-render visible pages.
   useEffect(() => {
     if (layoutWidth === 0 || pageInfos.length === 0) return;
     const container = containerRef.current;
-    const ratio = scrollRatioRef.current;
+    const restore = scrollRestoreRef.current;
 
-    debugLog("pdf-resize-effect", {
-      layoutWidth,
-      ratioFromRef: ratio,
-      containerExists: !!container,
-      scrollHeight: container ? Math.round(container.scrollHeight) : 0,
-      clientHeight: container ? Math.round(container.clientHeight) : 0,
-      scrollTopBefore: container ? Math.round(container.scrollTop) : 0,
-    });
-
-    if (container && ratio !== null) {
-      scrollRatioRef.current = null;
-      const maxScroll = container.scrollHeight - container.clientHeight;
-      const newScrollTop = ratio * maxScroll;
-
-      debugLog("pdf-resize-restore", {
-        ratio,
-        newMaxScroll: Math.round(maxScroll),
-        newScrollTop: Math.round(newScrollTop),
-      });
-
-      if (maxScroll > 0) {
-        container.scrollTop = newScrollTop;
+    if (container && restore) {
+      scrollRestoreRef.current = null;
+      const newOffsets = pageOffsets();
+      const newHeights = pageHeights();
+      if (newOffsets[restore.pageIndex] !== undefined) {
+        container.scrollTop =
+          newOffsets[restore.pageIndex] +
+          newHeights[restore.pageIndex] * restore.offsetRatio;
       }
     }
     updateVisiblePages();
-  }, [layoutWidth, pageInfos, updateVisiblePages]);
+  }, [layoutWidth, pageInfos, updateVisiblePages, pageOffsets, pageHeights]);
 
   // ── Text selection ──
 
