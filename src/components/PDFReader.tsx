@@ -12,6 +12,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
+import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -240,15 +241,16 @@ export function PDFReader({
       const containerWidth = container.clientWidth;
       if (!containerWidth) return;
 
-      // Use a generation counter to detect stale renders.
-      // If resize clears renderedPagesRef during our async work,
-      // the generation changes and we abort.
       const gen = renderGenRef.current;
-
       renderedPagesRef.current.add(pageIndex);
 
+      debugLog("pdf-renderPage-start", { pageIndex, gen, containerWidth: Math.round(containerWidth) });
+
       const page = await doc.getPage(pageIndex + 1);
-      if (renderGenRef.current !== gen) return; // stale
+      if (renderGenRef.current !== gen) {
+        debugLog("pdf-renderPage-stale-after-getPage", { pageIndex, gen, currentGen: renderGenRef.current });
+        return;
+      }
 
       const info = pageInfos[pageIndex];
       if (!info) return;
@@ -275,11 +277,15 @@ export function PDFReader({
 
       try {
         await page.render({ canvas, viewport: hiDpiViewport }).promise;
-      } catch {
-        return; // render failed or page was destroyed
+      } catch (err) {
+        debugLog("pdf-renderPage-render-error", { pageIndex, gen, error: String(err) });
+        return;
       }
 
-      if (renderGenRef.current !== gen) return; // stale — discard result
+      if (renderGenRef.current !== gen) {
+        debugLog("pdf-renderPage-stale-after-render", { pageIndex, gen, currentGen: renderGenRef.current });
+        return;
+      }
 
       // Replace old canvas in DOM
       const oldCanvas = canvasMapRef.current.get(pageIndex);
@@ -289,6 +295,7 @@ export function PDFReader({
         pageDiv.appendChild(canvas);
       }
       canvasMapRef.current.set(pageIndex, canvas);
+      debugLog("pdf-renderPage-done", { pageIndex, gen });
 
       // Text layer
       let textDiv = textLayerMapRef.current.get(pageIndex);
@@ -368,14 +375,28 @@ export function PDFReader({
       const oldWidth = lastWidthRef.current;
       if (!oldWidth || Math.abs(newWidth - oldWidth) < 1) return;
 
+      const scrollBefore = container.scrollTop;
       const ratio = newWidth / oldWidth;
-      container.scrollTop = container.scrollTop * ratio;
+      container.scrollTop = scrollBefore * ratio;
       lastWidthRef.current = newWidth;
+
+      debugLog("pdf-resize", {
+        oldWidth: Math.round(oldWidth),
+        newWidth: Math.round(newWidth),
+        scrollBefore: Math.round(scrollBefore),
+        scrollAfter: Math.round(container.scrollTop),
+        ratio: Math.round(ratio * 1000) / 1000,
+      });
 
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        renderGenRef.current += 1; // invalidate in-progress renders
+        const newGen = renderGenRef.current + 1;
+        renderGenRef.current = newGen;
         renderedPagesRef.current.clear();
+        debugLog("pdf-resize-debounce", {
+          gen: newGen,
+          containerWidth: Math.round(container.clientWidth),
+        });
         renderVisiblePages();
       }, 200);
     });
