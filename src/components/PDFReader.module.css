@@ -27,9 +27,15 @@
 
 .pageContainer {
   position: relative;
-  margin: 0 auto;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   background: white;
+  overflow: hidden;
+}
+
+.pageContainer canvas {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .pageContainer + .pageContainer {

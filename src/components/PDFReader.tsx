@@ -110,15 +110,10 @@ export function PDFReader({
 
   // Compute cumulative page offsets for virtual scrolling.
   // Each page has 8px gap (except first).
-  // Uses layoutWidthRef (not container.clientWidth) to stay in sync with
-  // JSX-rendered page container dimensions.
   const pageHeights = useCallback((): number[] => {
-    const w = layoutWidthRef.current;
+    const w = containerRef.current?.clientWidth ?? layoutWidthRef.current;
     if (!w || pageInfos.length === 0) return [];
-    return pageInfos.map((info) => {
-      const scale = w / info.width;
-      return info.height * scale;
-    });
+    return pageInfos.map((info) => info.height * (w / info.width));
   }, [pageInfos]);
 
   const pageOffsets = useCallback((): number[] => {
@@ -205,12 +200,11 @@ export function PDFReader({
   const renderPage = useCallback(
     async (pageIndex: number) => {
       const doc = pdfDocRef.current;
-      if (!doc) return;
+      const container = containerRef.current;
+      if (!doc || !container) return;
       if (renderedPagesRef.current.has(pageIndex)) return;
 
-      // Use layoutWidthRef (not container.clientWidth) to match JSX page sizes.
-      // container.clientWidth can change mid-resize before React re-renders.
-      const containerWidth = layoutWidthRef.current;
+      const containerWidth = container.clientWidth;
       if (!containerWidth) return;
 
       renderedPagesRef.current.add(pageIndex);
@@ -239,20 +233,16 @@ export function PDFReader({
       pageDiv.style.setProperty("--scale-factor", String(scale));
       pageDiv.style.setProperty("--total-scale-factor", String(scale));
 
-      // Canvas — pointer-events: none, low z-index so text layer receives mouse events
+      // Canvas — pointer-events: none so text layer receives mouse events.
+      // CSS handles display size (width: 100%, height: auto via .pageContainer canvas).
       let canvas = canvasMapRef.current.get(pageIndex);
       if (!canvas) {
         canvas = document.createElement("canvas");
         canvas.style.pointerEvents = "none";
-        canvas.style.position = "relative";
-        canvas.style.zIndex = "0";
-        canvas.style.display = "block";
         canvasMapRef.current.set(pageIndex, canvas);
       }
       canvas.width = hiDpiViewport.width;
       canvas.height = hiDpiViewport.height;
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
 
       // Append canvas if not already there
       if (!pageDiv.contains(canvas)) {
@@ -659,10 +649,8 @@ export function PDFReader({
       onContextMenu={handleContextMenu}
       onClick={onClearSelection}
     >
-      {pageInfos.map((info, idx) => {
-        const w = layoutWidthRef.current || (containerRef.current?.clientWidth ?? 0);
-        const scale = w > 0 ? w / info.width : 1;
-        const h = heights[idx] ?? info.height * scale;
+      {pageInfos.map((_info, idx) => {
+        const h = heights[idx] ?? 0;
 
         return (
           <div
@@ -677,7 +665,7 @@ export function PDFReader({
                 ? styles.pageContainer
                 : `${styles.pageContainer} ${styles.placeholder}`
             }
-            style={{ width: w, height: h }}
+            style={{ width: "100%", height: h }}
           />
         );
       })}
