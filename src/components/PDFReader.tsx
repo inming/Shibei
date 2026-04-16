@@ -97,7 +97,6 @@ export function PDFReader({
   // Refs (mutable state that doesn't trigger renders)
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
   const layoutWidthRef = useRef(0);
-  const scrollRestoreRef = useRef<{ page: number; progress: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
@@ -340,28 +339,28 @@ export function PDFReader({
       resizeTimer = setTimeout(() => {
         if (!container) return;
         const newWidth = container.clientWidth;
-        if (newWidth === layoutWidthRef.current) return; // no actual change
+        if (newWidth === layoutWidthRef.current) return;
 
-        // Remember which page is currently visible
-        const heights = pageHeights();
-        const offsets = pageOffsets();
-        let currentPage = 0;
-        const st = container.scrollTop + container.clientHeight / 3;
-        for (let i = 0; i < offsets.length; i++) {
-          if (offsets[i] + heights[i] > st) {
-            currentPage = i;
-            break;
-          }
-        }
-        const progressInPage = heights[currentPage] > 0
-          ? (st - offsets[currentPage]) / heights[currentPage]
+        // Save scroll ratio before layout changes
+        const scrollRatio = container.scrollHeight > container.clientHeight
+          ? container.scrollTop / (container.scrollHeight - container.clientHeight)
           : 0;
-        scrollRestoreRef.current = { page: currentPage, progress: progressInPage };
 
         // Clear render cache and trigger JSX re-render
         renderedPagesRef.current.clear();
         layoutWidthRef.current = newWidth;
         setLayoutWidth(newWidth);
+
+        // Restore scroll ratio after React re-renders and browser lays out
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const maxScroll = container.scrollHeight - container.clientHeight;
+            if (maxScroll > 0) {
+              container.scrollTop = scrollRatio * maxScroll;
+            }
+            updateVisiblePages();
+          });
+        });
       }, 200);
     };
     window.addEventListener("resize", handleResize);
@@ -371,29 +370,13 @@ export function PDFReader({
       window.removeEventListener("resize", handleResize);
       clearTimeout(resizeTimer);
     };
-  }, [pageInfos, onScroll, updateVisiblePages, pageHeights, pageOffsets]);
+  }, [pageInfos, onScroll, updateVisiblePages]);
 
-  // After resize re-render: restore scroll position and re-render visible pages
+  // Re-render visible pages when layoutWidth changes (resize triggered)
   useEffect(() => {
     if (layoutWidth === 0 || pageInfos.length === 0) return;
     updateVisiblePages();
-
-    const restore = scrollRestoreRef.current;
-    if (restore) {
-      scrollRestoreRef.current = null;
-      const container = containerRef.current;
-      if (container) {
-        const newOffsets = pageOffsets();
-        const newHeights = pageHeights();
-        if (newOffsets[restore.page] !== undefined) {
-          container.scrollTop =
-            newOffsets[restore.page] +
-            newHeights[restore.page] * restore.progress -
-            container.clientHeight / 3;
-        }
-      }
-    }
-  }, [layoutWidth, pageInfos, updateVisiblePages, pageOffsets, pageHeights]);
+  }, [layoutWidth, pageInfos, updateVisiblePages]);
 
   // ── Text selection ──
 
