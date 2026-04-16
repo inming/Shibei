@@ -161,24 +161,33 @@ export function PDFReader({
         // so we use PDF.js as a fallback for search indexing.
         (async () => {
           try {
-            console.log("[PDFReader] Starting text extraction for backfill, pages:", doc.numPages);
             const parts: string[] = [];
             for (let i = 1; i <= doc.numPages; i++) {
               const p = await doc.getPage(i);
-              const tc = await p.getTextContent();
-              const pageText = tc.items
-                .map((item: Record<string, unknown>) => (item as { str?: string }).str ?? "")
-                .join(" ");
-              parts.push(pageText);
+              // Use streamTextContent + reader (not getTextContent) for
+              // WebKit compatibility — same issue as TextLayer rendering.
+              const stream = p.streamTextContent();
+              const reader = stream.getReader();
+              const pageItems: string[] = [];
+              for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (value?.items) {
+                  for (const item of value.items) {
+                    if ((item as { str?: string }).str) {
+                      pageItems.push((item as { str: string }).str);
+                    }
+                  }
+                }
+              }
+              parts.push(pageItems.join(" "));
             }
-            const fullText = parts.join("\n");
-            console.log("[PDFReader] Extracted text length:", fullText.trim().length);
-            if (fullText.trim()) {
-              await cmd.backfillPlainText(resourceId, fullText.trim());
-              console.log("[PDFReader] Backfill complete");
+            const fullText = parts.join("\n").trim();
+            if (fullText) {
+              await cmd.backfillPlainText(resourceId, fullText);
             }
-          } catch (err) {
-            console.error("[PDFReader] Backfill failed:", err);
+          } catch {
+            // best-effort
           }
         })();
       } catch (err: unknown) {
