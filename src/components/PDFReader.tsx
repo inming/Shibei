@@ -74,6 +74,7 @@ export function PDFReader({
   activeHlIdRef.current = activeHighlightId;
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
   const lastWidthRef = useRef(0);
+  const scrollFractionRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
@@ -343,6 +344,11 @@ export function PDFReader({
         scrollTop >= lastScrollTopRef.current ? "down" : "up";
       lastScrollTopRef.current = scrollTop;
 
+      // Save scroll fraction for resize restore (works across browser engines)
+      if (container.scrollHeight > 0) {
+        scrollFractionRef.current = scrollTop / container.scrollHeight;
+      }
+
       onScroll({ scrollPercent, direction });
       renderVisiblePages();
     };
@@ -364,9 +370,14 @@ export function PDFReader({
       if (!lastWidthRef.current || Math.abs(newWidth - lastWidthRef.current) < 1) return;
       lastWidthRef.current = newWidth;
 
-      // Don't adjust scrollTop — CSS aspect-ratio changes page heights
-      // and the browser preserves scroll position naturally.
-      // Just debounce re-render for quality.
+      // Restore scroll position from saved fraction.
+      // CSS aspect-ratio updates page heights immediately, but browsers
+      // handle scrollTop differently (Chromium keeps it, WebKit adjusts).
+      // Using fraction × newScrollHeight works universally.
+      if (container.scrollHeight > 0 && scrollFractionRef.current > 0) {
+        container.scrollTop = scrollFractionRef.current * container.scrollHeight;
+      }
+
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         renderGenRef.current += 1;
