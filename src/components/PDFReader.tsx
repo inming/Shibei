@@ -97,6 +97,7 @@ export function PDFReader({
   // Refs (mutable state that doesn't trigger renders)
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
   const layoutWidthRef = useRef(0);
+  const scrollRatioRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
@@ -342,7 +343,7 @@ export function PDFReader({
         if (newWidth === layoutWidthRef.current) return;
 
         // Save scroll ratio before layout changes
-        const scrollRatio = container.scrollHeight > container.clientHeight
+        scrollRatioRef.current = container.scrollHeight > container.clientHeight
           ? container.scrollTop / (container.scrollHeight - container.clientHeight)
           : 0;
 
@@ -350,17 +351,6 @@ export function PDFReader({
         renderedPagesRef.current.clear();
         layoutWidthRef.current = newWidth;
         setLayoutWidth(newWidth);
-
-        // Restore scroll ratio after React re-renders and browser lays out
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const maxScroll = container.scrollHeight - container.clientHeight;
-            if (maxScroll > 0) {
-              container.scrollTop = scrollRatio * maxScroll;
-            }
-            updateVisiblePages();
-          });
-        });
       }, 200);
     };
     window.addEventListener("resize", handleResize);
@@ -372,9 +362,19 @@ export function PDFReader({
     };
   }, [pageInfos, onScroll, updateVisiblePages]);
 
-  // Re-render visible pages when layoutWidth changes (resize triggered)
+  // After resize: DOM is now updated with new page dimensions.
+  // Restore scroll position, then re-render visible pages.
   useEffect(() => {
     if (layoutWidth === 0 || pageInfos.length === 0) return;
+    const container = containerRef.current;
+    if (container && scrollRatioRef.current !== null) {
+      const ratio = scrollRatioRef.current;
+      scrollRatioRef.current = null;
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      if (maxScroll > 0) {
+        container.scrollTop = ratio * maxScroll;
+      }
+    }
     updateVisiblePages();
   }, [layoutWidth, pageInfos, updateVisiblePages]);
 
