@@ -12,6 +12,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
+import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -343,9 +344,21 @@ export function PDFReader({
         if (newWidth === layoutWidthRef.current) return;
 
         // Save scroll ratio before layout changes
-        scrollRatioRef.current = container.scrollHeight > container.clientHeight
-          ? container.scrollTop / (container.scrollHeight - container.clientHeight)
-          : 0;
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+        const maxScroll = scrollHeight - clientHeight;
+        scrollRatioRef.current = maxScroll > 0 ? scrollTop / maxScroll : 0;
+
+        debugLog("pdf-resize-save", {
+          oldWidth: layoutWidthRef.current,
+          newWidth,
+          scrollTop: Math.round(scrollTop),
+          scrollHeight: Math.round(scrollHeight),
+          clientHeight: Math.round(clientHeight),
+          maxScroll: Math.round(maxScroll),
+          savedRatio: scrollRatioRef.current,
+        });
 
         // Clear render cache and trigger JSX re-render
         renderedPagesRef.current.clear();
@@ -367,12 +380,30 @@ export function PDFReader({
   useEffect(() => {
     if (layoutWidth === 0 || pageInfos.length === 0) return;
     const container = containerRef.current;
-    if (container && scrollRatioRef.current !== null) {
-      const ratio = scrollRatioRef.current;
+    const ratio = scrollRatioRef.current;
+
+    debugLog("pdf-resize-effect", {
+      layoutWidth,
+      ratioFromRef: ratio,
+      containerExists: !!container,
+      scrollHeight: container ? Math.round(container.scrollHeight) : 0,
+      clientHeight: container ? Math.round(container.clientHeight) : 0,
+      scrollTopBefore: container ? Math.round(container.scrollTop) : 0,
+    });
+
+    if (container && ratio !== null) {
       scrollRatioRef.current = null;
       const maxScroll = container.scrollHeight - container.clientHeight;
+      const newScrollTop = ratio * maxScroll;
+
+      debugLog("pdf-resize-restore", {
+        ratio,
+        newMaxScroll: Math.round(maxScroll),
+        newScrollTop: Math.round(newScrollTop),
+      });
+
       if (maxScroll > 0) {
-        container.scrollTop = ratio * maxScroll;
+        container.scrollTop = newScrollTop;
       }
     }
     updateVisiblePages();
