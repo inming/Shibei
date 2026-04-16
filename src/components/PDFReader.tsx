@@ -97,7 +97,7 @@ export function PDFReader({
   // Refs (mutable state that doesn't trigger renders)
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
   const layoutWidthRef = useRef(0);
-  const scrollRestoreRef = useRef<{ pageIndex: number; offsetRatio: number } | null>(null);
+  const scrollRestoreRef = useRef<{ scrollTop: number; oldWidth: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
@@ -336,32 +336,13 @@ export function PDFReader({
         const newWidth = container.clientWidth;
         if (newWidth === layoutWidthRef.current) return;
 
-        // Find which page is currently visible using the OLD width
-        // (container.clientWidth is already the new width, but scrollTop
-        // still reflects the old layout).
-        const oldWidth = layoutWidthRef.current || newWidth;
-        const heights = pageInfos.map((info) => info.height * (oldWidth / info.width));
-        const offsets: number[] = [];
-        {
-          let cum = 0;
-          for (let i = 0; i < heights.length; i++) {
-            offsets.push(cum);
-            cum += heights[i] + (i < heights.length - 1 ? 8 : 0);
-          }
-        }
-        const viewTop = container.scrollTop;
-        let pageIndex = 0;
-        for (let i = 0; i < offsets.length; i++) {
-          if (offsets[i] + heights[i] > viewTop) {
-            pageIndex = i;
-            break;
-          }
-        }
-        // How far into this page the viewport top is (0..1)
-        const offsetRatio = heights[pageIndex] > 0
-          ? (viewTop - offsets[pageIndex]) / heights[pageIndex]
-          : 0;
-        scrollRestoreRef.current = { pageIndex, offsetRatio };
+        // Save scrollTop and old width. Since all PDF pages have the same
+        // width, scrollTop scales proportionally with container width:
+        // newScrollTop = oldScrollTop * (newWidth / oldWidth).
+        scrollRestoreRef.current = {
+          scrollTop: container.scrollTop,
+          oldWidth: layoutWidthRef.current || newWidth,
+        };
 
         // Clear render cache AND remove stale canvas/textLayer elements.
         // Without this, off-screen pages keep old canvases at old scale.
@@ -387,8 +368,7 @@ export function PDFReader({
     };
   }, [pageInfos, onScroll, updateVisiblePages]);
 
-  // After resize: DOM is now updated with new page dimensions.
-  // Scroll to the same page, then re-render visible pages.
+  // After resize: restore scroll position proportionally, then re-render.
   useEffect(() => {
     if (layoutWidth === 0 || pageInfos.length === 0) return;
     const container = containerRef.current;
@@ -396,16 +376,15 @@ export function PDFReader({
 
     if (container && restore) {
       scrollRestoreRef.current = null;
-      const newOffsets = pageOffsets();
-      const newHeights = pageHeights();
-      if (newOffsets[restore.pageIndex] !== undefined) {
-        container.scrollTop =
-          newOffsets[restore.pageIndex] +
-          newHeights[restore.pageIndex] * restore.offsetRatio;
+      // All PDF pages have the same width, so scroll position scales
+      // proportionally with container width.
+      const newWidth = container.clientWidth;
+      if (restore.oldWidth > 0 && newWidth > 0) {
+        container.scrollTop = restore.scrollTop * (newWidth / restore.oldWidth);
       }
     }
     updateVisiblePages();
-  }, [layoutWidth, pageInfos, updateVisiblePages, pageOffsets, pageHeights]);
+  }, [layoutWidth, pageInfos, updateVisiblePages]);
 
   // ── Text selection ──
 
