@@ -12,6 +12,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
+import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -358,6 +359,15 @@ export function PDFReader({
           ? (viewTop - offsets[pageIndex]) / heights[pageIndex]
           : 0;
         scrollRestoreRef.current = { pageIndex, offsetRatio };
+        debugLog("pdf-resize-save", {
+          containerWidth: container.clientWidth,
+          newWidth,
+          pageIndex,
+          offsetRatio: Math.round(offsetRatio * 100) / 100,
+          scrollTop: Math.round(viewTop),
+          pageTop: Math.round(offsets[pageIndex]),
+          pageHeight: Math.round(heights[pageIndex]),
+        });
 
         // Clear render cache and trigger JSX re-render
         renderedPagesRef.current.clear();
@@ -385,11 +395,24 @@ export function PDFReader({
       scrollRestoreRef.current = null;
       const newOffsets = pageOffsets();
       const newHeights = pageHeights();
-      if (newOffsets[restore.pageIndex] !== undefined) {
-        container.scrollTop =
-          newOffsets[restore.pageIndex] +
-          newHeights[restore.pageIndex] * restore.offsetRatio;
-      }
+      const target = newOffsets[restore.pageIndex] !== undefined
+        ? newOffsets[restore.pageIndex] + newHeights[restore.pageIndex] * restore.offsetRatio
+        : 0;
+      debugLog("pdf-resize-restore", {
+        containerWidth: container.clientWidth,
+        pageIndex: restore.pageIndex,
+        offsetRatio: Math.round(restore.offsetRatio * 100) / 100,
+        newPageTop: newOffsets[restore.pageIndex] !== undefined ? Math.round(newOffsets[restore.pageIndex]) : "N/A",
+        newPageHeight: newHeights[restore.pageIndex] !== undefined ? Math.round(newHeights[restore.pageIndex]) : "N/A",
+        targetScrollTop: Math.round(target),
+        scrollTopBefore: Math.round(container.scrollTop),
+        scrollHeight: Math.round(container.scrollHeight),
+        clientHeight: Math.round(container.clientHeight),
+      });
+      container.scrollTop = target;
+      debugLog("pdf-resize-after-set", {
+        scrollTopAfter: Math.round(container.scrollTop),
+      });
     }
     updateVisiblePages();
   }, [layoutWidth, pageInfos, updateVisiblePages, pageOffsets, pageHeights]);
