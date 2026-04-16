@@ -61,6 +61,17 @@ pub struct SyncEngine {
 /// Arguments: (phase, current, total)
 pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
 
+/// Determine the S3 key for a resource's snapshot, based on resource_type.
+fn snapshot_s3_key(resource_id: &str, resource_type: &str) -> String {
+    let ext = if resource_type == "pdf" { "pdf" } else { "html" };
+    format!("snapshots/{}/snapshot.{}.gz", resource_id, ext)
+}
+
+/// Determine the local snapshot filename based on resource_type.
+fn snapshot_filename(resource_type: &str) -> &str {
+    if resource_type == "pdf" { "snapshot.pdf" } else { "snapshot.html" }
+}
+
 impl SyncEngine {
     pub fn new(
         pool: SharedPool,
@@ -76,6 +87,20 @@ impl SyncEngine {
             clock,
             lock: tokio::sync::Mutex::new(()),
             base_dir,
+        }
+    }
+
+    /// Query resource_type from DB, defaulting to "html" if not found.
+    fn get_resource_type(&self, resource_id: &str) -> String {
+        match self.conn() {
+            Ok(conn) => conn
+                .query_row(
+                    "SELECT resource_type FROM resources WHERE id = ?1",
+                    rusqlite::params![resource_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap_or_else(|_| "html".to_string()),
+            Err(_) => "html".to_string(),
         }
     }
 
@@ -203,28 +228,30 @@ impl SyncEngine {
         Ok(orphans)
     }
 
-    /// Delete orphan snapshot HTML files from S3.
+    /// Delete orphan snapshot files from S3 (both HTML and PDF).
     pub async fn purge_orphan_snapshots(&self) -> Result<(usize, u64), SyncError> {
         let orphans = self.list_orphan_snapshots().await?;
         let mut deleted = 0usize;
         let mut freed = 0u64;
 
         for (resource_id, size) in &orphans {
-            let key_gz = format!("snapshots/{}/snapshot.html.gz", resource_id);
-            let key_html = format!("snapshots/{}/snapshot.html", resource_id);
-            // Delete both possible keys (best-effort)
-            match self.backend.delete(&key_gz).await {
-                Ok(()) => {
-                    deleted += 1;
-                    freed += size;
-                    eprintln!("[sync] Deleted orphan snapshot: {}", key_gz);
-                }
-                Err(e) => {
-                    eprintln!("[sync] Warning: failed to delete orphan {}: {}", key_gz, e);
+            // Try deleting all possible snapshot key formats (best-effort)
+            let keys = [
+                format!("snapshots/{}/snapshot.html.gz", resource_id),
+                format!("snapshots/{}/snapshot.html", resource_id),
+                format!("snapshots/{}/snapshot.pdf.gz", resource_id),
+            ];
+            let mut any_deleted = false;
+            for key in &keys {
+                if let Ok(()) = self.backend.delete(key).await {
+                    eprintln!("[sync] Deleted orphan snapshot: {}", key);
+                    any_deleted = true;
                 }
             }
-            // Also clean up any leftover uncompressed key
-            let _ = self.backend.delete(&key_html).await;
+            if any_deleted {
+                deleted += 1;
+                freed += size;
+            }
         }
 
         Ok((deleted, freed))
@@ -297,24 +324,24 @@ impl SyncEngine {
             }
         }
 
-        // 1c. Upload missing HTML snapshots for active resources
-        let active_ids: Vec<String> = {
+        // 1c. Upload missing snapshots for active resources (HTML and PDF)
+        let active_resources: Vec<(String, String)> = {
             let mut stmt = conn.prepare(
-                "SELECT id FROM resources WHERE deleted_at IS NULL"
+                "SELECT id, resource_type FROM resources WHERE deleted_at IS NULL"
             )?;
-            let ids = stmt
-                .query_map([], |row| row.get::<_, String>(0))?
+            let rows = stmt
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
                 .filter_map(|r| r.ok())
                 .collect();
-            ids
+            rows
         };
         {
             let mut uploaded_count = 0usize;
-            for id in &active_ids {
-                let s3_key = format!("snapshots/{}/snapshot.html.gz", id);
+            for (id, resource_type) in &active_resources {
+                let s3_key = snapshot_s3_key(id, resource_type);
                 let exists = self.backend.head(&s3_key).await?.is_some();
                 if !exists {
-                    if let Err(e) = self.upload_snapshot(id).await {
+                    if let Err(e) = self.upload_snapshot(id, resource_type).await {
                         eprintln!("[sync] Compaction: failed to upload missing snapshot for {}: {}", id, e);
                     } else {
                         uploaded_count += 1;
@@ -329,7 +356,7 @@ impl SyncEngine {
                 }
             }
             if uploaded_count > 0 {
-                eprintln!("[sync] Compaction: uploaded {} missing HTML snapshot(s)", uploaded_count);
+                eprintln!("[sync] Compaction: uploaded {} missing snapshot(s)", uploaded_count);
             }
         }
 
@@ -422,7 +449,8 @@ impl SyncEngine {
 
         // Upload all existing resource snapshots
         for resource_id in &resource_ids {
-            if let Err(e) = self.upload_snapshot(resource_id).await {
+            let resource_type = self.get_resource_type(resource_id);
+            if let Err(e) = self.upload_snapshot(resource_id, &resource_type).await {
                 eprintln!("[sync] Warning: failed to upload snapshot for {}: {}", resource_id, e);
                 let conn = self.conn()?;
                 let marker = format!("snapshot_upload:{}", resource_id);
@@ -451,7 +479,8 @@ impl SyncEngine {
                 for (key, _) in &retry_list {
                     let resource_id = key.strip_prefix("snapshot_upload:").unwrap_or("");
                     if resource_id.is_empty() { continue; }
-                    match self.upload_snapshot(resource_id).await {
+                    let resource_type = self.get_resource_type(resource_id);
+                    match self.upload_snapshot(resource_id, &resource_type).await {
                         Ok(()) => {
                             let conn = self.conn()?;
                             sync_state::delete(&conn, key)?;
@@ -512,7 +541,8 @@ impl SyncEngine {
         }
 
         for (i, entry) in snapshot_entries.iter().enumerate() {
-            if let Err(e) = self.upload_snapshot(&entry.entity_id).await {
+            let resource_type = self.get_resource_type(&entry.entity_id);
+            if let Err(e) = self.upload_snapshot(&entry.entity_id, &resource_type).await {
                 eprintln!(
                     "warning: failed to upload snapshot for {}: {}",
                     entry.entity_id, e
@@ -1381,7 +1411,8 @@ impl SyncEngine {
         let total = pending_ids.len();
         eprintln!("[sync] Phase 4: downloading {} pending resource snapshot(s)", total);
         for (i, resource_id) in pending_ids.iter().enumerate() {
-            if let Err(e) = self.download_snapshot(resource_id).await {
+            let resource_type = self.get_resource_type(resource_id);
+            if let Err(e) = self.download_snapshot(resource_id, &resource_type).await {
                 // If the resource no longer exists locally, clear the stale pending marker
                 let should_clear = match self.conn() {
                     Ok(conn) => {
@@ -1472,9 +1503,11 @@ impl SyncEngine {
         Ok(())
     }
 
-    /// Upload a local snapshot.html to the backend (gzip-compressed).
-    pub async fn upload_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
-        let snapshot_path = self.base_dir.join("storage").join(resource_id).join("snapshot.html");
+    /// Upload a local snapshot to the backend (gzip-compressed).
+    /// Supports both HTML and PDF snapshots based on resource_type.
+    pub async fn upload_snapshot(&self, resource_id: &str, resource_type: &str) -> Result<(), SyncError> {
+        let filename = snapshot_filename(resource_type);
+        let snapshot_path = self.base_dir.join("storage").join(resource_id).join(filename);
         if !snapshot_path.exists() {
             return Ok(()); // No snapshot to upload
         }
@@ -1486,14 +1519,15 @@ impl SyncEngine {
         std::io::Write::write_all(&mut encoder, &data)?;
         let compressed = encoder.finish()?;
 
-        let key = format!("snapshots/{}/snapshot.html.gz", resource_id);
+        let key = snapshot_s3_key(resource_id, resource_type);
         self.backend.upload(&key, &compressed).await?;
         Ok(())
     }
 
     /// Download a snapshot from the backend (gzip-compressed) and save locally.
-    pub async fn download_snapshot(&self, resource_id: &str) -> Result<(), SyncError> {
-        let key = format!("snapshots/{}/snapshot.html.gz", resource_id);
+    /// Supports both HTML and PDF snapshots based on resource_type.
+    pub async fn download_snapshot(&self, resource_id: &str, resource_type: &str) -> Result<(), SyncError> {
+        let key = snapshot_s3_key(resource_id, resource_type);
         let compressed = self.backend.download(&key).await?;
 
         // Gzip decompress
@@ -1504,7 +1538,8 @@ impl SyncEngine {
         let local_dir = self.base_dir.join("storage").join(resource_id);
         std::fs::create_dir_all(&local_dir)?;
 
-        let local_path = local_dir.join("snapshot.html");
+        let filename = snapshot_filename(resource_type);
+        let local_path = local_dir.join(filename);
         std::fs::write(&local_path, &data)?;
 
         // Update sync_state to "synced"
@@ -1512,11 +1547,13 @@ impl SyncEngine {
         let state_key = format!("snapshot:{}", resource_id);
         sync_state::set(&conn, &state_key, "synced")?;
 
-        // Extract and store plain text (best-effort)
-        if let Ok(html_str) = std::str::from_utf8(&data) {
-            let text = crate::plain_text::extract_plain_text(html_str);
-            if !text.is_empty() {
-                let _ = crate::db::resources::set_plain_text(&conn, resource_id, &text);
+        // Extract and store plain text for HTML snapshots (best-effort)
+        if resource_type != "pdf" {
+            if let Ok(html_str) = std::str::from_utf8(&data) {
+                let text = crate::plain_text::extract_plain_text(html_str);
+                if !text.is_empty() {
+                    let _ = crate::db::resources::set_plain_text(&conn, resource_id, &text);
+                }
             }
         }
 
@@ -1899,8 +1936,8 @@ mod tests {
         let (_db_dir, pool) = test_pool();
         let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
 
-        // Upload
-        engine.upload_snapshot("res-1").await.unwrap();
+        // Upload (default HTML type)
+        engine.upload_snapshot("res-1", "webpage").await.unwrap();
 
         // Verify S3 key is .html.gz
         {
@@ -1919,7 +1956,7 @@ mod tests {
         let (_db_dir2, pool2) = test_pool();
         let engine2 = make_engine(pool2.clone(), backend.clone(), "dev-b", dir2.path().to_path_buf());
 
-        engine2.download_snapshot("res-1").await.unwrap();
+        engine2.download_snapshot("res-1", "webpage").await.unwrap();
 
         // Verify file is decompressed back to original HTML
         let downloaded = std::fs::read_to_string(dir2.path().join("storage/res-1/snapshot.html")).unwrap();

@@ -3,6 +3,21 @@ const API_BASE = "http://127.0.0.1:21519";
 let cachedToken = null;
 let tokenPromise = null;
 
+// ── PDF detection ──
+
+async function detectPdf(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.contentType,
+    });
+    const contentType = results?.[0]?.result || "";
+    return contentType === "application/pdf";
+  } catch {
+    return false;
+  }
+}
+
 // ── i18n helpers ──
 
 function msg(key, ...subs) {
@@ -219,6 +234,14 @@ async function init() {
         console.log("[shibei] meta extraction failed (ok):", e.message);
       }
 
+      const isPdf = await detectPdf(pageInfo.tabId) ||
+        (pageInfo.url && pageInfo.url.toLowerCase().endsWith(".pdf"));
+      pageInfo.isPdf = isPdf;
+
+      if (pageInfo.isPdf) {
+        selectSaveBtn.style.display = "none";
+      }
+
       pageTitleEl.textContent = pageInfo.title;
       pageUrlEl.textContent = pageInfo.url;
 
@@ -240,8 +263,15 @@ async function init() {
         console.log("[shibei] url check failed (ok):", e.message);
       }
 
-      // Start capture immediately (non-blocking)
-      startCapture();
+      // For PDFs, skip HTML capture and enable save button directly
+      if (pageInfo.isPdf) {
+        captureReady = true;
+        captureStatusEl.style.display = "none";
+        saveBtn.disabled = false;
+      } else {
+        // Start capture immediately (non-blocking)
+        startCapture();
+      }
     }
   } catch (err) {
     console.error("[shibei] tab query failed:", err);
@@ -286,6 +316,50 @@ saveBtn.addEventListener("click", async () => {
 
   try {
     const tags = tagsInput.value.split(",").map((t) => t.trim()).filter(Boolean);
+
+    // PDF save flow: fetch via background service worker, POST binary to server
+    if (pageInfo.isPdf) {
+      const pdfResult = await chrome.runtime.sendMessage({
+        type: "fetch-pdf",
+        url: pageInfo.url,
+      });
+
+      if (!pdfResult?.success) {
+        throw new Error(pdfResult?.error || "Failed to fetch PDF");
+      }
+
+      const pdfBytes = new Uint8Array(pdfResult.data);
+      const token = await getToken();
+
+      const headers = {
+        "Content-Type": "application/pdf",
+        "Authorization": `Bearer ${token}`,
+        "X-Shibei-Title": encodeURIComponent(pageInfo.title || ""),
+        "X-Shibei-Url": encodeURIComponent(pageInfo.url || ""),
+        "X-Shibei-Domain": encodeURIComponent(pageInfo.domain || ""),
+        "X-Shibei-Folder-Id": folderId,
+        "X-Shibei-Captured-At": new Date().toISOString(),
+      };
+      if (tags.length) {
+        headers["X-Shibei-Tags"] = tags.map(encodeURIComponent).join(",");
+      }
+
+      const res = await fetch(`${API_BASE}/api/save-raw`, {
+        method: "POST",
+        headers,
+        body: pdfBytes,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      showMessage(msg("saveSuccess"), "success");
+      setTimeout(() => window.close(), 1000);
+      return; // Skip HTML save flow
+    }
+
     const metadata = {
       title: pageInfo.title,
       url: pageInfo.url,

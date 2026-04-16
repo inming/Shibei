@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod events;
 mod server;
+mod pdf_text;
 mod plain_text;
 mod storage;
 pub mod sync;
@@ -175,6 +176,9 @@ pub fn run() {
             commands::cmd_get_resource_summary,
             commands::cmd_export_backup,
             commands::cmd_import_backup,
+            commands::cmd_read_pdf_bytes,
+            commands::cmd_import_pdf,
+            commands::cmd_backfill_plain_text,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();

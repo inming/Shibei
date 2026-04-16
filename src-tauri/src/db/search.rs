@@ -389,17 +389,14 @@ mod tests {
     use crate::db::{comments, folders, highlights, resources, tags, test_db};
 
     fn test_anchor() -> highlights::Anchor {
-        highlights::Anchor {
-            text_position: highlights::TextPosition {
-                start: 0,
-                end: 10,
-            },
-            text_quote: highlights::TextQuote {
-                exact: "test".to_string(),
-                prefix: "".to_string(),
-                suffix: "".to_string(),
-            },
-        }
+        serde_json::json!({
+            "text_position": { "start": 0, "end": 10 },
+            "text_quote": {
+                "exact": "test",
+                "prefix": "",
+                "suffix": ""
+            }
+        })
     }
 
     fn setup_resource(

@@ -48,10 +48,22 @@ export interface TextQuote {
   suffix: string;
 }
 
-export interface Anchor {
+export interface HtmlAnchor {
   text_position: TextPosition;
   text_quote: TextQuote;
 }
+
+export interface PdfAnchor {
+  type: "pdf";
+  page: number;
+  charIndex: number;
+  length: number;
+  textQuote: TextQuote;
+}
+
+// Anchor is opaque JSON — backend stores without interpreting.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Anchor = HtmlAnchor | PdfAnchor | Record<string, any>;
 
 export interface Highlight {
   id: string;

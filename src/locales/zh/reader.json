@@ -9,5 +9,12 @@
   "lightPage": "浅色页面",
   "darkPage": "深色页面",
   "collapsePanel": "折叠标注面板",
-  "expandPanel": "展开标注面板"
+  "expandPanel": "展开标注面板",
+  "loadingPdf": "正在加载 PDF...",
+  "pdfLoadError": "PDF 加载失败",
+  "pdfPasswordRequired": "此 PDF 需要密码",
+  "pdfPasswordPlaceholder": "请输入 PDF 密码",
+  "pdfUnlock": "解锁",
+  "pdfPage": "第 {{current}} 页，共 {{total}} 页",
+  "importPdf": "导入 PDF"
 }

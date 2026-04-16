@@ -9,5 +9,12 @@
   "lightPage": "Light page",
   "darkPage": "Dark page",
   "collapsePanel": "Collapse annotations",
-  "expandPanel": "Expand annotations"
+  "expandPanel": "Expand annotations",
+  "loadingPdf": "Loading PDF...",
+  "pdfLoadError": "Failed to load PDF",
+  "pdfPasswordRequired": "This PDF requires a password",
+  "pdfPasswordPlaceholder": "Enter PDF password",
+  "pdfUnlock": "Unlock",
+  "pdfPage": "Page {{current}} of {{total}}",
+  "importPdf": "Import PDF"
 }

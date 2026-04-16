@@ -273,14 +273,14 @@ mod tests {
     fn test_create_comment_on_highlight() {
         let conn = test_db();
         let resource = setup_resource(&conn);
-        let anchor = highlights::Anchor {
-            text_position: highlights::TextPosition { start: 0, end: 10 },
-            text_quote: highlights::TextQuote {
-                exact: "test".to_string(),
-                prefix: "".to_string(),
-                suffix: "".to_string(),
-            },
-        };
+        let anchor = serde_json::json!({
+            "text_position": { "start": 0, "end": 10 },
+            "text_quote": {
+                "exact": "test",
+                "prefix": "",
+                "suffix": ""
+            }
+        });
         let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0", None).unwrap();
 
         let comment = create_comment(&conn, &resource.id, Some(&hl.id), "great insight", None).unwrap();
@@ -325,14 +325,14 @@ mod tests {
     fn test_get_comments_for_highlight() {
         let conn = test_db();
         let resource = setup_resource(&conn);
-        let anchor = highlights::Anchor {
-            text_position: highlights::TextPosition { start: 0, end: 10 },
-            text_quote: highlights::TextQuote {
-                exact: "test".to_string(),
-                prefix: "".to_string(),
-                suffix: "".to_string(),
-            },
-        };
+        let anchor = serde_json::json!({
+            "text_position": { "start": 0, "end": 10 },
+            "text_quote": {
+                "exact": "test",
+                "prefix": "",
+                "suffix": ""
+            }
+        });
         let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0", None).unwrap();
 
         create_comment(&conn, &resource.id, Some(&hl.id), "comment 1", None).unwrap();
@@ -350,14 +350,14 @@ mod tests {
     fn test_delete_comment_keeps_highlight() {
         let conn = test_db();
         let resource = setup_resource(&conn);
-        let anchor = highlights::Anchor {
-            text_position: highlights::TextPosition { start: 0, end: 10 },
-            text_quote: highlights::TextQuote {
-                exact: "test".to_string(),
-                prefix: "".to_string(),
-                suffix: "".to_string(),
-            },
-        };
+        let anchor = serde_json::json!({
+            "text_position": { "start": 0, "end": 10 },
+            "text_quote": {
+                "exact": "test",
+                "prefix": "",
+                "suffix": ""
+            }
+        });
         let hl = highlights::create_highlight(&conn, &resource.id, "test", &anchor, "#FF0", None).unwrap();
         let comment = create_comment(&conn, &resource.id, Some(&hl.id), "note", None).unwrap();
 

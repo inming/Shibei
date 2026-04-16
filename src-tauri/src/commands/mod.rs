@@ -1118,7 +1118,17 @@ pub async fn cmd_download_snapshot(
     resource_id: String,
 ) -> Result<bool, CommandError> {
     let engine = build_sync_engine(&state, &encryption_state).await?;
-    engine.download_snapshot(&resource_id).await
+    // Query resource_type from DB to determine snapshot file format
+    let resource_type = {
+        let pool = state.pool.read().map_err(|e| CommandError { message: format!("pool lock: {e}") })?;
+        let conn = pool.get().map_err(|e| CommandError { message: e.to_string() })?;
+        conn.query_row(
+            "SELECT resource_type FROM resources WHERE id = ?1",
+            rusqlite::params![&resource_id],
+            |row| row.get::<_, String>(0),
+        ).unwrap_or_else(|_| "html".to_string())
+    };
+    engine.download_snapshot(&resource_id, &resource_type).await
         .map_err(|e| CommandError { message: e.to_string() })?;
     Ok(true)
 }
@@ -1484,6 +1494,118 @@ pub async fn cmd_import_backup(
     let _ = app.emit(DATA_CONFIG_CHANGED, serde_json::json!({"scope": "restore"}));
 
     Ok(result)
+}
+
+// ── PDF ──
+
+/// Backfill plain_text for a resource (e.g. from frontend PDF.js extraction
+/// when the Rust pdf-extract crate fails). Also rebuilds search index.
+#[tauri::command]
+pub async fn cmd_backfill_plain_text(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+    text: String,
+) -> Result<(), CommandError> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    let conn = state.conn()?;
+    // Only backfill if plain_text is currently empty
+    let existing = resources::get_plain_text(&conn, &resource_id)?;
+    if existing.is_some() && !existing.as_ref().unwrap().is_empty() {
+        return Ok(());
+    }
+    resources::set_plain_text(&conn, &resource_id, &text)?;
+    let _ = crate::db::search::rebuild_search_index(&conn, &resource_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_read_pdf_bytes(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+) -> Result<Vec<u8>, CommandError> {
+    let pdf_path = state
+        .base_dir
+        .join("storage")
+        .join(&resource_id)
+        .join("snapshot.pdf");
+    std::fs::read(&pdf_path).map_err(|e| CommandError {
+        message: format!("error.readPdfFailed: {}", e),
+    })
+}
+
+#[tauri::command]
+pub async fn cmd_import_pdf(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    file_path: String,
+    folder_id: String,
+) -> Result<resources::Resource, CommandError> {
+    let source = std::path::PathBuf::from(&file_path);
+    let content = std::fs::read(&source).map_err(|e| CommandError {
+        message: format!("error.readFileFailed: {}", e),
+    })?;
+
+    let resource_id = uuid::Uuid::new_v4().to_string();
+
+    // Save PDF to storage
+    let rel_path = storage::save_snapshot_ext(&state.base_dir, &resource_id, &content, "pdf")?;
+
+    // Extract title from filename
+    let title = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Untitled PDF")
+        .to_string();
+
+    let conn = state.conn()?;
+    let sync_ctx = state.sync_context();
+
+    let resource = resources::create_resource(
+        &conn,
+        resources::CreateResourceInput {
+            id: Some(resource_id.clone()),
+            title,
+            url: String::new(),
+            domain: None,
+            author: None,
+            description: None,
+            folder_id,
+            resource_type: "pdf".to_string(),
+            file_path: rel_path.to_string_lossy().to_string(),
+            captured_at: chrono::Utc::now().to_rfc3339(),
+            selection_meta: None,
+        },
+        sync_ctx.as_ref(),
+    )?;
+
+    // Extract plain text (best-effort, in blocking task)
+    let content_clone = content.clone();
+    let resource_id_clone = resource_id.clone();
+    let pool_clone = state.pool.clone();
+    tokio::task::spawn_blocking(move || {
+        let text = crate::pdf_text::extract_plain_text(&content_clone);
+        if !text.is_empty() {
+            if let Ok(pool) = pool_clone.read() {
+                if let Ok(conn) = pool.get() {
+                    let _ = resources::set_plain_text(&conn, &resource_id_clone, &text);
+                    let _ = crate::db::search::rebuild_search_index(&conn, &resource_id_clone);
+                }
+            }
+        }
+    });
+
+    let _ = app.emit(
+        events::DATA_RESOURCE_CHANGED,
+        serde_json::json!({
+            "action": "created",
+            "resource_id": resource.id,
+            "folder_id": resource.folder_id,
+        }),
+    );
+
+    Ok(resource)
 }
 
 // ── Debug ──

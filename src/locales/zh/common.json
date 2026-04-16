@@ -10,6 +10,7 @@
   "operationFailed": "操作失败",
   "create": "创建",
   "restore": "恢复",
+  "saveSuccess": "保存成功",
   "error": {
     "syncRegionNotSet": "请先配置同步设置（Region 未设置）",
     "syncBucketNotSet": "请先配置同步设置（Bucket 未设置）",
@@ -36,6 +37,8 @@
     "restore_invalid_format": "备份文件格式无效",
     "restore_version_unsupported": "不支持的备份版本",
     "restore_db_missing": "备份中缺少数据库文件",
-    "restore_failed": "恢复失败"
+    "restore_failed": "恢复失败",
+    "readPdfFailed": "读取 PDF 失败",
+    "readFileFailed": "读取文件失败"
   }
 }
