@@ -12,6 +12,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
+import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -351,19 +352,27 @@ export function PDFReader({
       const oldWidth = lastWidthRef.current;
       if (!oldWidth || Math.abs(newWidth - oldWidth) < 1) return;
 
-      // Immediate: adjust scroll position proportionally.
-      // All PDF pages share the same width, so total content height
-      // scales linearly with container width.
+      debugLog("pdf-resize-observer", {
+        oldWidth: Math.round(oldWidth),
+        newWidth: Math.round(newWidth),
+        scrollTopBefore: Math.round(container.scrollTop),
+        scrollHeight: Math.round(container.scrollHeight),
+      });
+
       const ratio = newWidth / oldWidth;
       container.scrollTop = container.scrollTop * ratio;
       lastWidthRef.current = newWidth;
 
-      // Debounced: re-render canvases + text layers at new resolution.
-      // Old canvases stay visible (CSS-scaled, slightly blurry) until replaced.
+      debugLog("pdf-resize-observer-after", {
+        scrollTopAfter: Math.round(container.scrollTop),
+      });
+
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        // Only clear the rendered set — renderPage reuses existing canvas/textLayer
-        // elements and re-renders in place. No DOM removal = no black flash.
+        debugLog("pdf-resize-debounce", {
+          containerWidth: Math.round(container.clientWidth),
+          renderedBefore: renderedPagesRef.current.size,
+        });
         renderedPagesRef.current.clear();
         renderVisiblePages();
       }, 200);
