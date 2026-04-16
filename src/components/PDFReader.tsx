@@ -77,7 +77,7 @@ export function PDFReader({
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const renderedPagesRef = useRef(new Set<number>());
-  const renderTaskMapRef = useRef(new Map<number, { cancel: () => void }>());
+  const renderGenRef = useRef(0);
   const canvasMapRef = useRef(new Map<number, HTMLCanvasElement>());
   const textLayerMapRef = useRef(new Map<number, HTMLDivElement>());
   const pageContainerMapRef = useRef(new Map<number, HTMLDivElement>());
@@ -240,16 +240,16 @@ export function PDFReader({
       const containerWidth = container.clientWidth;
       if (!containerWidth) return;
 
-      // Cancel any in-progress render for this page
-      const existingTask = renderTaskMapRef.current.get(pageIndex);
-      if (existingTask) {
-        existingTask.cancel();
-        renderTaskMapRef.current.delete(pageIndex);
-      }
+      // Use a generation counter to detect stale renders.
+      // If resize clears renderedPagesRef during our async work,
+      // the generation changes and we abort.
+      const gen = renderGenRef.current;
 
       renderedPagesRef.current.add(pageIndex);
 
       const page = await doc.getPage(pageIndex + 1);
+      if (renderGenRef.current !== gen) return; // stale
+
       const info = pageInfos[pageIndex];
       if (!info) return;
 
@@ -265,30 +265,30 @@ export function PDFReader({
       pageDiv.style.setProperty("--scale-factor", String(scale));
       pageDiv.style.setProperty("--total-scale-factor", String(scale));
 
-      // Canvas
-      let canvas = canvasMapRef.current.get(pageIndex);
-      if (!canvas) {
-        canvas = document.createElement("canvas");
-        canvas.style.pointerEvents = "none";
-        canvasMapRef.current.set(pageIndex, canvas);
-      }
+      // Always create a NEW canvas to avoid "Cannot use the same canvas
+      // during multiple render() operations" when resize triggers re-render
+      // while old renders are still in progress.
+      const canvas = document.createElement("canvas");
+      canvas.style.pointerEvents = "none";
       canvas.width = hiDpiViewport.width;
       canvas.height = hiDpiViewport.height;
 
-      if (!pageDiv.contains(canvas)) {
-        pageDiv.appendChild(canvas);
+      try {
+        await page.render({ canvas, viewport: hiDpiViewport }).promise;
+      } catch {
+        return; // render failed or page was destroyed
       }
 
-      const renderTask = page.render({ canvas, viewport: hiDpiViewport });
-      renderTaskMapRef.current.set(pageIndex, renderTask);
-      try {
-        await renderTask.promise;
-      } catch {
-        // Render was cancelled (e.g. by resize), skip the rest
-        return;
-      } finally {
-        renderTaskMapRef.current.delete(pageIndex);
+      if (renderGenRef.current !== gen) return; // stale — discard result
+
+      // Replace old canvas in DOM
+      const oldCanvas = canvasMapRef.current.get(pageIndex);
+      if (oldCanvas && pageDiv.contains(oldCanvas)) {
+        pageDiv.replaceChild(canvas, oldCanvas);
+      } else {
+        pageDiv.appendChild(canvas);
       }
+      canvasMapRef.current.set(pageIndex, canvas);
 
       // Text layer
       let textDiv = textLayerMapRef.current.get(pageIndex);
@@ -374,6 +374,7 @@ export function PDFReader({
 
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        renderGenRef.current += 1; // invalidate in-progress renders
         renderedPagesRef.current.clear();
         renderVisiblePages();
       }, 200);
