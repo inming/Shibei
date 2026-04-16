@@ -369,8 +369,17 @@ export function PDFReader({
           : 0;
         scrollRestoreRef.current = { pageIndex, offsetRatio };
 
-        // Clear render cache and trigger JSX re-render
+        // Clear render cache AND remove stale canvas/textLayer elements.
+        // Without this, off-screen pages keep old canvases at old scale.
         renderedPagesRef.current.clear();
+        for (const pageDiv of pageContainerMapRef.current.values()) {
+          while (pageDiv.firstChild) {
+            pageDiv.removeChild(pageDiv.firstChild);
+          }
+        }
+        canvasMapRef.current.clear();
+        textLayerMapRef.current.clear();
+
         layoutWidthRef.current = newWidth;
         setLayoutWidth(newWidth);
       }, 200);
