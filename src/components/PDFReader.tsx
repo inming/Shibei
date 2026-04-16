@@ -371,11 +371,15 @@ export function PDFReader({
       lastWidthRef.current = newWidth;
 
       // Restore scroll position from saved fraction.
-      // CSS aspect-ratio updates page heights immediately, but browsers
-      // handle scrollTop differently (Chromium keeps it, WebKit adjusts).
-      // Using fraction × newScrollHeight works universally.
+      // Browsers handle scrollTop differently during CSS layout reflow:
+      //   Chromium (Windows): keeps scrollTop unchanged → fraction drifts
+      //   WebKit (Mac): adjusts scrollTop proportionally → fraction preserved
+      // Only adjust if the browser didn't already maintain the fraction.
       if (container.scrollHeight > 0 && scrollFractionRef.current > 0) {
-        container.scrollTop = scrollFractionRef.current * container.scrollHeight;
+        const currentFraction = container.scrollTop / container.scrollHeight;
+        if (Math.abs(currentFraction - scrollFractionRef.current) > 0.005) {
+          container.scrollTop = scrollFractionRef.current * container.scrollHeight;
+        }
       }
 
       clearTimeout(debounceTimer);
