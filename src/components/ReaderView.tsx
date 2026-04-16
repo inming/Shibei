@@ -51,6 +51,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [metaHidden, setMetaHidden] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(0);
+  const [pdfScrollRequest, setPdfScrollRequest] = useState<{ id: string; ts: number } | null>(null);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -374,8 +375,10 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   // Handle click on annotation panel → scroll iframe to highlight
   const handlePanelClickHighlight = useCallback((id: string) => {
     setActiveHighlightId(id);
-    // Don't scroll to highlight if it failed to anchor in the DOM (HTML iframe only)
-    if (resource.resource_type !== "pdf" && !failedHighlightIds.has(id)) {
+    if (resource.resource_type === "pdf") {
+      // Trigger PDFReader scroll — ts forces re-trigger for same id
+      setPdfScrollRequest({ id, ts: Date.now() });
+    } else if (!failedHighlightIds.has(id)) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: "shibei:scroll-to-highlight", source: "shibei", id },
         "*",
@@ -448,6 +451,7 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
               else setMetaHidden(false);
             }}
             onReady={() => setIframeLoading(false)}
+            scrollToHighlightRequest={pdfScrollRequest}
           />
         ) : snapshotStatus === "pending" || downloading ? (
           <div className={styles.downloadPrompt}>

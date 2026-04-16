@@ -40,6 +40,8 @@ interface PDFReaderProps {
     direction: "up" | "down";
   }) => void;
   onReady: () => void;
+  /** Set to { id, ts } to scroll to a highlight. ts forces re-trigger for same id. */
+  scrollToHighlightRequest: { id: string; ts: number } | null;
 }
 
 // ── Component ──
@@ -54,6 +56,7 @@ export function PDFReader({
   onHighlightContextMenu,
   onScroll,
   onReady,
+  scrollToHighlightRequest,
 }: PDFReaderProps) {
   const { t } = useTranslation("reader");
 
@@ -469,14 +472,12 @@ export function PDFReader({
     }
   }, [highlights, activeHighlightId, renderHighlightsForPage]);
 
-  // ── Scroll to active highlight ──
+  // ── Scroll to highlight on request ──
 
-  const prevActiveRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!activeHighlightId || activeHighlightId === prevActiveRef.current) return;
-    prevActiveRef.current = activeHighlightId;
+    if (!scrollToHighlightRequest) return;
 
-    const hl = highlights.find((h) => h.id === activeHighlightId);
+    const hl = highlights.find((h) => h.id === scrollToHighlightRequest.id);
     if (!hl) return;
     const anchor = hl.anchor as PdfAnchor;
     if (anchor.type !== "pdf") return;
@@ -484,13 +485,15 @@ export function PDFReader({
     const pageDiv = pageContainerMapRef.current.get(anchor.page);
     if (!pageDiv) return;
 
-    const hlDiv = pageDiv.querySelector(`.${styles.highlight}[style*="outline"]`) as HTMLElement | null;
+    const hlDiv = pageDiv.querySelector(
+      `[data-highlight-id="${scrollToHighlightRequest.id}"]`
+    ) as HTMLElement | null;
     if (hlDiv) {
       hlDiv.scrollIntoView({ behavior: "smooth", block: "center" });
     } else {
       pageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [activeHighlightId, highlights]);
+  }, [scrollToHighlightRequest, highlights]);
 
   // ── Password form ──
 
