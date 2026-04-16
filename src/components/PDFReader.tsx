@@ -161,6 +161,7 @@ export function PDFReader({
         // so we use PDF.js as a fallback for search indexing.
         (async () => {
           try {
+            console.log("[PDFReader] Starting text extraction for backfill, pages:", doc.numPages);
             const parts: string[] = [];
             for (let i = 1; i <= doc.numPages; i++) {
               const p = await doc.getPage(i);
@@ -171,11 +172,13 @@ export function PDFReader({
               parts.push(pageText);
             }
             const fullText = parts.join("\n");
+            console.log("[PDFReader] Extracted text length:", fullText.trim().length);
             if (fullText.trim()) {
               await cmd.backfillPlainText(resourceId, fullText.trim());
+              console.log("[PDFReader] Backfill complete");
             }
-          } catch {
-            // best-effort
+          } catch (err) {
+            console.error("[PDFReader] Backfill failed:", err);
           }
         })();
       } catch (err: unknown) {
