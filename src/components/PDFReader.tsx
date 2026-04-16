@@ -63,6 +63,8 @@ export function PDFReader({
   const [needsPassword, setNeedsPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [pageInfos, setPageInfos] = useState<PageInfo[]>([]);
+  // Bumped after resize re-render to trigger highlight refresh
+  const [renderGen, setRenderGen] = useState(0);
 
   // Refs
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
@@ -318,6 +320,8 @@ export function PDFReader({
         canvasMapRef.current.clear();
         textLayerMapRef.current.clear();
         renderVisiblePages();
+        // Bump renderGen after pages finish rendering (async) to refresh highlights
+        setTimeout(() => setRenderGen((g) => g + 1), 500);
       }, 200);
     });
 
@@ -459,7 +463,7 @@ export function PDFReader({
         renderHighlights(idx, pageDiv);
       }
     }
-  }, [highlights, activeHighlightId, renderHighlights]);
+  }, [highlights, activeHighlightId, renderHighlights, renderGen]);
 
   // ── Scroll to active highlight ──
 
