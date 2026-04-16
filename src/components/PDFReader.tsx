@@ -63,10 +63,12 @@ export function PDFReader({
   const [needsPassword, setNeedsPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [pageInfos, setPageInfos] = useState<PageInfo[]>([]);
-  // Bumped after resize re-render to trigger highlight refresh
-  const [renderGen, setRenderGen] = useState(0);
 
   // Refs
+  const highlightsRef = useRef(highlights);
+  highlightsRef.current = highlights;
+  const activeHlIdRef = useRef(activeHighlightId);
+  activeHlIdRef.current = activeHighlightId;
   const pendingHlRef = useRef<{ id: string; top: number; left: number } | null>(null);
   const lastWidthRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -180,6 +182,48 @@ export function PDFReader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resourceId]);
 
+  // ── Render highlights for one page (reads from refs, always current) ──
+
+  const renderHighlightsForPage = useCallback(
+    (pageIndex: number, pageDiv: HTMLDivElement) => {
+      const existing = pageDiv.querySelectorAll(`.${styles.highlight}`);
+      existing.forEach((el) => el.remove());
+
+      const textDiv = textLayerMapRef.current.get(pageIndex);
+      if (!textDiv) return;
+
+      const curHighlights = highlightsRef.current;
+      const curActiveId = activeHlIdRef.current;
+
+      const pageHighlights = curHighlights.filter((h) => {
+        const a = h.anchor as PdfAnchor;
+        return a.type === "pdf" && a.page === pageIndex;
+      });
+
+      for (const hl of pageHighlights) {
+        const anchor = hl.anchor as PdfAnchor;
+        const rects = getHighlightRects(textDiv, anchor.charIndex, anchor.length);
+
+        for (const rect of rects) {
+          const div = document.createElement("div");
+          div.className = styles.highlight;
+          div.dataset.highlightId = hl.id;
+          div.style.left = `${rect.left}px`;
+          div.style.top = `${rect.top}px`;
+          div.style.width = `${rect.width}px`;
+          div.style.height = `${rect.height}px`;
+          div.style.backgroundColor = hl.color || "rgba(255, 212, 0, 0.4)";
+          if (hl.id === curActiveId) {
+            div.style.outline = "2px solid var(--accent-color)";
+          }
+          div.addEventListener("click", () => onHighlightClick(hl.id));
+          pageDiv.appendChild(div);
+        }
+      }
+    },
+    [onHighlightClick],
+  );
+
   // ── Render a single page ──
 
   const renderPage = useCallback(
@@ -246,7 +290,11 @@ export function PDFReader({
         viewport,
       });
       await tl.render();
+
+      // Re-render highlights now that text layer is ready
+      renderHighlightsForPage(pageIndex, pageDiv);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [pageInfos],
   );
 
@@ -308,20 +356,13 @@ export function PDFReader({
       lastWidthRef.current = newWidth;
 
       // Debounced: re-render canvases + text layers at new resolution.
-      // During drag, CSS scales the old canvases (slightly blurry but correct layout).
+      // Old canvases stay visible (CSS-scaled, slightly blurry) until replaced.
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        // Only clear the rendered set — renderPage reuses existing canvas/textLayer
+        // elements and re-renders in place. No DOM removal = no black flash.
         renderedPagesRef.current.clear();
-        for (const pageDiv of pageContainerMapRef.current.values()) {
-          while (pageDiv.firstChild) {
-            pageDiv.removeChild(pageDiv.firstChild);
-          }
-        }
-        canvasMapRef.current.clear();
-        textLayerMapRef.current.clear();
         renderVisiblePages();
-        // Bump renderGen after pages finish rendering (async) to refresh highlights
-        setTimeout(() => setRenderGen((g) => g + 1), 500);
       }, 200);
     });
 
@@ -418,52 +459,15 @@ export function PDFReader({
     onSelection({ text: selText, anchor, rect });
   }, [onSelection, onHighlightContextMenu]);
 
-  // ── Highlight rendering ──
-
-  const renderHighlights = useCallback(
-    (pageIndex: number, pageDiv: HTMLDivElement) => {
-      const existing = pageDiv.querySelectorAll(`.${styles.highlight}`);
-      existing.forEach((el) => el.remove());
-
-      const textDiv = textLayerMapRef.current.get(pageIndex);
-      if (!textDiv) return;
-
-      const pageHighlights = highlights.filter((h) => {
-        const a = h.anchor as PdfAnchor;
-        return a.type === "pdf" && a.page === pageIndex;
-      });
-
-      for (const hl of pageHighlights) {
-        const anchor = hl.anchor as PdfAnchor;
-        const rects = getHighlightRects(textDiv, anchor.charIndex, anchor.length);
-
-        for (const rect of rects) {
-          const div = document.createElement("div");
-          div.className = styles.highlight;
-          div.dataset.highlightId = hl.id;
-          div.style.left = `${rect.left}px`;
-          div.style.top = `${rect.top}px`;
-          div.style.width = `${rect.width}px`;
-          div.style.height = `${rect.height}px`;
-          div.style.backgroundColor = hl.color || "rgba(255, 212, 0, 0.4)";
-          if (hl.id === activeHighlightId) {
-            div.style.outline = "2px solid var(--accent-color)";
-          }
-          div.addEventListener("click", () => onHighlightClick(hl.id));
-          pageDiv.appendChild(div);
-        }
-      }
-    },
-    [highlights, activeHighlightId, onHighlightClick],
-  );
+  // ── Highlight rendering (when highlights/activeId change from React) ──
 
   useEffect(() => {
     for (const [idx, pageDiv] of pageContainerMapRef.current.entries()) {
       if (renderedPagesRef.current.has(idx)) {
-        renderHighlights(idx, pageDiv);
+        renderHighlightsForPage(idx, pageDiv);
       }
     }
-  }, [highlights, activeHighlightId, renderHighlights, renderGen]);
+  }, [highlights, activeHighlightId, renderHighlightsForPage]);
 
   // ── Scroll to active highlight ──
 
