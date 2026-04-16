@@ -12,7 +12,6 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Highlight, PdfAnchor } from "@/types";
 import * as cmd from "@/lib/commands";
-import { debugLog } from "@/lib/commands";
 import styles from "./PDFReader.module.css";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -244,13 +243,8 @@ export function PDFReader({
       const gen = renderGenRef.current;
       renderedPagesRef.current.add(pageIndex);
 
-      debugLog("pdf-renderPage-start", { pageIndex, gen, containerWidth: Math.round(containerWidth) });
-
       const page = await doc.getPage(pageIndex + 1);
-      if (renderGenRef.current !== gen) {
-        debugLog("pdf-renderPage-stale-after-getPage", { pageIndex, gen, currentGen: renderGenRef.current });
-        return;
-      }
+      if (renderGenRef.current !== gen) return;
 
       const info = pageInfos[pageIndex];
       if (!info) return;
@@ -277,15 +271,11 @@ export function PDFReader({
 
       try {
         await page.render({ canvas, viewport: hiDpiViewport }).promise;
-      } catch (err) {
-        debugLog("pdf-renderPage-render-error", { pageIndex, gen, error: String(err) });
+      } catch {
         return;
       }
 
-      if (renderGenRef.current !== gen) {
-        debugLog("pdf-renderPage-stale-after-render", { pageIndex, gen, currentGen: renderGenRef.current });
-        return;
-      }
+      if (renderGenRef.current !== gen) return;
 
       // Replace old canvas in DOM
       const oldCanvas = canvasMapRef.current.get(pageIndex);
@@ -295,7 +285,6 @@ export function PDFReader({
         pageDiv.appendChild(canvas);
       }
       canvasMapRef.current.set(pageIndex, canvas);
-      debugLog("pdf-renderPage-done", { pageIndex, gen });
 
       // Text layer
       let textDiv = textLayerMapRef.current.get(pageIndex);
@@ -380,23 +369,10 @@ export function PDFReader({
       container.scrollTop = scrollBefore * ratio;
       lastWidthRef.current = newWidth;
 
-      debugLog("pdf-resize", {
-        oldWidth: Math.round(oldWidth),
-        newWidth: Math.round(newWidth),
-        scrollBefore: Math.round(scrollBefore),
-        scrollAfter: Math.round(container.scrollTop),
-        ratio: Math.round(ratio * 1000) / 1000,
-      });
-
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        const newGen = renderGenRef.current + 1;
-        renderGenRef.current = newGen;
+        renderGenRef.current += 1;
         renderedPagesRef.current.clear();
-        debugLog("pdf-resize-debounce", {
-          gen: newGen,
-          containerWidth: Math.round(container.clientWidth),
-        });
         renderVisiblePages();
       }, 200);
     });
