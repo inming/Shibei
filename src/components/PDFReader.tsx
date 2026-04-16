@@ -361,14 +361,12 @@ export function PDFReader({
 
     const observer = new ResizeObserver((entries) => {
       const newWidth = entries[0].contentRect.width;
-      const oldWidth = lastWidthRef.current;
-      if (!oldWidth || Math.abs(newWidth - oldWidth) < 1) return;
-
-      const scrollBefore = container.scrollTop;
-      const ratio = newWidth / oldWidth;
-      container.scrollTop = scrollBefore * ratio;
+      if (!lastWidthRef.current || Math.abs(newWidth - lastWidthRef.current) < 1) return;
       lastWidthRef.current = newWidth;
 
+      // Don't adjust scrollTop — CSS aspect-ratio changes page heights
+      // and the browser preserves scroll position naturally.
+      // Just debounce re-render for quality.
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         renderGenRef.current += 1;
