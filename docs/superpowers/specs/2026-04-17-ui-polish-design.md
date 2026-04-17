@@ -109,7 +109,7 @@ Sidebar 底部齿轮按钮的 tooltip 现在是"同步设置"（`sync.syncSettin
 - `PreviewPanel` 中每个 `.highlightItem` 容器（含该高亮下所有评论）整体可点击
 - `onClick` → `onOpenHighlight(resource.id, hl.id)`
 - 样式：hover 时加浅色背景 + `cursor: pointer`
-- 评论区（`MarkdownContent`）内可能有链接等子元素：确认 `react-markdown` 渲染的 `<a>` 不会因为外层 onClick 而失效；必要时用 `e.stopPropagation`
+- 评论区内 `MarkdownContent` 渲染的 `<a>` 链接需防止误触发外层点击：给 Markdown 内链接加 `onClick={(e) => e.stopPropagation()}`，或在外层 `onClick` 中用 `e.target` 判断是否点在链接上
 
 #### 资源加载中的跳转保护
 
@@ -144,10 +144,12 @@ Sidebar 底部齿轮按钮的 tooltip 现在是"同步设置"（`sync.syncSettin
 
 #### 具体改动
 
-**删除旧入口**
+**删除旧入口 + 抽取共享函数**
 - 文件：`src/components/Sidebar/ResourceList.tsx`
 - 删除顶部 "PDF+" 按钮（第 313-319 行）
-- `handleImportPdf` 函数保留但设为通用逻辑（接受目标 folderId 参数），供右键菜单复用
+- 把 `handleImportPdf` 的核心逻辑（弹对话框 + 调 `cmd.importPdf`）抽成独立工具函数 `importPdfToFolder(folderId: string)`，放到 `src/lib/commands.ts` 或新建 `src/lib/importPdf.ts`
+  - 该函数包含文件对话框打开 + 调用 `cmd.importPdf` + toast 成功/失败提示
+  - FolderTree 右键菜单和 ResourceList 空白处右键菜单都调用此函数，避免重复代码
 
 **Sidebar 文件夹右键菜单加"导入 PDF"**
 - 文件：`src/components/Sidebar/FolderTree.tsx`
@@ -220,8 +222,8 @@ Tauri dialog 的 filter 已能过滤非 PDF 文件。
 ### AppearancePage 改动
 
 - 文件：`src/components/Settings/AppearancePage.tsx`
-- 第一块：主题按钮外包 `<div className={settingsStyles.form}>`，内部加 `<h3 className={settingsStyles.subheading}>{t('theme')}</h3>`
-- 第二块：语言按钮外包 `<div className={settingsStyles.passwordSection}>`（原 `<h3>` 保留）
+- 第一块（主题）：在现有 `<div className={styles.themeOptions}>` 外再包一层 `<div className={settingsStyles.form}>`，并在 form 内 themeOptions 前加 `<h3 className={settingsStyles.subheading}>{t('theme')}</h3>`
+- 第二块（语言）：在现有 `<h3>` + `<div className={styles.themeOptions}>` 外包一层 `<div className={settingsStyles.passwordSection}>`
 - 新增 i18n key：`settings.theme`（中"主题" / 英"Theme"）
 
 ### SyncPage 改动
