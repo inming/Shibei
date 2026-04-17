@@ -35,8 +35,8 @@ export function ReaderView({
   resource,
   initialHighlightId,
   initialScrollY,
-  initialPdfPage: _initialPdfPage,
-  initialPdfScrollFraction: _initialPdfScrollFraction,
+  initialPdfPage,
+  initialPdfScrollFraction,
 }: ReaderViewProps) {
   const { t } = useTranslation('reader');
   const { t: tAnnotation } = useTranslation('annotation');
@@ -46,6 +46,8 @@ export function ReaderView({
   const didRestoreScroll = useRef(false);
   const scrollPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingScrollYRef = useRef<number | null>(null);
+  const pdfPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPdfPositionRef = useRef<{ page: number; fraction: number } | null>(null);
   const draggingRef = useRef(false);
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = localStorage.getItem("shibei-annotation-width");
@@ -64,7 +66,11 @@ export function ReaderView({
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [metaHidden, setMetaHidden] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(0);
-  const [pdfScrollRequest, setPdfScrollRequest] = useState<{ id: string; ts: number } | null>(null);
+  const [pdfScrollRequest, setPdfScrollRequest] = useState<
+    | { kind: "highlight"; id: string; ts: number }
+    | { kind: "position"; page: number; fraction: number; ts: number }
+    | null
+  >(null);
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -84,6 +90,12 @@ export function ReaderView({
     if (pendingScrollYRef.current !== null && resource.resource_type !== "pdf") {
       updateReaderTab(resource.id, { scrollY: pendingScrollYRef.current });
       pendingScrollYRef.current = null;
+    }
+    if (pdfPersistTimer.current) clearTimeout(pdfPersistTimer.current);
+    if (pendingPdfPositionRef.current && resource.resource_type === "pdf") {
+      const { page, fraction } = pendingPdfPositionRef.current;
+      updateReaderTab(resource.id, { pdfPage: page, pdfScrollFraction: fraction });
+      pendingPdfPositionRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -319,9 +331,30 @@ export function ReaderView({
     ) {
       didScrollToInitial.current = true;
       setActiveHighlightId(initialHighlightId);
-      setPdfScrollRequest({ id: initialHighlightId, ts: Date.now() });
+      setPdfScrollRequest({ kind: "highlight", id: initialHighlightId, ts: Date.now() });
     }
   }, [initialHighlightId, iframeLoading, highlights, resource.resource_type]);
+
+  const didRestorePdfPosition = useRef(false);
+
+  useEffect(() => {
+    if (resource.resource_type !== "pdf") return;
+    if (didRestorePdfPosition.current) return;
+    if (initialHighlightId) return; // highlight wins
+    if (iframeLoading) return; // wait for onReady
+    if (typeof initialPdfPage !== "number") return;
+    didRestorePdfPosition.current = true;
+    setPdfScrollRequest({
+      kind: "position",
+      page: initialPdfPage,
+      fraction: typeof initialPdfScrollFraction === "number" ? initialPdfScrollFraction : 0,
+      ts: Date.now(),
+    });
+  }, [resource.resource_type, initialPdfPage, initialPdfScrollFraction, initialHighlightId, iframeLoading]);
+
+  useEffect(() => {
+    didRestorePdfPosition.current = false;
+  }, [resource.id]);
 
   // Handle color selection → create highlight
   const handleCreateHighlight = useCallback(
@@ -446,7 +479,7 @@ export function ReaderView({
     setActiveHighlightId(id);
     if (resource.resource_type === "pdf") {
       // Trigger PDFReader scroll — ts forces re-trigger for same id
-      setPdfScrollRequest({ id, ts: Date.now() });
+      setPdfScrollRequest({ kind: "highlight", id, ts: Date.now() });
     } else if (!failedHighlightIds.has(id)) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: "shibei:scroll-to-highlight", source: "shibei", id },
@@ -520,7 +553,16 @@ export function ReaderView({
               else setMetaHidden(false);
             }}
             onReady={() => setIframeLoading(false)}
-            scrollToHighlightRequest={pdfScrollRequest}
+            onScrollPosition={({ page, fraction }) => {
+              pendingPdfPositionRef.current = { page, fraction };
+              if (pdfPersistTimer.current) clearTimeout(pdfPersistTimer.current);
+              const id = resource.id;
+              pdfPersistTimer.current = setTimeout(() => {
+                updateReaderTab(id, { pdfPage: page, pdfScrollFraction: fraction });
+                pendingPdfPositionRef.current = null;
+              }, 500);
+            }}
+            scrollRequest={pdfScrollRequest}
           />
         ) : snapshotStatus === "pending" || downloading ? (
           <div className={styles.downloadPrompt}>

@@ -23,6 +23,10 @@ interface PageInfo {
   height: number;
 }
 
+export type PdfScrollRequest =
+  | { kind: "highlight"; id: string; ts: number }
+  | { kind: "position"; page: number; fraction: number; ts: number };
+
 interface PDFReaderProps {
   resourceId: string;
   highlights: Highlight[];
@@ -39,9 +43,9 @@ interface PDFReaderProps {
     scrollPercent: number;
     direction: "up" | "down";
   }) => void;
+  onScrollPosition: (info: { page: number; fraction: number }) => void;
   onReady: () => void;
-  /** Set to { id, ts } to scroll to a highlight. ts forces re-trigger for same id. */
-  scrollToHighlightRequest: { id: string; ts: number } | null;
+  scrollRequest: PdfScrollRequest | null;
 }
 
 // ── Component ──
@@ -55,8 +59,9 @@ export function PDFReader({
   onHighlightClick,
   onHighlightContextMenu,
   onScroll,
+  onScrollPosition,
   onReady,
-  scrollToHighlightRequest,
+  scrollRequest,
 }: PDFReaderProps) {
   const { t } = useTranslation("reader");
 
@@ -385,12 +390,28 @@ export function PDFReader({
       }
 
       onScroll({ scrollPercent, direction });
+
+      // Report page + in-page fraction for session persistence
+      const hs = getPageHeights();
+      const os = getPageOffsets();
+      if (hs.length > 0) {
+        let pageIdx = 0;
+        for (let i = 0; i < os.length; i++) {
+          if (os[i] <= scrollTop) pageIdx = i;
+          else break;
+        }
+        const pageTop = os[pageIdx];
+        const pageH = hs[pageIdx] || 1;
+        const fraction = Math.max(0, Math.min(1, (scrollTop - pageTop) / pageH));
+        onScrollPosition({ page: pageIdx, fraction });
+      }
+
       renderVisiblePages();
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [pageInfos, onScroll, renderVisiblePages]);
+  }, [pageInfos, onScroll, onScrollPosition, renderVisiblePages, getPageHeights, getPageOffsets]);
 
   // ── ResizeObserver: CSS handles layout, we just re-render for quality ──
 
@@ -528,28 +549,41 @@ export function PDFReader({
     }
   }, [highlights, activeHighlightId, renderHighlightsForPage]);
 
-  // ── Scroll to highlight on request ──
+  // ── Handle scroll requests (highlight or saved position) ──
 
   useEffect(() => {
-    if (!scrollToHighlightRequest) return;
+    if (!scrollRequest) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    const hl = highlights.find((h) => h.id === scrollToHighlightRequest.id);
-    if (!hl) return;
-    const anchor = hl.anchor as PdfAnchor;
-    if (anchor.type !== "pdf") return;
+    if (scrollRequest.kind === "highlight") {
+      const hl = highlights.find((h) => h.id === scrollRequest.id);
+      if (!hl) return;
+      const anchor = hl.anchor as PdfAnchor;
+      if (anchor.type !== "pdf") return;
 
-    const pageDiv = pageContainerMapRef.current.get(anchor.page);
-    if (!pageDiv) return;
+      const pageDiv = pageContainerMapRef.current.get(anchor.page);
+      if (!pageDiv) return;
 
-    const hlDiv = pageDiv.querySelector(
-      `[data-highlight-id="${scrollToHighlightRequest.id}"]`
-    ) as HTMLElement | null;
-    if (hlDiv) {
-      hlDiv.scrollIntoView({ behavior: "smooth", block: "center" });
-    } else {
-      pageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+      const hlDiv = pageDiv.querySelector(
+        `[data-highlight-id="${scrollRequest.id}"]`,
+      ) as HTMLElement | null;
+      if (hlDiv) {
+        hlDiv.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        pageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      return;
     }
-  }, [scrollToHighlightRequest, highlights]);
+
+    // kind === "position"
+    const offsets = getPageOffsets();
+    const heights = getPageHeights();
+    const pageIdx = Math.max(0, Math.min(scrollRequest.page, heights.length - 1));
+    if (offsets.length <= pageIdx || heights.length <= pageIdx) return;
+    const target = offsets[pageIdx] + heights[pageIdx] * scrollRequest.fraction;
+    container.scrollTop = target;
+  }, [scrollRequest, highlights, getPageHeights, getPageOffsets]);
 
   // ── Password form ──
 
