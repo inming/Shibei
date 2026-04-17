@@ -3,8 +3,14 @@ import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSe
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import { ALL_RESOURCES_ID, type Resource } from "@/types";
-import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
+import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Resource } from "@/types";
+import {
+  DataEvents,
+  type ResourceChangedPayload,
+  type FolderChangedPayload,
+  type TagChangedPayload,
+} from "@/lib/events";
+import { loadSessionState, saveSessionState } from "@/lib/sessionState";
 import * as cmd from "@/lib/commands";
 import { useSync } from "@/hooks/useSync";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
@@ -26,11 +32,14 @@ interface LibraryViewProps {
 
 export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLock }: LibraryViewProps) {
   const { t } = useTranslation('sidebar');
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(ALL_RESOURCES_ID);
+  const initialLibrary = useRef(loadSessionState().library).current;
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
+    initialLibrary.selectedFolderId ?? ALL_RESOURCES_ID,
+  );
   const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
   const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set(initialLibrary.selectedTagIds));
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,6 +47,78 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
   const [trashContextMenu, setTrashContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showClearTrashConfirm, setShowClearTrashConfirm] = useState(false);
   const sync = useSync();
+
+  // Mount effect: validate restored folder, hydrate selected resource
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Validate folder (skip virtuals)
+      const fid = initialLibrary.selectedFolderId;
+      if (fid && fid !== ALL_RESOURCES_ID && fid !== INBOX_FOLDER_ID) {
+        try {
+          await cmd.getFolder(fid);
+        } catch {
+          if (cancelled) return;
+          setSelectedFolderId(INBOX_FOLDER_ID);
+          saveSessionState({
+            library: { ...initialLibrary, selectedFolderId: INBOX_FOLDER_ID },
+          });
+        }
+      }
+      // Hydrate selected resource for preview
+      const rid = initialLibrary.selectedResourceId;
+      if (rid) {
+        try {
+          const r = await cmd.getResource(rid);
+          if (r && !cancelled) setSelectedResource(r);
+        } catch { /* ignore — resource gone */ }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist library selection on any change
+  const persistLibrary = useCallback(() => {
+    saveSessionState({
+      library: {
+        selectedFolderId,
+        selectedTagIds: Array.from(selectedTagIds),
+        selectedResourceId: selectedResource?.id ?? null,
+      },
+    });
+  }, [selectedFolderId, selectedTagIds, selectedResource]);
+
+  useEffect(() => {
+    persistLibrary();
+  }, [persistLibrary]);
+
+  // Clear selected folder if it gets deleted
+  useEffect(() => {
+    const unlisten = listen<FolderChangedPayload>(DataEvents.FOLDER_CHANGED, (event) => {
+      if (event.payload.action !== "deleted") return;
+      const deletedId = event.payload.folder_id;
+      if (!deletedId) return;
+      setSelectedFolderId((current) => (current === deletedId ? INBOX_FOLDER_ID : current));
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
+
+  // Remove deleted tag from selection
+  useEffect(() => {
+    const unlisten = listen<TagChangedPayload>(DataEvents.TAG_CHANGED, (event) => {
+      if (event.payload.action !== "deleted") return;
+      const deletedId = event.payload.tag_id;
+      if (!deletedId) return;
+      setSelectedTagIds((prev) => {
+        if (!prev.has(deletedId)) return prev;
+        const next = new Set(prev);
+        next.delete(deletedId);
+        return next;
+      });
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
 
   // Layout constants — see CLAUDE.md "三栏布局约束"
   const SIDEBAR_MIN = 160;
