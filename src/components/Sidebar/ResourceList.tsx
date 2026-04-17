@@ -41,6 +41,8 @@ interface ResourceListProps {
   onOpen: (resource: Resource) => void;
   onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
+  initialScrollTop?: number;
+  onScrollTopChange?: (scrollTop: number) => void;
 }
 
 function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, matchFields, tags, highlightCount, onClick, onDoubleClick, onContextMenu }: {
@@ -109,7 +111,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
   const { t } = useTranslation('sidebar');
   const { t: tSearch } = useTranslation('search');
   const { t: tReader } = useTranslation('reader');
@@ -130,6 +132,39 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
     tagIdsArray,
   );
   const listRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const didRestoreScrollRef = useRef(false);
+  const scrollPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Restore list scroll position once, after the first batch of resources renders.
+  useEffect(() => {
+    if (didRestoreScrollRef.current) return;
+    if (loading) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    if (typeof initialScrollTop === "number" && initialScrollTop > 0) {
+      el.scrollTop = initialScrollTop;
+    }
+    didRestoreScrollRef.current = true;
+  }, [loading, initialScrollTop]);
+
+  // Persist scroll position as the user scrolls (debounced 300ms).
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !onScrollTopChange) return;
+    const onScroll = () => {
+      if (scrollPersistTimerRef.current) clearTimeout(scrollPersistTimerRef.current);
+      const top = el.scrollTop;
+      scrollPersistTimerRef.current = setTimeout(() => {
+        onScrollTopChange(top);
+      }, 300);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (scrollPersistTimerRef.current) clearTimeout(scrollPersistTimerRef.current);
+    };
+  }, [onScrollTopChange]);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [contextResourceIds, setContextResourceIds] = useState<string[]>([]);
@@ -323,7 +358,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           </button>
         </div>
       </div>
-      <div className={styles.listScroll} onContextMenu={handleListContextMenu}>
+      <div ref={scrollContainerRef} className={styles.listScroll} onContextMenu={handleListContextMenu}>
         {!folderId && (
           <div className={styles.empty}>{t('selectFolderHint')}</div>
         )}

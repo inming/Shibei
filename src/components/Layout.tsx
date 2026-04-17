@@ -36,10 +36,19 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
     initialLibrary.selectedFolderId ?? ALL_RESOURCES_ID,
   );
-  const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(new Set());
-  const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(null);
+  // Seed the selection Set and range-select anchor from the persisted single
+  // resource id so the list row highlight stays consistent with the preview.
+  const [selectedResourceIds, setSelectedResourceIds] = useState<Set<string>>(() =>
+    initialLibrary.selectedResourceId
+      ? new Set([initialLibrary.selectedResourceId])
+      : new Set(),
+  );
+  const [lastClickedResourceId, setLastClickedResourceId] = useState<string | null>(
+    initialLibrary.selectedResourceId,
+  );
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set(initialLibrary.selectedTagIds));
+  const listScrollTopRef = useRef<number>(initialLibrary.listScrollTop ?? 0);
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
@@ -85,6 +94,21 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
         selectedFolderId,
         selectedTagIds: Array.from(selectedTagIds),
         selectedResourceId: selectedResource?.id ?? null,
+        listScrollTop: listScrollTopRef.current,
+      },
+    });
+  }, [selectedFolderId, selectedTagIds, selectedResource]);
+
+  // Called from ResourceList on scroll. Writes directly without going through
+  // persistLibrary so we don't trigger re-renders on every scroll event.
+  const handleListScrollTopChange = useCallback((n: number) => {
+    listScrollTopRef.current = n;
+    saveSessionState({
+      library: {
+        selectedFolderId,
+        selectedTagIds: Array.from(selectedTagIds),
+        selectedResourceId: selectedResource?.id ?? null,
+        listScrollTop: n,
       },
     });
   }, [selectedFolderId, selectedTagIds, selectedResource]);
@@ -450,6 +474,8 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               onOpen={(resource) => onOpenResource(resource)}
               onSortByChange={setSortBy}
               onSortOrderChange={setSortOrder}
+              initialScrollTop={initialLibrary.listScrollTop}
+              onScrollTopChange={handleListScrollTopChange}
             />
           )}
         </div>

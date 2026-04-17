@@ -13,6 +13,7 @@ export interface LibraryState {
   selectedFolderId: string | null;
   selectedTagIds: string[];
   selectedResourceId: string | null;
+  listScrollTop?: number;
 }
 
 export interface SessionState {
@@ -63,6 +64,10 @@ function loadFromStorage(): SessionState {
           parsed.library && "selectedResourceId" in parsed.library
             ? (parsed.library.selectedResourceId as string | null)
             : null,
+        listScrollTop:
+          typeof parsed.library?.listScrollTop === "number"
+            ? parsed.library.listScrollTop
+            : undefined,
       },
     };
   } catch {
