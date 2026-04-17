@@ -383,6 +383,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               key={selectedResource.id}
               resource={selectedResource}
               onNavigateToFolder={(folderId) => setSelectedFolderId(folderId)}
+              onOpenHighlight={(_rid, hid) => onOpenResource(selectedResource, hid)}
             />
           ) : (
             <div className={styles.mainPlaceholder}>

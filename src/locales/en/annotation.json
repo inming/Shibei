@@ -11,6 +11,7 @@
   "deleteAnnotation": "Delete annotation",
   "addComment": "+ Comment",
   "addCommentPlaceholder": "Add comment...",
+  "jumpToHighlight": "Jump to highlight in reader",
   "edit": "Edit",
   "preview": "Preview",
   "save": "Save",

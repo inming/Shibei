@@ -12,9 +12,10 @@ import styles from "./PreviewPanel.module.css";
 interface PreviewPanelProps {
   resource: Resource;
   onNavigateToFolder?: (folderId: string) => void;
+  onOpenHighlight?: (resourceId: string, highlightId: string) => void;
 }
 
-export function PreviewPanel({ resource: initialResource, onNavigateToFolder }: PreviewPanelProps) {
+export function PreviewPanel({ resource: initialResource, onNavigateToFolder, onOpenHighlight }: PreviewPanelProps) {
   const { t: tSidebar } = useTranslation('sidebar');
   const { t: tAnnotation } = useTranslation('annotation');
   const [resource, setResource] = useState<Resource>(initialResource);
@@ -64,10 +65,33 @@ export function PreviewPanel({ resource: initialResource, onNavigateToFolder }: 
             {highlights.map((hl) => {
               const comments = getCommentsForHighlight(hl.id);
               return (
-                <div key={hl.id} className={styles.highlightItem} style={{ borderLeftColor: hl.color }}>
+                <div
+                  key={hl.id}
+                  className={`${styles.highlightItem} ${onOpenHighlight ? styles.highlightClickable : ""}`}
+                  style={{ borderLeftColor: hl.color }}
+                  onClick={() => onOpenHighlight?.(resource.id, hl.id)}
+                  onKeyDown={(e) => {
+                    if (onOpenHighlight && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onOpenHighlight(resource.id, hl.id);
+                    }
+                  }}
+                  role={onOpenHighlight ? "button" : undefined}
+                  tabIndex={onOpenHighlight ? 0 : undefined}
+                  aria-label={onOpenHighlight ? tAnnotation('jumpToHighlight') : undefined}
+                >
                   <div className={styles.highlightText}>{hl.text_content}</div>
                   {comments.map((c) => (
-                    <div key={c.id} className={styles.commentItem}>
+                    <div
+                      key={c.id}
+                      className={styles.commentItem}
+                      onClickCapture={(e) => {
+                        // Let markdown-rendered <a> links work; stop bubbling only when clicking a link
+                        if ((e.target as HTMLElement).closest("a")) {
+                          e.stopPropagation();
+                        }
+                      }}
+                    >
                       <MarkdownContent content={c.content} />
                     </div>
                   ))}

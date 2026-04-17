@@ -11,6 +11,7 @@
   "deleteAnnotation": "删除标注",
   "addComment": "+ 评论",
   "addCommentPlaceholder": "添加评论...",
+  "jumpToHighlight": "跳转到标注位置",
   "edit": "编辑",
   "preview": "预览",
   "save": "保存",

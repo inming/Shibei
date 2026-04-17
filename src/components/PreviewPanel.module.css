@@ -78,4 +78,11 @@
   font-size: var(--font-size-sm);
 }
 
+.highlightClickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
 
+.highlightClickable:hover {
+  background: var(--color-bg-hover);
+}
