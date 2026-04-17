@@ -35,9 +35,7 @@
 }
 
 .urlRow {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-xs);
+  /* wrapper for URL + inline button; no flex */
 }
 
 .url {
@@ -46,23 +44,23 @@
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
-  flex: 1;
 }
 
 .urlOpenBtn {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  vertical-align: middle;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 12px;
-  margin-top: 1px;
+  font-size: 11px;
+  padding: 0;
 }
 
 .urlOpenBtn:hover {
