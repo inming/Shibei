@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。v2.3.2 插件 PNA 修复完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。v2.3.2 插件 PNA 修复完成。v2.3.3 会话持久化完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
 
 ---
 
@@ -495,6 +495,50 @@ Chrome 对 content script 发起的 fetch 以**页面 origin** 判定 Private Ne
 
 ---
 
+## v2.3.3 — 会话持久化（Session Persistence）
+
+**目标**：关闭 App 再打开时恢复"现场"——打开的 Reader Tab 列表、激活 Tab、每个 Tab 的滚动位置、资料库选中的文件夹/标签/预览资料/列表滚动位置。
+
+### 背景
+
+之前所有前端 UI 状态都是 React 内存 state，重启即清空。用户反馈强烈需要"继续上次阅读"的体验，尤其是反复阅读长文/PDF 的场景。
+
+### 改动
+
+- [x] **sessionState 模块** — `src/lib/sessionState.ts`，纯 TS，单 localStorage key `shibei-session-state`（v1 带版本字段），内存 mirror + shallow-merge + 细粒度 API（`updateReaderTab` / `removeReaderTab`）。15 个 Vitest 单测
+- [x] **Tab 恢复** — `App.tsx` 启动时 `Promise.all(cmd.getResource(id))` 解析每个持久化 Tab；资料被删则静默丢弃；Settings Tab 不恢复（最后非 Settings 的 active tab 自然留存）
+- [x] **Reader Tab 懒挂载** — `mountedTabIds: Set<string>`，只挂载当前激活 Tab 的 iframe；其余 Tab 在首次点击时才挂载，10 Tab 的 session 冷启动不再爆炸
+- [x] **HTML 滚动恢复** — `annotator.ts` 新增入站 `shibei:restore-scroll` 消息；`annotator-ready` 时若有保存的 scrollY 且无高亮深链，postMessage 恢复；scroll 事件 500ms debounce 写回；unmount 时 flush pending 防止丢最后一次
+- [x] **PDF 滚动恢复** — `PDFReader` 的 `scrollRequest` 扩展为 tagged union（`{kind: "highlight"}` | `{kind: "position"}`），position 分支计算 `offsets[page] + heights[page] * fraction` 设置 scrollTop；`onScrollPosition` 回调上报 `{page, fraction}`；同步 debounce + flush
+- [x] **资料库选中** — `Layout.tsx` 持久化 `selectedFolderId` / `selectedTagIds` / `selectedResourceId` / `listScrollTop`；启动校验非虚拟 folder（不存在则回落 Inbox）；folder/tag 删除事件清理 stale id；从单 `selectedResourceId` 派生 `selectedResourceIds` Set + 范围选择 anchor，让列表行高亮与预览保持一致
+- [x] **资料列表滚动恢复** — `ResourceList` 接收 `initialScrollTop` + `onScrollTopChange`，首次资源批次渲染后一次性 `scrollTop = initial`；滚动 300ms debounce 写回
+- [x] **StrictMode 安全** — 恢复 effect 用 `restoredRef` 守卫，不用 cancel flag（StrictMode 双调用时 cleanup 会把 cancelled 置 true 阻断 async restore）
+- [x] **失效兜底** — 坏 JSON / 版本不匹配 / 配额满都静默回落默认；资料/文件夹 lookup 失败走"拿当前最新数据"或 fallback，不弹 toast 干扰冷启动
+
+### 验证
+
+- 多 Tab + 滚动重启 ✓
+- Settings 不恢复 ✓
+- 资料被删静默丢弃 ✓
+- 锁屏场景恢复正确 ✓
+- 文件夹 + 标签 + 预览 + 列表高亮 + 列表滚动全部恢复 ✓
+- 被删文件夹回落 Inbox ✓
+- 懒挂载（DevTools 确认只挂载 active Tab 的 iframe）✓
+- 高亮深链优先于保存滚动 ✓
+
+### 产出
+
+- 设计文档：`docs/superpowers/specs/2026-04-17-session-persistence-design.md`
+- 实现计划：`docs/superpowers/plans/2026-04-17-session-persistence.md`
+
+### 未做（按实际需求推迟）
+
+- 最近关闭的 Tab 列表（类似浏览器 Cmd+Shift+T）— 初版不做
+- Tab 上的滚动进度条 / 资料列表"上次离开处"标记 — 用户明确不要（反复阅读的资料加进度干扰）
+- 版本迁移路径 — 目前 v1 → vN 直接丢弃落回默认；未来 schema 升级前需在 `loadFromStorage` 增加迁移分支
+
+---
+
 ## 版本节奏
 
 | 版本 | 核心主题 | 复杂度 | 性质 |
@@ -513,4 +557,5 @@ Chrome 对 content script 发起的 fetch 以**页面 origin** 判定 Private Ne
 | **v2.3** | PDF 支持 | 中高 | PDF 保存/阅读/标注 |
 | **v2.3.1** | UI 细节优化 | 低 | 预览面板编辑/跳转 + 右键导入 + 收件箱保护 + 设置页对齐 |
 | **v2.3.2** | 插件 PNA 修复 | 低 | 所有本地 HTTP 请求收敛到 Background Service Worker，消除 Chrome 授权弹框 |
+| **v2.3.3** | 会话持久化 | 中 | Tab + 滚动 + 资料库选中/滚动跨重启恢复；Reader Tab 懒挂载 |
 | **v2.x** | 导出 / AI / 快捷键 / 移动端 | — | 能力扩展（按需选做） |
