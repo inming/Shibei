@@ -33,24 +33,37 @@ export class ShibeiClient {
     this.token = readToken();
   }
 
+  private async doFetch(url: string, method: string, body?: unknown): Promise<Response> {
+    return fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const url = `${BASE_URL}${path}`;
     let response: Response;
     try {
-      response = await fetch(url, {
-        method,
-        headers: {
-          Authorization: `Bearer ${this.token}`,
-          "Content-Type": "application/json",
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      response = await this.doFetch(url, method, body);
     } catch {
       throw new Error("Shibei app is not running. Please start the app first.");
     }
 
+    // Token rotated (app restart). Re-read token file and retry once.
     if (response.status === 401) {
-      throw new Error("Authentication failed. Token may be stale, please restart Shibei app.");
+      try {
+        this.token = readToken();
+      } catch {
+        throw new Error("Authentication failed. Shibei app may not be running.");
+      }
+      response = await this.doFetch(url, method, body);
+      if (response.status === 401) {
+        throw new Error("Authentication failed. Please restart Shibei app.");
+      }
     }
 
     if (!response.ok) {
