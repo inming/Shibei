@@ -126,7 +126,11 @@ function App() {
             next.delete(id);
             return next;
           });
-          setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+          setActiveTabId((current) => {
+            const next = current === id ? LIBRARY_TAB_ID : current;
+            if (next !== current) saveSessionState({ activeTabId: next });
+            return next;
+          });
           removeReaderTab(id);
         }
       },
@@ -140,15 +144,8 @@ function App() {
     restoredRef.current = true;
 
     if (initialSession.readerTabs.length === 0) {
-      // Normalize activeTabId when there's nothing to restore:
-      // Settings shouldn't be restored; unknown ids fall back to library.
-      if (
-        initialSession.activeTabId !== LIBRARY_TAB_ID &&
-        initialSession.activeTabId !== SETTINGS_TAB_ID
-      ) {
-        setActiveTabId(LIBRARY_TAB_ID);
-        saveSessionState({ activeTabId: LIBRARY_TAB_ID });
-      } else if (initialSession.activeTabId === SETTINGS_TAB_ID) {
+      // Nothing to restore; any non-library active tab normalizes to library.
+      if (initialSession.activeTabId !== LIBRARY_TAB_ID) {
         setActiveTabId(LIBRARY_TAB_ID);
         saveSessionState({ activeTabId: LIBRARY_TAB_ID });
       }
