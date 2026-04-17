@@ -74,12 +74,18 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
           });
         }
       }
-      // Hydrate selected resource for preview
+      // Hydrate selected resource for preview + list row highlight.
+      // The [selectedFolderId] effect below wipes selectedResourceIds on
+      // initial mount, so we re-seed both here after the async hydrate.
       const rid = initialLibrary.selectedResourceId;
       if (rid) {
         try {
           const r = await cmd.getResource(rid);
-          if (r && !cancelled) setSelectedResource(r);
+          if (r && !cancelled) {
+            setSelectedResource(r);
+            setSelectedResourceIds(new Set([r.id]));
+            setLastClickedResourceId(r.id);
+          }
         } catch { /* ignore — resource gone */ }
       }
     })();
