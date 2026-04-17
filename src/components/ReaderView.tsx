@@ -416,6 +416,16 @@ export function ReaderView({
     [removeHighlight, activeHighlightId, resource.resource_type],
   );
 
+  const handlePdfScrollPosition = useCallback(({ page, fraction }: { page: number; fraction: number }) => {
+    pendingPdfPositionRef.current = { page, fraction };
+    if (pdfPersistTimer.current) clearTimeout(pdfPersistTimer.current);
+    const id = resource.id;
+    pdfPersistTimer.current = setTimeout(() => {
+      updateReaderTab(id, { pdfPage: page, pdfScrollFraction: fraction });
+      pendingPdfPositionRef.current = null;
+    }, 500);
+  }, [resource.id]);
+
   // Layout constants — see CLAUDE.md "阅读器双栏布局约束"
   const PANEL_MIN = 220;
   const READER_MIN = 400;
@@ -553,15 +563,7 @@ export function ReaderView({
               else setMetaHidden(false);
             }}
             onReady={() => setIframeLoading(false)}
-            onScrollPosition={({ page, fraction }) => {
-              pendingPdfPositionRef.current = { page, fraction };
-              if (pdfPersistTimer.current) clearTimeout(pdfPersistTimer.current);
-              const id = resource.id;
-              pdfPersistTimer.current = setTimeout(() => {
-                updateReaderTab(id, { pdfPage: page, pdfScrollFraction: fraction });
-                pendingPdfPositionRef.current = null;
-              }, 500);
-            }}
+            onScrollPosition={handlePdfScrollPosition}
             scrollRequest={pdfScrollRequest}
           />
         ) : snapshotStatus === "pending" || downloading ? (
