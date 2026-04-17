@@ -179,7 +179,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
           },
         },
         {
-          label: t('importPdf', { ns: 'reader' }),
+          label: t('importFile', { ns: 'reader' }),
           onClick: () => importPdfToFolder(contextMenu.folderId),
         },
         {

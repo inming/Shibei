@@ -374,7 +374,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           y={emptyMenu.y}
           items={[
             {
-              label: tReader("importPdf"),
+              label: tReader("importFile"),
               onClick: () => importPdfToFolder(folderId),
             },
           ]}

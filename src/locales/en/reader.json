@@ -16,5 +16,5 @@
   "pdfPasswordPlaceholder": "Enter PDF password",
   "pdfUnlock": "Unlock",
   "pdfPage": "Page {{current}} of {{total}}",
-  "importPdf": "Import PDF"
+  "importFile": "Import file"
 }

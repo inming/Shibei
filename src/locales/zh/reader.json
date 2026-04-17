@@ -16,5 +16,5 @@
   "pdfPasswordPlaceholder": "请输入 PDF 密码",
   "pdfUnlock": "解锁",
   "pdfPage": "第 {{current}} 页，共 {{total}} 页",
-  "importPdf": "导入 PDF"
+  "importFile": "导入文件"
 }
