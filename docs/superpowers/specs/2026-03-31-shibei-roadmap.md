@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。v2.3.2 插件 PNA 修复完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
 
 ---
 
@@ -466,6 +466,35 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 
 
 ---
 
+## v2.3.2 — 插件 PNA（Private Network Access）修复
+
+**目标**：消除 Chrome 在公网 HTTPS 站点上弹出的"允许访问此设备上的其他应用和服务"授权提示，让整页/选区保存流程无感。
+
+### 背景
+
+Chrome 对 content script 发起的 fetch 以**页面 origin** 判定 Private Network Access。从公网 HTTPS 页面（如 `www.kp-research.cn`）fetch 私网地址 `127.0.0.1:21519` 会触发浏览器级授权弹框，`<all_urls>` host_permissions 和服务器侧 CORS 头都无法压制。Background Service Worker 的 `chrome-extension://` origin 豁免 PNA，所以把所有到本地 HTTP Server 的 fetch 收敛到 background 是正解。
+
+### 改动
+
+- [x] **Background 作为唯一 HTTP 客户端** — 新增 `api:save-html` 消息处理器，内含 token 模块级缓存、401 自动重试、80 MB payload 兜底
+- [x] **`relay.js`（选区路径）** — 删除直连 `/token`/`/api/save-raw` 两处 fetch，改为 `chrome.runtime.sendMessage({ type: "api:save-html", ... })`
+- [x] **`popup.js`（整页路径）** — 注入到目标 tab 的 ISOLATED-world POST 函数改为 sendMessage；popup 自身的 `/ping`/`/folders`/`/check-url` 直连 fetch 保留（popup 同为 extension origin）
+- [x] **i18n** — 新增 `errorPageTooLarge`（"页面过大，建议使用选区保存"/"Page is too large — try saving a selected region instead"）
+- [x] **CLAUDE.md 约束更新** — "网页抓取（整页/选区）"流程补充 sendMessage 环节；"Content script fetch 限制"章节新增；新增"插件 HTTP 通信"约束说明
+
+### 验证
+
+- macOS Chrome：公网 HTTPS 整页/选区保存不再弹 PNA 框 ✓
+- Windows Chrome：待用户验证 ✓
+- PDF 保存路径未动（popup 自身 fetch，无 PNA 问题），保持正常
+
+### 未做（按实际需求推迟）
+
+- 大 payload（>80 MB）的 port 分块协议 — 等真实遇到 sendMessage 结构化克隆 size 错误再补
+- Popup 自身 fetch 统一走 background — 无 PNA 问题，收益仅为代码一致性
+
+---
+
 ## 版本节奏
 
 | 版本 | 核心主题 | 复杂度 | 性质 |
@@ -483,4 +512,5 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 
 | **v2.2** | 本地备份与恢复 | 低 | 数据安全（灾难恢复 + 设备迁移） |
 | **v2.3** | PDF 支持 | 中高 | PDF 保存/阅读/标注 |
 | **v2.3.1** | UI 细节优化 | 低 | 预览面板编辑/跳转 + 右键导入 + 收件箱保护 + 设置页对齐 |
+| **v2.3.2** | 插件 PNA 修复 | 低 | 所有本地 HTTP 请求收敛到 Background Service Worker，消除 Chrome 授权弹框 |
 | **v2.x** | 导出 / AI / 快捷键 / 移动端 | — | 能力扩展（按需选做） |
