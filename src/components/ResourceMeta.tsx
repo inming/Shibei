@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { Resource, Tag, Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
+import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
 import styles from "./ResourceMeta.module.css";
 
 interface ResourceMetaProps {
@@ -15,6 +16,7 @@ export function ResourceMeta({ resource, onNavigateToFolder }: ResourceMetaProps
   const { t } = useTranslation('sidebar');
   const [tags, setTags] = useState<Tag[]>([]);
   const [folderPath, setFolderPath] = useState<Folder[]>([]);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     cmd.getTagsForResource(resource.id).then(setTags).catch(() => setTags([]));
@@ -44,6 +46,13 @@ export function ResourceMeta({ resource, onNavigateToFolder }: ResourceMetaProps
 
   return (
     <div className={styles.meta}>
+      <button
+        className={styles.editBtn}
+        title={t('metaEdit')}
+        onClick={() => setEditing(true)}
+      >
+        ✎
+      </button>
       <div className={styles.title}>{resource.title}</div>
       <table className={styles.table}>
         <tbody>
@@ -105,6 +114,14 @@ export function ResourceMeta({ resource, onNavigateToFolder }: ResourceMetaProps
           )}
         </tbody>
       </table>
+
+      {editing && (
+        <ResourceEditDialog
+          resource={resource}
+          onSave={() => {}}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </div>
   );
 }
