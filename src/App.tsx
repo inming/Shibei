@@ -152,7 +152,6 @@ function App() {
       return;
     }
 
-    let cancelled = false;
     (async () => {
       const results = await Promise.all(
         initialSession.readerTabs.map(async (entry) => {
@@ -164,7 +163,6 @@ function App() {
           }
         }),
       );
-      if (cancelled) return;
 
       const nextTabs = new Map<string, ReaderTab>();
       const keptIds = new Set<string>();
@@ -202,8 +200,10 @@ function App() {
       setActiveTabId(finalActive);
       saveSessionState({ activeTabId: finalActive });
     })();
-
-    return () => { cancelled = true; };
+    // No cleanup cancel flag: StrictMode double-invokes effects, and the first
+    // invocation's cleanup would set cancelled=true before the async work
+    // completes — blocking the state updates entirely. The restoredRef guard
+    // at the top already prevents duplicate runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
