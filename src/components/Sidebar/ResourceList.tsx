@@ -4,10 +4,13 @@ import { useTranslation } from "react-i18next";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
 import type { Resource, Tag } from "@/types";
+import { ALL_RESOURCES_ID } from "@/types";
 import { ResourceListSkeleton } from "@/components/Skeleton";
 import { Modal } from "@/components/Modal";
 import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
 import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
+import { ContextMenu } from "@/components/ContextMenu";
+import { importPdfToFolder } from "@/lib/importPdf";
 import toast from "react-hot-toast";
 import styles from "./ResourceList.module.css";
 
@@ -109,7 +112,6 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
 export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange }: ResourceListProps) {
   const { t } = useTranslation('sidebar');
   const { t: tSearch } = useTranslation('search');
-  const { t: tCommon } = useTranslation('common');
   const { t: tReader } = useTranslation('reader');
   const [inputValue, setInputValue] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -131,6 +133,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [contextResourceIds, setContextResourceIds] = useState<string[]>([]);
+  const [emptyMenu, setEmptyMenu] = useState<{ x: number; y: number } | null>(null);
   const [editingResource, setEditingResource] = useState<Resource | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
@@ -221,22 +224,15 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
 
   const isSingleSelect = contextResourceIds.length === 1;
 
-  const handleImportPdf = async () => {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({
-        multiple: false,
-        filters: [{ name: "PDF", extensions: ["pdf"] }],
-      });
-      if (!selected) return;
+  const isRealFolder = folderId !== null && folderId !== ALL_RESOURCES_ID;
 
-      const filePath = typeof selected === "string" ? selected : (selected as { path: string }).path;
-      await cmd.importPdf(filePath, folderId || "root");
-      toast.success(tCommon("saveSuccess"));
-    } catch (err) {
-      toast.error(String(err));
-    }
-  };
+  function handleListContextMenu(e: React.MouseEvent) {
+    if (!isRealFolder) return;
+    // Resource items' onContextMenu calls stopPropagation (see handleContextMenu above),
+    // so this handler only fires when right-clicking empty area or the emptyState placeholder.
+    e.preventDefault();
+    setEmptyMenu({ x: e.clientX, y: e.clientY });
+  }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (filteredResources.length === 0) return;
@@ -310,13 +306,6 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           )}
         </span>
         <div className={styles.sortControls}>
-          <button
-            className={styles.importBtn}
-            onClick={handleImportPdf}
-            title={tReader("importPdf")}
-          >
-            PDF+
-          </button>
           <select
             className={styles.sortSelect}
             value={sortBy}
@@ -334,7 +323,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           </button>
         </div>
       </div>
-      <div className={styles.listScroll}>
+      <div className={styles.listScroll} onContextMenu={handleListContextMenu}>
         {!folderId && (
           <div className={styles.empty}>{t('selectFolderHint')}</div>
         )}
@@ -378,6 +367,20 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           ))}
         </div>
       </div>
+
+      {emptyMenu && isRealFolder && folderId && (
+        <ContextMenu
+          x={emptyMenu.x}
+          y={emptyMenu.y}
+          items={[
+            {
+              label: tReader("importPdf"),
+              onClick: () => importPdfToFolder(folderId),
+            },
+          ]}
+          onClose={() => setEmptyMenu(null)}
+        />
+      )}
 
       {contextMenu && folderId && (
         <ResourceContextMenu

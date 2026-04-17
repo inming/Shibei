@@ -8,6 +8,7 @@ import { DataEvents } from "@/lib/events";
 import { ALL_RESOURCES_ID, type Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import { importPdfToFolder } from "@/lib/importPdf";
 import { FolderEditDialog } from "@/components/Sidebar/FolderEditDialog";
 import { Spinner } from "@/components/Spinner";
 import { Modal } from "@/components/Modal";
@@ -176,6 +177,10 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
             setSubfolderTarget(contextMenu.folderId);
             setSubfolderName("");
           },
+        },
+        {
+          label: t('importPdf', { ns: 'reader' }),
+          onClick: () => importPdfToFolder(contextMenu.folderId),
         },
         {
           label: t('edit', { ns: 'common' }),
