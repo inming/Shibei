@@ -254,6 +254,21 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
     }
   }, [initialHighlightId, iframeReady, highlights, resource.resource_type]);
 
+  // PDF counterpart: auto-scroll after PDFReader reports onReady (drives iframeLoading=false)
+  useEffect(() => {
+    if (resource.resource_type !== "pdf") return;
+    if (
+      initialHighlightId &&
+      !iframeLoading &&
+      highlights.length > 0 &&
+      !didScrollToInitial.current
+    ) {
+      didScrollToInitial.current = true;
+      setActiveHighlightId(initialHighlightId);
+      setPdfScrollRequest({ id: initialHighlightId, ts: Date.now() });
+    }
+  }, [initialHighlightId, iframeLoading, highlights, resource.resource_type]);
+
   // Handle color selection → create highlight
   const handleCreateHighlight = useCallback(
     async (color: string) => {
