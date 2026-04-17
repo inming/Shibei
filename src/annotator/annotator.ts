@@ -705,13 +705,17 @@
       case "shibei:render-highlights":
         // Batch render highlights on page load
         if (Array.isArray(msg.highlights)) {
-          const cachedNodes = getTextNodes(document.body);
+          // Cache is refreshed after every successful wrapRange because
+          // Range.surroundContents splits text nodes, leaving stale references
+          // whose textContent is now truncated.
+          let cachedNodes = getTextNodes(document.body);
           const failedIds: string[] = [];
           for (const hl of msg.highlights) {
             try {
               const range = resolveAnchor(hl.anchor, cachedNodes);
               if (range) {
                 wrapRange(range, hl.id, hl.color);
+                cachedNodes = getTextNodes(document.body);
               } else {
                 console.warn("[shibei] Could not resolve anchor for:", hl.id);
                 failedIds.push(hl.id);

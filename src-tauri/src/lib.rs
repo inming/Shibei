@@ -20,20 +20,150 @@ fn get_app_base_dir() -> PathBuf {
 
 const ANNOTATOR_JS: &str = include_str!("annotator.js");
 
-/// Inject annotator script into HTML content.
+/// Case-insensitive ASCII byte-level substring search.
+fn find_ci(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    let last = haystack.len() - needle.len();
+    let mut i = start;
+    while i <= last {
+        let mut ok = true;
+        for j in 0..needle.len() {
+            if haystack[i + j].to_ascii_lowercase() != needle[j] {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Strip `<script …>…</script>` blocks from HTML. Matches only when the char after
+/// "<script" is `>`, `/`, or ASCII whitespace (so `<scripted>` won't match). Also
+/// handles event-handler attributes is out of scope here — those don't mutate DOM
+/// at load time (they only fire on user interaction which doesn't happen inside
+/// the read-only iframe).
+fn strip_script_tags(html: &str) -> String {
+    let bytes = html.as_bytes();
+    let mut out = String::with_capacity(html.len());
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let hit = match find_ci(bytes, cursor, b"<script") {
+            Some(p) => p,
+            None => break,
+        };
+        // Boundary check: next byte must be `>`, `/`, or whitespace
+        let after = hit + 7;
+        let boundary = after >= bytes.len()
+            || matches!(
+                bytes[after],
+                b'>' | b'/' | b' ' | b'\t' | b'\n' | b'\r' | 0x0c
+            );
+        if !boundary {
+            // Skip this false hit, advance one byte
+            out.push_str(&html[cursor..hit + 1]);
+            cursor = hit + 1;
+            continue;
+        }
+        // Emit everything before the tag
+        out.push_str(&html[cursor..hit]);
+        // Find end of opening tag `>`
+        let open_end = match bytes[after..].iter().position(|&b| b == b'>') {
+            Some(p) => after + p + 1,
+            None => {
+                // Malformed: no closing `>` — drop the rest
+                cursor = bytes.len();
+                break;
+            }
+        };
+        // Find `</script` (case-insensitive)
+        let close_hit = match find_ci(bytes, open_end, b"</script") {
+            Some(p) => p,
+            None => {
+                // Unclosed — drop the rest
+                cursor = bytes.len();
+                break;
+            }
+        };
+        // Find end of closing tag `>`
+        let close_end = match bytes[close_hit + 8..].iter().position(|&b| b == b'>') {
+            Some(p) => close_hit + 8 + p + 1,
+            None => {
+                cursor = bytes.len();
+                break;
+            }
+        };
+        cursor = close_end;
+    }
+    if cursor < bytes.len() {
+        out.push_str(&html[cursor..]);
+    }
+    out
+}
+
+/// Inject annotator script into HTML content. Strips the page's own `<script>`
+/// blocks first so they cannot mutate the DOM on reload (which would break
+/// highlight anchor resolution).
 fn inject_annotator_script(html: &str) -> String {
+    let stripped = strip_script_tags(html);
     let override_css = "<style>*{-webkit-user-select:text!important;user-select:text!important;}</style>";
     let script_tag = format!("{}<script>{}</script>", override_css, ANNOTATOR_JS);
-    if let Some(pos) = html.find("</head>") {
-        let mut result = html.to_string();
+    if let Some(pos) = stripped.find("</head>") {
+        let mut result = stripped;
         result.insert_str(pos, &script_tag);
         result
-    } else if let Some(pos) = html.find("<body") {
-        let mut result = html.to_string();
+    } else if let Some(pos) = stripped.find("<body") {
+        let mut result = stripped;
         result.insert_str(pos, &script_tag);
         result
     } else {
-        format!("{}{}", script_tag, html)
+        format!("{}{}", script_tag, stripped)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_scripts_removes_script_blocks() {
+        let html = "<p>a</p><script>var x = 1;</script><p>b</p>";
+        assert_eq!(strip_script_tags(html), "<p>a</p><p>b</p>");
+    }
+
+    #[test]
+    fn strip_scripts_handles_attrs_and_case() {
+        let html = r#"<SCRIPT type="text/javascript" nonce="x">doStuff()</Script>"#;
+        assert_eq!(strip_script_tags(html), "");
+    }
+
+    #[test]
+    fn strip_scripts_keeps_non_script() {
+        let html = "<scripted>ok</scripted><p>hi</p>";
+        assert_eq!(strip_script_tags(html), "<scripted>ok</scripted><p>hi</p>");
+    }
+
+    #[test]
+    fn strip_scripts_handles_self_closing_like() {
+        let html = "<script src=foo.js></script><p>x</p>";
+        assert_eq!(strip_script_tags(html), "<p>x</p>");
+    }
+
+    #[test]
+    fn strip_scripts_multiple() {
+        let html = "a<script>1</script>b<script>2</script>c";
+        assert_eq!(strip_script_tags(html), "abc");
+    }
+
+    #[test]
+    fn strip_scripts_unclosed_drops_tail() {
+        let html = "ok<script>never closes";
+        assert_eq!(strip_script_tags(html), "ok");
     }
 }
 

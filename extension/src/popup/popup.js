@@ -120,6 +120,7 @@ async function startCapture() {
             removeHiddenElements: false,
             removeUnusedStyles: true,
             removeUnusedFonts: true,
+            removeScripts: true,
             compressHTML: true,
             loadDeferredImages: true,
             loadDeferredImagesMaxIdleTime: 3000,
