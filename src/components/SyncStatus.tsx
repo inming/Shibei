@@ -65,7 +65,7 @@ export function SyncStatus({
         <span className={isSpinning ? styles.spinning : ""}>{displayIcon}</span>
         <span>{label}</span>
       </button>
-      <button className={styles.gear} onClick={() => onOpenSettings()} title={t('syncSettings')}>⚙</button>
+      <button className={styles.gear} onClick={() => onOpenSettings()} title={t('settings', { ns: 'common' })}>⚙</button>
       {lockEnabled && onLock && (
         <button className={styles.gear} onClick={onLock} title={t('lockApp')}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
