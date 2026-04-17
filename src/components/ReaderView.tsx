@@ -285,6 +285,10 @@ export function ReaderView({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
+    // Empty deps: initialScrollY / initialHighlightId / resource.resource_type
+    // are mount-time-only and never change for a given ReaderView instance
+    // (parent keys the wrapping <div> by resource.id, so a different resource
+    // causes a full remount rather than reusing this listener).
   }, []);
 
   // Send highlights to iframe once when iframe becomes ready.

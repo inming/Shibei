@@ -82,6 +82,8 @@ function App() {
     setSettingsOpen(true);
     setSettingsSection(section);
     setActiveTabId(SETTINGS_TAB_ID);
+    // Intentionally no saveSessionState: Settings is excluded from persistence,
+    // so the last non-Settings active tab is what gets restored on next launch.
   }, []);
 
   const closeTab = useCallback((id: string) => {
