@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "mcp:ensure": "node scripts/ensure-mcp-bundle.mjs",
+    "mcp:build": "node scripts/ensure-mcp-bundle.mjs --force",
     "build": "npm run build:annotator && tsc && vite build",
     "build:annotator": "tsc -p src/annotator/tsconfig.json",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "node scripts/ensure-mcp-bundle.mjs && tauri",
     "test": "vitest run",
     "postinstall": "node -e \"require('fs').copyFileSync('node_modules/pdfjs-dist/build/pdf.worker.min.mjs','public/pdf.worker.min.mjs')\""
   },
