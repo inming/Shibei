@@ -47,8 +47,10 @@ export function ResourceMeta({ resource, onNavigateToFolder }: ResourceMetaProps
   return (
     <div className={styles.meta}>
       <button
+        type="button"
         className={styles.editBtn}
         title={t('metaEdit')}
+        aria-label={t('metaEdit')}
         onClick={() => setEditing(true)}
       >
         ✎

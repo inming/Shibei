@@ -68,22 +68,6 @@
   background: var(--color-bg-secondary);
 }
 
-.importBtn {
-  padding: 4px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-bg-primary);
-  color: var(--color-text-secondary);
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.importBtn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
 .item {
   padding: var(--spacing-sm);
   border-radius: 4px;
