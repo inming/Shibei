@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
 
 ---
 
@@ -431,6 +431,41 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 
 
 ---
 
+## v2.3.1 — UI 细节优化
+
+**目标**：打磨 v2.3 后遗留的交互细节，重点在预览面板、设置页、文件导入入口与收件箱目录保护。
+
+- 设计文档：`docs/superpowers/specs/2026-04-17-ui-polish-design.md`
+- 实现计划：`docs/superpowers/plans/2026-04-17-ui-polish.md`
+
+### 预览面板
+- [x] **元数据编辑入口** — 第三栏元数据右上角铅笔按钮，点击打开 `ResourceEditDialog`（标题/描述）
+- [x] **URL 打开按钮对齐** — 按钮紧跟 URL 末尾（inline-flex + vertical-align: middle），16×16px 匹配文本行高
+- [x] **标注可点击跳转** — 预览面板每条高亮可点击，打开资源 Tab 并滚动到标注位置；包含键盘激活（Enter/Space）和 aria-label
+
+### 阅读器
+- [x] **PDF 初始跳转** — 修复 `initialHighlightId` 对 PDF 资源不生效的 bug：新增 PDF 专用 effect，等 `PDFReader.onReady`（驱动 `iframeLoading=false`）后通过 `pdfScrollRequest` 触发滚动
+
+### 侧栏与资料列表
+- [x] **文件夹右键导入** — FolderTree 右键菜单新增"导入文件"（保留"导入 PDF" 文件过滤，文案改为通用"文件"以便未来扩展）
+- [x] **资料列表空白右键** — ResourceList 空白区域右键菜单单项"导入文件"，仅在选中真实文件夹时可用
+- [x] **移除 PDF+ 按钮** — 第二栏顶部按钮删除，功能迁移到上述两个右键入口
+- [x] **共享导入逻辑** — `src/lib/importPdf.ts` 提供 `importPdfToFolder(folderId)`，两处右键入口复用，含 `translateError()` 错误翻译
+
+### 收件箱目录保护
+- [x] **系统预设不可编辑** — 后端已有 `INBOX_FOLDER_ID="__inbox__"`，前端 `src/types/index.ts` export 同名常量；FolderTree 右键菜单对该 folder 只保留"导入文件"，屏蔽"新建子文件夹/编辑/删除"
+
+### 设置页样式对齐
+- [x] **Appearance / Sync 页** — 加 `<h3 subheading>` 小标题（主题 / 连接）；用 `settingsStyles.passwordSection`（含 `border-top`）包裹第二分区，与 Data/AI 页视觉一致
+
+### i18n
+- [x] **设置齿轮 tooltip** — `common.settings`（统一"设置"/"Settings"），不再使用 `sync.syncSettings`
+- [x] **导入文件菜单** — `reader.importFile` 替代旧 `reader.importPdf`（中"导入文件"、英"Import file"）
+- [x] **编辑按钮 tooltip** — `sidebar.metaEdit`（"编辑"/"Edit"）
+- [x] **标注跳转 aria-label** — `annotation.jumpToHighlight`
+
+---
+
 ## 版本节奏
 
 | 版本 | 核心主题 | 复杂度 | 性质 |
@@ -447,4 +482,5 @@ MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 
 | **v2.1** | UX 体验改进 | 中 | 搜索增强 + 阅读沉浸 + 信息密度 + deep link |
 | **v2.2** | 本地备份与恢复 | 低 | 数据安全（灾难恢复 + 设备迁移） |
 | **v2.3** | PDF 支持 | 中高 | PDF 保存/阅读/标注 |
+| **v2.3.1** | UI 细节优化 | 低 | 预览面板编辑/跳转 + 右键导入 + 收件箱保护 + 设置页对齐 |
 | **v2.x** | 导出 / AI / 快捷键 / 移动端 | — | 能力扩展（按需选做） |
