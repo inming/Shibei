@@ -4,6 +4,7 @@ const CURRENT_VERSION = 1;
 export interface ReaderTabState {
   resourceId: string;
   scrollY?: number;
+  /** 0-based page index (matches PDFReader's internal pageIdx). */
   pdfPage?: number;
   pdfScrollFraction?: number;
 }

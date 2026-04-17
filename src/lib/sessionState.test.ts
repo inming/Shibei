@@ -21,6 +21,7 @@ import {
   STORAGE_KEY,
   DEFAULT_STATE,
   type SessionState,
+  type LibraryState,
 } from "./sessionState";
 
 beforeEach(() => {
@@ -83,11 +84,29 @@ describe("saveSessionState", () => {
     expect(raw.version).toBe(1);
   });
 
+  test("shallow-merges library sub-object without clobbering siblings", () => {
+    saveSessionState({
+      library: {
+        selectedFolderId: "f1",
+        selectedTagIds: ["t1", "t2"],
+        selectedResourceId: "r1",
+      },
+    });
+    saveSessionState({ library: { selectedFolderId: "f2" } as Partial<LibraryState> as LibraryState });
+    const loaded = loadSessionState();
+    expect(loaded.library.selectedFolderId).toBe("f2");
+    expect(loaded.library.selectedTagIds).toEqual(["t1", "t2"]);
+    expect(loaded.library.selectedResourceId).toBe("r1");
+  });
+
   test("silently ignores localStorage.setItem throwing", () => {
     const orig = localStorage.setItem;
     localStorage.setItem = () => { throw new Error("quota"); };
-    expect(() => saveSessionState({ activeTabId: "x" })).not.toThrow();
-    localStorage.setItem = orig;
+    try {
+      expect(() => saveSessionState({ activeTabId: "x" })).not.toThrow();
+    } finally {
+      localStorage.setItem = orig;
+    }
   });
 });
 
