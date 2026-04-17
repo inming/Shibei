@@ -103,6 +103,7 @@
   style.textContent = `
     shibei-hl {
       background: var(--shibei-hl-color, #ffeb3b) !important;
+      color: var(--shibei-hl-text, inherit) !important;
       cursor: pointer !important;
       border-radius: 2px !important;
     }
@@ -551,10 +552,21 @@
     }
   }
 
+  function getContrastText(hex: string): string {
+    const h = hex.replace("#", "");
+    if (h.length !== 6) return "#111";
+    const r = parseInt(h.slice(0, 2), 16) / 255;
+    const g = parseInt(h.slice(2, 4), 16) / 255;
+    const b = parseInt(h.slice(4, 6), 16) / 255;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    return lum > 0.6 ? "#111" : "#fff";
+  }
+
   function createHlElement(highlightId: string, color: string): HTMLElement {
     const hl = document.createElement("shibei-hl");
     hl.setAttribute("data-hl-id", highlightId);
     hl.style.setProperty("--shibei-hl-color", color);
+    hl.style.setProperty("--shibei-hl-text", getContrastText(color));
     hl.addEventListener("click", () => {
       const msg: HighlightClickedMsg = {
         type: "shibei:highlight-clicked",
@@ -744,6 +756,7 @@
         if (msg.id && msg.color) {
           document.querySelectorAll(`shibei-hl[data-hl-id="${msg.id}"]`).forEach((el) => {
             (el as HTMLElement).style.setProperty("--shibei-hl-color", msg.color);
+            (el as HTMLElement).style.setProperty("--shibei-hl-text", getContrastText(msg.color));
           });
         }
         break;
