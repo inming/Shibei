@@ -145,6 +145,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
       <h2 className={styles.heading}>{t('title')}</h2>
 
       <div className={styles.form}>
+        <h3 className={styles.subheading}>{t('connection')}</h3>
         <label className={styles.label}>
           <span>{t('endpointLabel')}</span>
           <input
@@ -246,7 +247,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
       </div>
 
       {hasCredentials && (
-        <>
+        <div className={styles.passwordSection}>
           <h3 className={styles.subheading}>{t('maintenance')}</h3>
           <div className={styles.actions}>
             <button
@@ -311,7 +312,7 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
               )}
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Confirm modal */}

@@ -1,5 +1,6 @@
 {
   "title": "同步设置",
+  "connection": "连接",
   "endpointLabel": "Endpoint（可选，留空使用 AWS 默认）",
   "regionLabel": "Region",
   "bucketLabel": "Bucket",

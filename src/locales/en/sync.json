@@ -1,5 +1,6 @@
 {
   "title": "Sync Settings",
+  "connection": "Connection",
   "endpointLabel": "Endpoint (optional, leave empty for AWS default)",
   "regionLabel": "Region",
   "bucketLabel": "Bucket",

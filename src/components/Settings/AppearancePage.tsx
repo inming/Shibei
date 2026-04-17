@@ -25,30 +25,36 @@ export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageP
   return (
     <>
       <h2 className={settingsStyles.heading}>{t("title")}</h2>
-      <div className={styles.themeOptions}>
-        {THEME_OPTIONS.map((opt) => (
-          <button
-            key={opt.id}
-            className={`${styles.themeBtn} ${themeMode === opt.id ? styles.themeBtnActive : ""}`}
-            onClick={() => onThemeModeChange(opt.id)}
-          >
-            <span className={styles.themeIcon}>{opt.icon}</span>
-            {t(opt.labelKey)}
-          </button>
-        ))}
+
+      <div className={settingsStyles.form}>
+        <h3 className={settingsStyles.subheading}>{t("theme")}</h3>
+        <div className={styles.themeOptions}>
+          {THEME_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              className={`${styles.themeBtn} ${themeMode === opt.id ? styles.themeBtnActive : ""}`}
+              onClick={() => onThemeModeChange(opt.id)}
+            >
+              <span className={styles.themeIcon}>{opt.icon}</span>
+              {t(opt.labelKey)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <h3 className={settingsStyles.subheading}>{t("language")}</h3>
-      <div className={styles.themeOptions}>
-        {LANGUAGE_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            className={`${styles.themeBtn} ${i18n.language === opt.value ? styles.themeBtnActive : ""}`}
-            onClick={() => i18n.changeLanguage(opt.value)}
-          >
-            {opt.label}
-          </button>
-        ))}
+      <div className={settingsStyles.passwordSection}>
+        <h3 className={settingsStyles.subheading}>{t("language")}</h3>
+        <div className={styles.themeOptions}>
+          {LANGUAGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              className={`${styles.themeBtn} ${i18n.language === opt.value ? styles.themeBtnActive : ""}`}
+              onClick={() => i18n.changeLanguage(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
     </>
   );

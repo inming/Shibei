@@ -1,5 +1,6 @@
 {
   "title": "Appearance",
+  "theme": "Theme",
   "themeLight": "Light",
   "themeDark": "Dark",
   "themeSystem": "System",
