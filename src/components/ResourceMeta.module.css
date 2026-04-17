@@ -53,15 +53,15 @@
   align-items: center;
   justify-content: center;
   vertical-align: middle;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   margin-left: 4px;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   padding: 0;
 }
 
