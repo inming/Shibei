@@ -12,6 +12,12 @@ import { SettingsView } from "@/components/SettingsView";
 import { LockScreen } from "@/components/LockScreen";
 import { useTheme } from "@/hooks/useTheme";
 import * as cmd from "@/lib/commands";
+import {
+  loadSessionState,
+  saveSessionState,
+  updateReaderTab,
+  removeReaderTab,
+} from "@/lib/sessionState";
 import styles from "./App.module.css";
 
 const LIBRARY_TAB_ID = "__library__";
@@ -20,11 +26,15 @@ const SETTINGS_TAB_ID = "__settings__";
 interface ReaderTab {
   resource: Resource;
   initialHighlightId: string | null;
+  initialScrollY: number | null;
+  initialPdfPage: number | null;
+  initialPdfScrollFraction: number | null;
 }
 
 function App() {
+  const initialSession = useRef(loadSessionState()).current;
   const { t } = useTranslation('sidebar');
-  const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
+  const [activeTabId, setActiveTabId] = useState(initialSession.activeTabId);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
   // Reader tabs are CSS-hidden when inactive (to preserve iframe state),
   // but we only MOUNT them on first activation to avoid paying for every
@@ -37,12 +47,19 @@ function App() {
   const [lockEnabled, setLockEnabled] = useState(false);
   const lockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockTimeoutMinutesRef = useRef(10);
+  const restoredRef = useRef(false);
 
   const openResource = useCallback((resource: Resource, highlightId?: string) => {
     setReaderTabs((prev) => {
       const next = new Map(prev);
       if (!next.has(resource.id)) {
-        next.set(resource.id, { resource, initialHighlightId: highlightId ?? null });
+        next.set(resource.id, {
+          resource,
+          initialHighlightId: highlightId ?? null,
+          initialScrollY: null,
+          initialPdfPage: null,
+          initialPdfScrollFraction: null,
+        });
       } else if (highlightId) {
         const existing = next.get(resource.id)!;
         next.set(resource.id, { ...existing, initialHighlightId: highlightId });
@@ -56,6 +73,9 @@ function App() {
       return next;
     });
     setActiveTabId(resource.id);
+    saveSessionState({ activeTabId: resource.id });
+    // Ensure the tab is present in the persisted array; scroll fields fill in later.
+    updateReaderTab(resource.id, {});
   }, []);
 
   const openSettings = useCallback((section?: "appearance" | "sync" | "encryption") => {
@@ -68,6 +88,7 @@ function App() {
     if (id === SETTINGS_TAB_ID) {
       setSettingsOpen(false);
       setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+      saveSessionState({ activeTabId: activeTabId === id ? LIBRARY_TAB_ID : activeTabId });
       return;
     }
     setReaderTabs((prev) => {
@@ -82,7 +103,9 @@ function App() {
       return next;
     });
     setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
-  }, []);
+    removeReaderTab(id);
+    saveSessionState({ activeTabId: activeTabId === id ? LIBRARY_TAB_ID : activeTabId });
+  }, [activeTabId]);
 
   useEffect(() => {
     const unlisten = listen<ResourceChangedPayload>(
@@ -104,10 +127,87 @@ function App() {
             return next;
           });
           setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+          removeReaderTab(id);
         }
       },
     );
     return () => { unlisten.then((f) => f()); };
+  }, []);
+
+  // Restore reader tabs from session on mount (once).
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+
+    if (initialSession.readerTabs.length === 0) {
+      // Normalize activeTabId when there's nothing to restore:
+      // Settings shouldn't be restored; unknown ids fall back to library.
+      if (
+        initialSession.activeTabId !== LIBRARY_TAB_ID &&
+        initialSession.activeTabId !== SETTINGS_TAB_ID
+      ) {
+        setActiveTabId(LIBRARY_TAB_ID);
+        saveSessionState({ activeTabId: LIBRARY_TAB_ID });
+      } else if (initialSession.activeTabId === SETTINGS_TAB_ID) {
+        setActiveTabId(LIBRARY_TAB_ID);
+        saveSessionState({ activeTabId: LIBRARY_TAB_ID });
+      }
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        initialSession.readerTabs.map(async (entry) => {
+          try {
+            const resource = await cmd.getResource(entry.resourceId);
+            return resource ? { entry, resource } : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (cancelled) return;
+
+      const nextTabs = new Map<string, ReaderTab>();
+      const keptIds = new Set<string>();
+      for (const r of results) {
+        if (!r) continue;
+        nextTabs.set(r.resource.id, {
+          resource: r.resource,
+          initialHighlightId: null,
+          initialScrollY: typeof r.entry.scrollY === "number" ? r.entry.scrollY : null,
+          initialPdfPage: typeof r.entry.pdfPage === "number" ? r.entry.pdfPage : null,
+          initialPdfScrollFraction:
+            typeof r.entry.pdfScrollFraction === "number" ? r.entry.pdfScrollFraction : null,
+        });
+        keptIds.add(r.resource.id);
+      }
+
+      // Purge dropped tabs from session
+      for (const e of initialSession.readerTabs) {
+        if (!keptIds.has(e.resourceId)) removeReaderTab(e.resourceId);
+      }
+
+      // Determine final active tab:
+      // - Settings tab → library (we don't restore Settings)
+      // - Missing reader tab → library
+      let finalActive = initialSession.activeTabId;
+      if (finalActive === SETTINGS_TAB_ID) finalActive = LIBRARY_TAB_ID;
+      else if (finalActive !== LIBRARY_TAB_ID && !keptIds.has(finalActive)) {
+        finalActive = LIBRARY_TAB_ID;
+      }
+
+      setReaderTabs(nextTabs);
+      if (finalActive !== LIBRARY_TAB_ID) {
+        setMountedTabIds(new Set([finalActive]));
+      }
+      setActiveTabId(finalActive);
+      saveSessionState({ activeTabId: finalActive });
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Lock screen: check status on mount + check cold-start deep link
@@ -270,6 +370,7 @@ function App() {
             });
           }
           setActiveTabId(id);
+          saveSessionState({ activeTabId: id });
         }}
         onCloseTab={closeTab}
       />
@@ -288,6 +389,9 @@ function App() {
               <ReaderView
                 resource={tab.resource}
                 initialHighlightId={tab.initialHighlightId}
+                initialScrollY={tab.initialScrollY}
+                initialPdfPage={tab.initialPdfPage}
+                initialPdfScrollFraction={tab.initialPdfScrollFraction}
               />
             </div>
           ) : null,
