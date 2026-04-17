@@ -1,6 +1,9 @@
 /** Special folder ID representing "all resources across all folders". */
 export const ALL_RESOURCES_ID = "__all__";
 
+/** System-preset inbox folder that receives newly-clipped resources. Not editable/deletable. */
+export const INBOX_FOLDER_ID = "__inbox__";
+
 export interface Folder {
   id: string;
   name: string;

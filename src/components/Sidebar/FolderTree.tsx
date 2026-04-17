@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { useFolders } from "@/hooks/useFolders";
 import { DataEvents } from "@/lib/events";
-import { ALL_RESOURCES_ID, type Folder } from "@/types";
+import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { importPdfToFolder } from "@/lib/importPdf";
@@ -170,28 +170,35 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
   }
 
   const menuItems: MenuItem[] = contextMenu
-    ? [
-        {
-          label: t('newSubfolder'),
-          onClick: () => {
-            setSubfolderTarget(contextMenu.folderId);
-            setSubfolderName("");
+    ? contextMenu.folderId === INBOX_FOLDER_ID
+      ? [
+          {
+            label: t('importFile', { ns: 'reader' }),
+            onClick: () => importPdfToFolder(contextMenu.folderId),
           },
-        },
-        {
-          label: t('importFile', { ns: 'reader' }),
-          onClick: () => importPdfToFolder(contextMenu.folderId),
-        },
-        {
-          label: t('edit', { ns: 'common' }),
-          onClick: () => setEditFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
-        },
-        {
-          label: t('delete', { ns: 'common' }),
-          danger: true,
-          onClick: () => setDeleteFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
-        },
-      ]
+        ]
+      : [
+          {
+            label: t('newSubfolder'),
+            onClick: () => {
+              setSubfolderTarget(contextMenu.folderId);
+              setSubfolderName("");
+            },
+          },
+          {
+            label: t('importFile', { ns: 'reader' }),
+            onClick: () => importPdfToFolder(contextMenu.folderId),
+          },
+          {
+            label: t('edit', { ns: 'common' }),
+            onClick: () => setEditFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
+          },
+          {
+            label: t('delete', { ns: 'common' }),
+            danger: true,
+            onClick: () => setDeleteFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
+          },
+        ]
     : [];
 
   const { setNodeRef: setRootDropRef, isOver: isRootOver } = useDroppable({
