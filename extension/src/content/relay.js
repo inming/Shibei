@@ -1,15 +1,16 @@
 // Relay script — runs in ISOLATED world.
-// Bridges postMessage from MAIN world (region-selector.js) to local HTTP server.
-// Reads large content from a shared DOM element and POSTs raw HTML to avoid
-// base64 encoding and JSON wrapping that cause memory exhaustion on large pages.
+// Bridges postMessage from MAIN world (region-selector.js) to the background
+// service worker, which owns all communication with the local HTTP server.
+// Fetching via background (chrome-extension:// origin) avoids Chrome's Private
+// Network Access prompt that would fire if we fetched 127.0.0.1 from a page
+// context. Large HTML payloads are passed once via chrome.runtime.sendMessage
+// (structured-clone); within sendMessage's practical limit for our workload.
 
 // Guard against double-injection
 if (window.__shibeiRelayInjected) {
   window.removeEventListener("message", window.__shibeiRelayHandler);
 }
 window.__shibeiRelayInjected = true;
-
-const RELAY_API_BASE = "http://127.0.0.1:21519";
 
 async function relaySaveRegion(data) {
   // Read content from shared DOM element (written by region-selector.js in MAIN world)
@@ -22,42 +23,25 @@ async function relaySaveRegion(data) {
     throw new Error("No content found in transfer element");
   }
 
-  // Get auth token
-  const tokenRes = await fetch(`${RELAY_API_BASE}/token`, {
-    signal: AbortSignal.timeout(2000),
-  });
-  if (!tokenRes.ok) throw new Error(`Token fetch failed: HTTP ${tokenRes.status}`);
-  const { token } = await tokenRes.json();
-
-  // POST raw HTML body with metadata in headers (no base64, no JSON wrapping)
-  const headers = {
-    "Content-Type": "text/html; charset=utf-8",
-    "Authorization": `Bearer ${token}`,
-    "X-Shibei-Title": encodeURIComponent(data.title || ""),
-    "X-Shibei-Url": encodeURIComponent(data.url || ""),
-    "X-Shibei-Domain": encodeURIComponent(data.domain || ""),
-    "X-Shibei-Folder-Id": data.folderId || "",
-    "X-Shibei-Captured-At": new Date().toISOString(),
-  };
-  if (data.author) headers["X-Shibei-Author"] = encodeURIComponent(data.author);
-  if (data.description) headers["X-Shibei-Description"] = encodeURIComponent(data.description);
-  if (data.selection_meta) headers["X-Shibei-Selection-Meta"] = encodeURIComponent(data.selection_meta);
-  if (data.tags && data.tags.length > 0) {
-    headers["X-Shibei-Tags"] = data.tags.map(encodeURIComponent).join(",");
-  }
-
-  const res = await fetch(`${RELAY_API_BASE}/api/save-raw`, {
-    method: "POST",
-    headers,
+  const response = await chrome.runtime.sendMessage({
+    type: "api:save-html",
     body: content,
+    meta: {
+      title: data.title,
+      url: data.url,
+      domain: data.domain,
+      author: data.author,
+      description: data.description,
+      folderId: data.folderId,
+      tags: data.tags,
+      selection_meta: data.selection_meta,
+    },
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(err.error || `HTTP ${res.status}`);
+  if (!response?.success) {
+    throw new Error(response?.error || "Unknown error");
   }
-
-  return res.json();
+  return response;
 }
 
 window.__shibeiRelayHandler = (event) => {

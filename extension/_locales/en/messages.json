@@ -238,5 +238,9 @@
   "relaySaveFailed": {
     "message": "Save failed",
     "description": "Error message from relay when save fails"
+  },
+  "errorPageTooLarge": {
+    "message": "Page is too large — try saving a selected region instead",
+    "description": "Error when payload exceeds the background size guard"
   }
 }

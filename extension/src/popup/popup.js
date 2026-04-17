@@ -402,47 +402,27 @@ saveBtn.addEventListener("click", async () => {
       throw new Error(writeResult?.error || "Failed to prepare content");
     }
 
-    // POST from ISOLATED world
+    // Route the POST through the background service worker so the fetch
+    // originates from chrome-extension:// (bypasses Private Network Access).
     const postResults = await chrome.scripting.executeScript({
       target: { tabId: pageInfo.tabId },
       func: async (meta) => {
-        const API = "http://127.0.0.1:21519";
         try {
           const el = document.getElementById("__shibei_transfer__");
           const content = el?.textContent || "";
           if (el) el.remove();
           if (!content) return { success: false, error: "No content in transfer element" };
 
-          const tokenRes = await fetch(`${API}/token`, { signal: AbortSignal.timeout(2000) });
-          if (!tokenRes.ok) return { success: false, error: `Token fetch failed: HTTP ${tokenRes.status}` };
-          const { token } = await tokenRes.json();
-
-          const headers = {
-            "Content-Type": "text/html; charset=utf-8",
-            "Authorization": `Bearer ${token}`,
-            "X-Shibei-Title": encodeURIComponent(meta.title || ""),
-            "X-Shibei-Url": encodeURIComponent(meta.url || ""),
-            "X-Shibei-Domain": encodeURIComponent(meta.domain || ""),
-            "X-Shibei-Folder-Id": meta.folderId || "",
-            "X-Shibei-Captured-At": new Date().toISOString(),
-          };
-          if (meta.author) headers["X-Shibei-Author"] = encodeURIComponent(meta.author);
-          if (meta.description) headers["X-Shibei-Description"] = encodeURIComponent(meta.description);
-          if (meta.tags?.length) headers["X-Shibei-Tags"] = meta.tags.map(encodeURIComponent).join(",");
-
-          const res = await fetch(`${API}/api/save-raw`, {
-            method: "POST",
-            headers,
+          const response = await chrome.runtime.sendMessage({
+            type: "api:save-html",
             body: content,
+            meta,
           });
 
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ error: "Unknown error" }));
-            return { success: false, error: err.error || `HTTP ${res.status}` };
+          if (!response?.success) {
+            return { success: false, error: response?.error || "Save failed" };
           }
-
-          const result = await res.json();
-          return { success: true, resource_id: result.resource_id };
+          return { success: true, resource_id: response.resource_id };
         } catch (err) {
           return { success: false, error: String(err) };
         }
