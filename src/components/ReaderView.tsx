@@ -45,6 +45,7 @@ export function ReaderView({
   const didScrollToInitial = useRef(false);
   const didRestoreScroll = useRef(false);
   const scrollPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingScrollYRef = useRef<number | null>(null);
   const draggingRef = useRef(false);
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = localStorage.getItem("shibei-annotation-width");
@@ -78,6 +79,13 @@ export function ReaderView({
   // Cleanup pending scroll persist timer on unmount
   useEffect(() => () => {
     if (scrollPersistTimer.current) clearTimeout(scrollPersistTimer.current);
+    // Flush any unflushed scroll position so users don't lose up to 500ms of
+    // scroll when quitting the app.
+    if (pendingScrollYRef.current !== null && resource.resource_type !== "pdf") {
+      updateReaderTab(resource.id, { scrollY: pendingScrollYRef.current });
+      pendingScrollYRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Clear selection toolbar when resource changes (e.g. switching tabs)
@@ -190,11 +198,13 @@ export function ReaderView({
             setScrollPercent(pct);
           }
           if (typeof scrollY === "number" && resource.resource_type !== "pdf") {
+            pendingScrollYRef.current = scrollY;
             if (scrollPersistTimer.current) clearTimeout(scrollPersistTimer.current);
             const id = resource.id;
             const y = scrollY;
             scrollPersistTimer.current = setTimeout(() => {
               updateReaderTab(id, { scrollY: y });
+              pendingScrollYRef.current = null;
             }, 500);
           }
           break;
