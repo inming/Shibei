@@ -60,12 +60,19 @@
     color: string;
   }
 
+  interface RestoreScrollMsg {
+    type: "shibei:restore-scroll";
+    source: "shibei";
+    scrollY: number;
+  }
+
   type InboundMessage =
     | RenderHighlightsMsg
     | AddHighlightMsg
     | RemoveHighlightMsg
     | ScrollToHighlightMsg
-    | UpdateHighlightColorMsg;
+    | UpdateHighlightColorMsg
+    | RestoreScrollMsg;
 
   // ── Outbound message types (annotator → React parent) ──
 
@@ -768,6 +775,12 @@
       case "shibei:scroll-to-highlight":
         if (msg.id) {
           scrollToHighlight(msg.id);
+        }
+        break;
+
+      case "shibei:restore-scroll":
+        if (typeof msg.scrollY === "number") {
+          window.scrollTo(0, msg.scrollY);
         }
         break;
     }

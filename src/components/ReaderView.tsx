@@ -8,6 +8,7 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightContextMenu } from "@/components/HighlightContextMenu";
 import { PDFReader } from "@/components/PDFReader";
 import * as cmd from "@/lib/commands";
+import { updateReaderTab } from "@/lib/sessionState";
 import styles from "./ReaderView.module.css";
 
 // Tauri 2 uses different protocol URLs per platform:
@@ -19,6 +20,9 @@ const PROTOCOL_BASE = IS_WINDOWS ? "http://shibei.localhost" : "shibei://localho
 interface ReaderViewProps {
   resource: Resource;
   initialHighlightId: string | null;
+  initialScrollY?: number | null;
+  initialPdfPage?: number | null;
+  initialPdfScrollFraction?: number | null;
 }
 
 interface SelectionInfo {
@@ -27,12 +31,20 @@ interface SelectionInfo {
   rect: { top: number; left: number; width: number; height: number };
 }
 
-export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
+export function ReaderView({
+  resource,
+  initialHighlightId,
+  initialScrollY,
+  initialPdfPage: _initialPdfPage,
+  initialPdfScrollFraction: _initialPdfScrollFraction,
+}: ReaderViewProps) {
   const { t } = useTranslation('reader');
   const { t: tAnnotation } = useTranslation('annotation');
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const didScrollToInitial = useRef(false);
+  const didRestoreScroll = useRef(false);
+  const scrollPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draggingRef = useRef(false);
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = localStorage.getItem("shibei-annotation-width");
@@ -57,6 +69,16 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
   useEffect(() => {
     didScrollToInitial.current = false;
   }, [initialHighlightId]);
+
+  // Reset restore-scroll guard on resource change (defensive)
+  useEffect(() => {
+    didRestoreScroll.current = false;
+  }, [resource.id]);
+
+  // Cleanup pending scroll persist timer on unmount
+  useEffect(() => () => {
+    if (scrollPersistTimer.current) clearTimeout(scrollPersistTimer.current);
+  }, []);
 
   // Clear selection toolbar when resource changes (e.g. switching tabs)
   useEffect(() => {
@@ -122,6 +144,20 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
       switch (msg.type) {
         case "shibei:annotator-ready":
           setIframeReady(true);
+          if (
+            resource.resource_type !== "pdf" &&
+            !didRestoreScroll.current &&
+            !initialHighlightId &&
+            typeof initialScrollY === "number" &&
+            initialScrollY > 0 &&
+            iframeRef.current?.contentWindow
+          ) {
+            didRestoreScroll.current = true;
+            iframeRef.current.contentWindow.postMessage(
+              { type: "shibei:restore-scroll", source: "shibei", scrollY: initialScrollY },
+              "*",
+            );
+          }
           break;
 
         // shibei:selection removed — toolbar is only shown via right-click
@@ -152,6 +188,14 @@ export function ReaderView({ resource, initialHighlightId }: ReaderViewProps) {
           }
           if (typeof pct === "number") {
             setScrollPercent(pct);
+          }
+          if (typeof scrollY === "number" && resource.resource_type !== "pdf") {
+            if (scrollPersistTimer.current) clearTimeout(scrollPersistTimer.current);
+            const id = resource.id;
+            const y = scrollY;
+            scrollPersistTimer.current = setTimeout(() => {
+              updateReaderTab(id, { scrollY: y });
+            }, 500);
           }
           break;
         }
