@@ -26,6 +26,10 @@ function App() {
   const { t } = useTranslation('sidebar');
   const [activeTabId, setActiveTabId] = useState(LIBRARY_TAB_ID);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
+  // Reader tabs are CSS-hidden when inactive (to preserve iframe state),
+  // but we only MOUNT them on first activation to avoid paying for every
+  // tab at boot.
+  const [mountedTabIds, setMountedTabIds] = useState<Set<string>>(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<"appearance" | "sync" | "encryption" | undefined>(undefined);
   const theme = useTheme();
@@ -43,6 +47,12 @@ function App() {
         const existing = next.get(resource.id)!;
         next.set(resource.id, { ...existing, initialHighlightId: highlightId });
       }
+      return next;
+    });
+    setMountedTabIds((prev) => {
+      if (prev.has(resource.id)) return prev;
+      const next = new Set(prev);
+      next.add(resource.id);
       return next;
     });
     setActiveTabId(resource.id);
@@ -65,6 +75,12 @@ function App() {
       next.delete(id);
       return next;
     });
+    setMountedTabIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
   }, []);
 
@@ -78,6 +94,12 @@ function App() {
           setReaderTabs((prev) => {
             if (!prev.has(id)) return prev;
             const next = new Map(prev);
+            next.delete(id);
+            return next;
+          });
+          setMountedTabIds((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
             next.delete(id);
             return next;
           });
@@ -238,7 +260,17 @@ function App() {
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
+        onSelectTab={(id) => {
+          if (id !== LIBRARY_TAB_ID && id !== SETTINGS_TAB_ID) {
+            setMountedTabIds((prev) => {
+              if (prev.has(id)) return prev;
+              const next = new Set(prev);
+              next.add(id);
+              return next;
+            });
+          }
+          setActiveTabId(id);
+        }}
         onCloseTab={closeTab}
       />
       <div className={styles.content}>
@@ -250,14 +282,16 @@ function App() {
             onLock={() => setLocked(true)}
           />
         </div>
-        {Array.from(readerTabs.entries()).map(([id, tab]) => (
-          <div key={id} className={`${styles.tabPane} ${activeTabId !== id ? styles.tabPaneHidden : ""}`}>
-            <ReaderView
-              resource={tab.resource}
-              initialHighlightId={tab.initialHighlightId}
-            />
-          </div>
-        ))}
+        {Array.from(readerTabs.entries()).map(([id, tab]) =>
+          mountedTabIds.has(id) ? (
+            <div key={id} className={`${styles.tabPane} ${activeTabId !== id ? styles.tabPaneHidden : ""}`}>
+              <ReaderView
+                resource={tab.resource}
+                initialHighlightId={tab.initialHighlightId}
+              />
+            </div>
+          ) : null,
+        )}
         {settingsOpen && (
           <div className={`${styles.tabPane} ${activeTabId !== SETTINGS_TAB_ID ? styles.tabPaneHidden : ""}`}>
             <SettingsView
