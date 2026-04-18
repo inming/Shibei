@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { TagSubMenu } from "@/components/Sidebar/TagSubMenu";
 import { FolderPickerMenu } from "@/components/Sidebar/FolderPickerMenu";
+import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 import styles from "./ResourceContextMenu.module.css";
 
 interface ResourceContextMenuProps {
@@ -33,6 +34,10 @@ export function ResourceContextMenu({
   const { t } = useTranslation('sidebar');
   const [openSub, setOpenSub] = useState<"tags" | "move" | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const tagsAnchorRef = useRef<HTMLDivElement>(null);
+  const tagsSubmenuRef = useRef<HTMLDivElement>(null);
+  const moveAnchorRef = useRef<HTMLDivElement>(null);
+  const moveSubmenuRef = useRef<HTMLDivElement>(null);
 
   const handleOutsideClick = useCallback(
     (e: MouseEvent) => {
@@ -59,26 +64,9 @@ export function ResourceContextMenu({
     };
   }, [handleOutsideClick, handleKeyDown]);
 
-  // Adjust position so menu doesn't overflow viewport
-  const [adjustedPos, setAdjustedPos] = useState({ left: x, top: y });
-
-  useLayoutEffect(() => {
-    if (!menuRef.current) return;
-    const rect = menuRef.current.getBoundingClientRect();
-    const MARGIN = 4;
-    let left = x;
-    let top = y;
-    if (top + rect.height > window.innerHeight - MARGIN) {
-      top = Math.max(MARGIN, window.innerHeight - rect.height - MARGIN);
-    }
-    if (left + rect.width > window.innerWidth - MARGIN) {
-      left = Math.max(MARGIN, window.innerWidth - rect.width - MARGIN);
-    }
-    setAdjustedPos({ left, top });
-  }, [x, y]);
-
-  // Determine if submenus should flip horizontally
-  const flipSub = adjustedPos.left + 320 > window.innerWidth;
+  const adjustedPos = useFlipPosition(menuRef, x, y);
+  const tagsSubStyle = useSubmenuPosition(tagsAnchorRef, tagsSubmenuRef, openSub === "tags");
+  const moveSubStyle = useSubmenuPosition(moveAnchorRef, moveSubmenuRef, openSub === "move");
 
   const menuStyle: React.CSSProperties = {
     position: "fixed",
@@ -107,13 +95,14 @@ export function ResourceContextMenu({
         </button>
       )}
       <div
+        ref={tagsAnchorRef}
         className={`${styles.item} ${styles.hasSubmenu}`}
         onMouseEnter={() => setOpenSub("tags")}
       >
         <span>{t('contextTags')}</span>
         <span className={styles.arrow}>&rsaquo;</span>
         {openSub === "tags" && (
-          <div className={`${styles.submenuPanel} ${flipSub ? styles.submenuFlip : ""}`}>
+          <div ref={tagsSubmenuRef} className={styles.submenuPanel} style={tagsSubStyle}>
             <TagSubMenu
               resourceIds={resourceIds}
               onClose={onClose}
@@ -123,13 +112,14 @@ export function ResourceContextMenu({
         )}
       </div>
       <div
+        ref={moveAnchorRef}
         className={`${styles.item} ${styles.hasSubmenu}`}
         onMouseEnter={() => setOpenSub("move")}
       >
         <span>{t('contextMoveTo')}</span>
         <span className={styles.arrow}>&rsaquo;</span>
         {openSub === "move" && (
-          <div className={`${styles.submenuPanel} ${flipSub ? styles.submenuFlip : ""}`}>
+          <div ref={moveSubmenuRef} className={styles.submenuPanel} style={moveSubStyle}>
             <FolderPickerMenu
               currentFolderId={currentFolderId}
               onSelect={(folderId) => {

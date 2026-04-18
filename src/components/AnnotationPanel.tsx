@@ -7,6 +7,7 @@ import { Modal } from "@/components/Modal";
 import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
+import { useFlipPosition } from "@/hooks/useFlipPosition";
 
 function autoResize(el: HTMLTextAreaElement | null) {
   if (!el) return;
@@ -209,6 +210,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     const [previewingNew, setPreviewingNew] = useState(false);
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
     const ctxRef = useRef<HTMLDivElement>(null);
+    const ctxAdjustedPos = useFlipPosition(ctxRef, ctxMenu?.x ?? 0, ctxMenu?.y ?? 0);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
       e.preventDefault();
@@ -266,7 +268,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
           <div
             ref={ctxRef}
             className={styles.hlContextMenu}
-            style={{ top: ctxMenu.y, left: ctxMenu.x }}
+            style={{ top: ctxAdjustedPos.top, left: ctxAdjustedPos.left }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className={styles.hlColorSection}>

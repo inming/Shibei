@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useFlipPosition } from "@/hooks/useFlipPosition";
 import styles from "./TagPopover.module.css";
 
 const PRESET_COLORS = [
@@ -33,6 +34,7 @@ export function TagPopover({
   const [color, setColor] = useState(initialColor);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const adjustedPos = useFlipPosition(ref, position.x, position.y);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -61,7 +63,7 @@ export function TagPopover({
     <div
       ref={ref}
       className={styles.popover}
-      style={{ top: position.y, left: position.x }}
+      style={{ top: adjustedPos.top, left: adjustedPos.left }}
     >
       <input
         ref={inputRef}

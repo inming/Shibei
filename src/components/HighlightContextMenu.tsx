@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { Highlight } from "@/types";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
+import { useFlipPosition } from "@/hooks/useFlipPosition";
 import styles from "./HighlightContextMenu.module.css";
 
 interface HighlightContextMenuProps {
@@ -23,6 +24,7 @@ export function HighlightContextMenu({
   onClose,
 }: HighlightContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const adjustedPos = useFlipPosition(ref, position.left, position.top);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -46,7 +48,7 @@ export function HighlightContextMenu({
   if (!highlight) return null;
 
   return (
-    <div ref={ref} className={styles.menu} style={{ top: position.top, left: position.left }}>
+    <div ref={ref} className={styles.menu} style={{ top: adjustedPos.top, left: adjustedPos.left }}>
       <div className={styles.colorRow}>
         <span className={styles.rowLabel} title={t('lightPage')}>☀︎</span>
         {LIGHT_COLORS.map((c) => (
