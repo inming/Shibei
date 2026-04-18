@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。v2.3.2 插件 PNA 修复完成。v2.3.3 会话持久化完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。v2.3.2 插件 PNA 修复完成。v2.3.3 会话持久化完成。v2.3.4 右键菜单防溢出完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
 
 ---
 
@@ -539,6 +539,36 @@ Chrome 对 content script 发起的 fetch 以**页面 origin** 判定 Private Ne
 
 ---
 
+## v2.3.4 — 右键菜单边界防溢出
+
+**目标**：所有右键/浮出菜单及其子菜单在靠近窗口边缘时自动翻转/偏移，不再被裁切。
+
+### 背景
+
+之前只有通用 `ContextMenu` 和 `ResourceContextMenu` 主菜单做了边界检测，`HighlightContextMenu` / `AnnotationPanel` 高亮菜单 / `TagPopover` 直接用 `clientX/clientY` 渲染，靠近右/下边触发必溢出。`ResourceContextMenu` 的"移动到"/"标签"子菜单仅做了硬编码 320px 宽度的水平翻转，完全没有纵向处理；在资料列表最下面一项右键再 hover 子菜单时，子菜单向下展开直接被窗口裁掉。
+
+### 改动
+
+- [x] **通用 `useFlipPosition` hook** — `src/hooks/useFlipPosition.ts`，`useLayoutEffect` 里测量元素 `getBoundingClientRect()`，双向 clamp 到 `window.innerWidth/innerHeight`（4px 边距），超大元素回落到边距
+- [x] **通用 `useSubmenuPosition` hook** — 接受 anchor + submenu 两个 ref，默认放 anchor 右侧（`left: 100%`），宽度溢出时翻转到 `right: 100%`；高度溢出时计算 `overflowBottom = anchor.top + submenu.height - viewport.height`，按该值上移（向上不越过 `anchor.top - margin`）
+- [x] **async 内容再测量** — `TagSubMenu` / `FolderPickerMenu` 通过 `useTags()` / `useFolders()` 异步加载数据，挂载时 submenu 只有占位符高度；hook 对 submenu 挂 `ResizeObserver`，大小变化时重算位置，彻底消除"资料列表最下一项 → 子菜单向下溢出"的 bug
+- [x] **统一接入** — `ContextMenu` / `ResourceContextMenu` 主菜单 / `HighlightContextMenu` / `AnnotationPanel` 高亮右菜单 / `TagPopover` 全部切到 `useFlipPosition`；`ResourceContextMenu` 两个子菜单切到 `useSubmenuPosition`，删除旧的硬编码 `flipSub` + `.submenuFlip` CSS 分支
+- [x] **测试** — 11 个 Vitest 单测，覆盖：四角/边缘 clamp、超大元素 fallback、子菜单右侧放置/水平翻转/垂直上移/顶部封顶、async 内容增长 → ResizeObserver 重测
+
+### 验证
+
+- 资料列表第一项/最下一项右键 → 主菜单都在视口内 ✓
+- 主菜单贴近底部 → hover "移动到"/"标签" → 子菜单自动向上展开 ✓
+- 阅读器高亮右键靠近右/下边 → 菜单不再被裁 ✓
+- 标注面板高亮右键 / 标签加号 → 不再出现 popover 被截断 ✓
+
+### 产出
+
+- 提交：`d518c1a fix(ui): clamp all context menus and submenus within viewport`、`a72a211 fix(ui): re-measure submenu after async content loads`
+- 无独立设计文档；hook + 测试位于 `src/hooks/useFlipPosition.ts` / `.test.tsx`
+
+---
+
 ## 版本节奏
 
 | 版本 | 核心主题 | 复杂度 | 性质 |
@@ -558,4 +588,5 @@ Chrome 对 content script 发起的 fetch 以**页面 origin** 判定 Private Ne
 | **v2.3.1** | UI 细节优化 | 低 | 预览面板编辑/跳转 + 右键导入 + 收件箱保护 + 设置页对齐 |
 | **v2.3.2** | 插件 PNA 修复 | 低 | 所有本地 HTTP 请求收敛到 Background Service Worker，消除 Chrome 授权弹框 |
 | **v2.3.3** | 会话持久化 | 中 | Tab + 滚动 + 资料库选中/滚动跨重启恢复；Reader Tab 懒挂载 |
+| **v2.3.4** | 右键菜单防溢出 | 低 | `useFlipPosition` / `useSubmenuPosition` 统一管位置；`ResizeObserver` 兜住 async 内容 |
 | **v2.x** | 导出 / AI / 快捷键 / 移动端 | — | 能力扩展（按需选做） |
