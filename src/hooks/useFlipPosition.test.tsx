@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render } from "@testing-library/react";
-import { useRef, type CSSProperties } from "react";
+import { act, render } from "@testing-library/react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 
 // jsdom always returns a zero-DOMRect from getBoundingClientRect(). Patch the
@@ -34,6 +34,40 @@ function installRectStub() {
 function stubViewport(width: number, height: number) {
   vi.stubGlobal("innerWidth", width);
   vi.stubGlobal("innerHeight", height);
+}
+
+// jsdom has no ResizeObserver. Install a stub that records observed elements
+// so tests can trigger a resize manually via triggerResize().
+type ResizeCallback = (entries: unknown[], observer: unknown) => void;
+const resizeObservers = new Set<{ callback: ResizeCallback; elements: Set<Element> }>();
+
+function installResizeObserverStub() {
+  class ResizeObserverStub {
+    private entry = { callback: null as ResizeCallback | null, elements: new Set<Element>() };
+    constructor(callback: ResizeCallback) {
+      this.entry.callback = callback;
+      resizeObservers.add(this.entry as { callback: ResizeCallback; elements: Set<Element> });
+    }
+    observe(el: Element) {
+      this.entry.elements.add(el);
+    }
+    unobserve(el: Element) {
+      this.entry.elements.delete(el);
+    }
+    disconnect() {
+      resizeObservers.delete(this.entry as { callback: ResizeCallback; elements: Set<Element> });
+    }
+  }
+  vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  return () => {
+    resizeObservers.clear();
+  };
+}
+
+function triggerResize() {
+  for (const entry of resizeObservers) {
+    entry.callback([], null);
+  }
 }
 
 interface Probe {
@@ -103,6 +137,48 @@ function SubmenuProbe({
   );
 }
 
+// Probe that simulates async content growth: submenu mounts with `initialHeight`
+// then the parent bumps it to `grownHeight` on next tick (like useTags loading).
+function AsyncSubmenuProbe({
+  anchor,
+  initialHeight,
+  grownHeight,
+  width,
+  onRender,
+}: {
+  anchor: { top: number; left: number; width: number; height: number };
+  initialHeight: number;
+  grownHeight: number;
+  width: number;
+  onRender: (s: CSSProperties) => void;
+}) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+  const style = useSubmenuPosition(anchorRef, submenuRef, true);
+  const [height, setHeight] = useState(initialHeight);
+  useEffect(() => {
+    // Simulate async content load.
+    queueMicrotask(() => setHeight(grownHeight));
+  }, [grownHeight]);
+  onRender(style);
+  return (
+    <div
+      ref={anchorRef}
+      data-rect-top={String(anchor.top)}
+      data-rect-left={String(anchor.left)}
+      data-rect-width={String(anchor.width)}
+      data-rect-height={String(anchor.height)}
+    >
+      <div
+        ref={submenuRef}
+        data-rect-width={String(width)}
+        data-rect-height={String(height)}
+        style={style}
+      />
+    </div>
+  );
+}
+
 describe("useFlipPosition", () => {
   let restoreRect: (() => void) | undefined;
 
@@ -152,16 +228,20 @@ describe("useFlipPosition", () => {
 
 describe("useSubmenuPosition", () => {
   let restoreRect: (() => void) | undefined;
+  let restoreRO: (() => void) | undefined;
 
   beforeEach(() => {
     stubViewport(1000, 800);
     restoreRect = installRectStub();
+    restoreRO = installResizeObserverStub();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     restoreRect?.();
     restoreRect = undefined;
+    restoreRO?.();
+    restoreRO = undefined;
   });
 
   it("returns hidden style when closed", () => {
@@ -243,5 +323,39 @@ describe("useSubmenuPosition", () => {
     // overflowBottom = 50 + 900 - 796 = 154
     // anchor.top - margin = 46 → shiftUp = min(154, 46) = 46
     expect(renders[renders.length - 1]).toMatchObject({ top: -46, visibility: "visible" });
+  });
+
+  it("recomputes shift when submenu grows after initial mount (async content)", async () => {
+    // Regression: TagSubMenu/FolderPickerMenu load content async. Initial mount
+    // shows a small placeholder → hook measures tiny height → shiftUp=0. Then
+    // content loads, submenu grows downward past viewport. ResizeObserver must
+    // re-fire compute to apply the correct upward shift.
+    const renders: CSSProperties[] = [];
+    render(
+      <AsyncSubmenuProbe
+        anchor={{ top: 700, left: 100, width: 100, height: 30 }}
+        initialHeight={30}
+        grownHeight={300}
+        width={180}
+        onRender={(s) => renders.push(s)}
+      />,
+    );
+    // After initial mount: 700 + 30 = 730 < 796 → no shift.
+    const initial = renders[renders.length - 1];
+    expect(initial).toMatchObject({ top: 0, visibility: "visible" });
+
+    // Flush the async setHeight → DOM now reports grownHeight.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Simulate the browser firing ResizeObserver after layout changed.
+    act(() => {
+      triggerResize();
+    });
+
+    // After resize: 700 + 300 = 1000 > 796 → overflowBottom = 204, clamped.
+    const grown = renders[renders.length - 1];
+    expect(grown).toMatchObject({ top: -204, visibility: "visible" });
   });
 });

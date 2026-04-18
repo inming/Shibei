@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
 
 const DEFAULT_MARGIN = 4;
 
@@ -52,11 +52,8 @@ export function useSubmenuPosition(
   margin: number = DEFAULT_MARGIN,
 ): CSSProperties {
   const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
-  useLayoutEffect(() => {
-    if (!open) {
-      setStyle({ visibility: "hidden" });
-      return;
-    }
+
+  const compute = useCallback(() => {
     const anchor = anchorRef.current;
     const submenu = submenuRef.current;
     if (!anchor || !submenu) return;
@@ -74,6 +71,22 @@ export function useSubmenuPosition(
       top: shiftUp === 0 ? 0 : -shiftUp,
       visibility: "visible",
     });
-  }, [open, anchorRef, submenuRef, margin]);
+  }, [anchorRef, submenuRef, margin]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setStyle({ visibility: "hidden" });
+      return;
+    }
+    compute();
+    // Submenu content (tags/folders) can load asynchronously, so the initial
+    // measurement may be stale. Re-run compute whenever submenu size changes.
+    const submenu = submenuRef.current;
+    if (!submenu || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => compute());
+    observer.observe(submenu);
+    return () => observer.disconnect();
+  }, [open, submenuRef, compute]);
+
   return style;
 }
