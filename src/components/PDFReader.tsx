@@ -92,7 +92,6 @@ export function PDFReader({
   const pageContainerMapRef = useRef(new Map<number, HTMLDivElement>());
   const lastScrollTopRef = useRef(0);
   const pdfBytesRef = useRef<Uint8Array | null>(null);
-  const prevZoomRef = useRef<number>(zoomFactor);
 
   // ── Height / offset helpers ──
   // Always computed from current container.clientWidth — no caching, no state.
@@ -464,7 +463,6 @@ export function PDFReader({
   useEffect(() => {
     const container = containerRef.current;
     if (!container || pageInfos.length === 0) return;
-    if (prevZoomRef.current === zoomFactor) return;
 
     // Preserve vertical position via fraction
     const fraction = container.scrollHeight > 0
@@ -486,8 +484,6 @@ export function PDFReader({
       }
       renderVisiblePages();
     });
-
-    prevZoomRef.current = zoomFactor;
   }, [zoomFactor, pageInfos, renderVisiblePages]);
 
   // ── Text selection (right-click) ──
