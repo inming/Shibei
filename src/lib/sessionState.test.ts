@@ -168,3 +168,31 @@ describe("clearSessionState", () => {
     expect(loadSessionState()).toEqual(DEFAULT_STATE);
   });
 });
+
+describe("pdfZoom persistence", () => {
+  test("updateReaderTab stores pdfZoom", () => {
+    updateReaderTab("r1", { pdfZoom: 1.25 });
+    expect(loadSessionState().readerTabs[0]).toMatchObject({
+      resourceId: "r1",
+      pdfZoom: 1.25,
+    });
+  });
+
+  test("loadSessionState preserves pdfZoom from storage", () => {
+    const state: SessionState = {
+      version: 1,
+      activeTabId: "r1",
+      readerTabs: [{ resourceId: "r1", pdfZoom: 1.5 }],
+      library: { selectedFolderId: null, selectedTagIds: [], selectedResourceId: null },
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    expect(loadSessionState().readerTabs[0].pdfZoom).toBe(1.5);
+  });
+
+  test("missing pdfZoom falls through as undefined", () => {
+    updateReaderTab("r2", { scrollY: 100 });
+    const tabs = loadSessionState().readerTabs;
+    const r2Tab = tabs.find((t) => t.resourceId === "r2");
+    expect(r2Tab?.pdfZoom).toBeUndefined();
+  });
+});

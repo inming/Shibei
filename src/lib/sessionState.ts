@@ -7,6 +7,8 @@ export interface ReaderTabState {
   /** 0-based page index (matches PDFReader's internal pageIdx). */
   pdfPage?: number;
   pdfScrollFraction?: number;
+  /** PDF zoom factor. 1.0 = fit-to-width. Range clamped at read time. */
+  pdfZoom?: number;
 }
 
 export interface LibraryState {
