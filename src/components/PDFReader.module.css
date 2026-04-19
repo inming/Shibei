@@ -6,7 +6,9 @@
 }
 
 .content {
-  min-width: 100%;
+  /* Width is controlled by inline style (zoomFactor * 100%).
+     No min-width — that would block zoom-out from shrinking the pages.
+     margin: auto (set inline when zoomFactor < 1) centers the narrower content. */
 }
 
 .loading {
