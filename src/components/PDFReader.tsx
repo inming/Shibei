@@ -46,6 +46,8 @@ interface PDFReaderProps {
   onScrollPosition: (info: { page: number; fraction: number }) => void;
   onReady: () => void;
   scrollRequest: PdfScrollRequest | null;
+  /** 1.0 = fit-to-width. Range clamped to [0.5, 4.0]. Controlled by parent. */
+  zoomFactor: number;
 }
 
 // ── Component ──
@@ -62,6 +64,7 @@ export function PDFReader({
   onScrollPosition,
   onReady,
   scrollRequest,
+  zoomFactor,
 }: PDFReaderProps) {
   const { t } = useTranslation("reader");
 
@@ -89,6 +92,7 @@ export function PDFReader({
   const pageContainerMapRef = useRef(new Map<number, HTMLDivElement>());
   const lastScrollTopRef = useRef(0);
   const pdfBytesRef = useRef<Uint8Array | null>(null);
+  const prevZoomRef = useRef<number>(zoomFactor);
 
   // ── Height / offset helpers ──
   // Always computed from current container.clientWidth — no caching, no state.
@@ -96,8 +100,9 @@ export function PDFReader({
   const getPageHeights = useCallback((): number[] => {
     const w = containerRef.current?.clientWidth ?? 0;
     if (!w || pageInfos.length === 0) return [];
-    return pageInfos.map((info) => info.height * (w / info.width));
-  }, [pageInfos]);
+    const effectiveWidth = w * zoomFactor;
+    return pageInfos.map((info) => info.height * (effectiveWidth / info.width));
+  }, [pageInfos, zoomFactor]);
 
   const getPageOffsets = useCallback((): number[] => {
     const heights = getPageHeights();
@@ -290,7 +295,7 @@ export function PDFReader({
       const info = pageInfos[pageIndex];
       if (!info) return;
 
-      const scale = containerWidth / info.width;
+      const scale = (containerWidth * zoomFactor) / info.width;
       const viewport = page.getViewport({ scale });
       const dpr = window.devicePixelRatio || 1;
       const hiDpiViewport = page.getViewport({ scale: scale * dpr });
@@ -352,7 +357,7 @@ export function PDFReader({
       renderHighlightsForPage(pageIndex, pageDiv);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pageInfos],
+    [pageInfos, zoomFactor],
   );
 
   // ── Render visible pages ──
@@ -453,6 +458,37 @@ export function PDFReader({
       clearTimeout(debounceTimer);
     };
   }, [pageInfos, renderVisiblePages]);
+
+  // ── Re-render on zoom change + preserve scroll fraction ──
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || pageInfos.length === 0) return;
+    if (prevZoomRef.current === zoomFactor) return;
+
+    // Preserve vertical position via fraction
+    const fraction = container.scrollHeight > 0
+      ? container.scrollTop / container.scrollHeight
+      : 0;
+
+    renderGenRef.current += 1;
+    renderedPagesRef.current.clear();
+
+    // After layout applies the new wrapper width, restore position & re-render
+    requestAnimationFrame(() => {
+      if (container.scrollHeight > 0) {
+        container.scrollTop = fraction * container.scrollHeight;
+      }
+      if (container.scrollWidth > container.clientWidth) {
+        container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2;
+      } else {
+        container.scrollLeft = 0;
+      }
+      renderVisiblePages();
+    });
+
+    prevZoomRef.current = zoomFactor;
+  }, [zoomFactor, pageInfos, renderVisiblePages]);
 
   // ── Text selection (right-click) ──
 
@@ -639,18 +675,27 @@ export function PDFReader({
       onContextMenu={handleContextMenu}
       onClick={onClearSelection}
     >
-      {pageInfos.map((info, idx) => (
-        <div
-          key={idx}
-          ref={(el) => {
-            if (el) pageContainerMapRef.current.set(idx, el);
-          }}
-          className={`${styles.pageContainer} ${
-            renderedPagesRef.current.has(idx) ? "" : styles.placeholder
-          }`}
-          style={{ aspectRatio: `${info.width} / ${info.height}` }}
-        />
-      ))}
+      <div
+        className={styles.content}
+        style={{
+          width: `${zoomFactor * 100}%`,
+          marginLeft: zoomFactor < 1 ? "auto" : "0",
+          marginRight: zoomFactor < 1 ? "auto" : "0",
+        }}
+      >
+        {pageInfos.map((info, idx) => (
+          <div
+            key={idx}
+            ref={(el) => {
+              if (el) pageContainerMapRef.current.set(idx, el);
+            }}
+            className={`${styles.pageContainer} ${
+              renderedPagesRef.current.has(idx) ? "" : styles.placeholder
+            }`}
+            style={{ aspectRatio: `${info.width} / ${info.height}` }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

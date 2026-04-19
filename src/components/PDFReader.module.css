@@ -1,8 +1,12 @@
 .container {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   position: relative;
   background: var(--bg-secondary);
+}
+
+.content {
+  min-width: 100%;
 }
 
 .loading {

@@ -569,6 +569,7 @@ export function ReaderView({
             onReady={() => setIframeLoading(false)}
             onScrollPosition={handlePdfScrollPosition}
             scrollRequest={pdfScrollRequest}
+            zoomFactor={1.0} // TODO: Task 4 will replace with real zoom state
           />
         ) : snapshotStatus === "pending" || downloading ? (
           <div className={styles.downloadPrompt}>
