@@ -92,6 +92,11 @@ export function PDFReader({
   const pageContainerMapRef = useRef(new Map<number, HTMLDivElement>());
   const lastScrollTopRef = useRef(0);
   const pdfBytesRef = useRef<Uint8Array | null>(null);
+  // Set true during a programmatic scroll caused by zoom change so handleScroll
+  // reports direction "up" and does not hide the meta bar.
+  const suppressMetaHideRef = useRef(false);
+  // Track previous zoom to skip effect runs caused by other dep changes.
+  const prevZoomRef = useRef<number>(zoomFactor);
 
   // ── Height / offset helpers ──
   // Always computed from current container.clientWidth — no caching, no state.
@@ -384,8 +389,9 @@ export function PDFReader({
       const scrollTop = container.scrollTop;
       const maxScroll = container.scrollHeight - container.clientHeight;
       const scrollPercent = maxScroll > 0 ? scrollTop / maxScroll : 0;
-      const direction: "up" | "down" =
-        scrollTop >= lastScrollTopRef.current ? "down" : "up";
+      const direction: "up" | "down" = suppressMetaHideRef.current
+        ? "up"
+        : scrollTop >= lastScrollTopRef.current ? "down" : "up";
       lastScrollTopRef.current = scrollTop;
 
       // Save scroll fraction for resize restore (works across browser engines)
@@ -464,16 +470,27 @@ export function PDFReader({
     const container = containerRef.current;
     if (!container || pageInfos.length === 0) return;
 
-    // Preserve vertical position via fraction
-    const fraction = container.scrollHeight > 0
-      ? container.scrollTop / container.scrollHeight
-      : 0;
+    // Guard: this effect has [zoomFactor, pageInfos, renderVisiblePages] deps.
+    // React dep-gating only prevents re-runs when ALL deps are identity-stable.
+    // pageInfos changes on PDF load; renderVisiblePages identity changes
+    // transitively. Without this guard, we'd clear rendered pages on every
+    // pageInfos/callback shuffle, causing unnecessary re-render cycles.
+    if (prevZoomRef.current === zoomFactor) return;
+    prevZoomRef.current = zoomFactor;
+
+    // Use the fraction saved during scroll events (pre-zoom position).
+    // Computing here would read post-layout scrollHeight against pre-layout
+    // scrollTop, yielding an incorrect fraction.
+    const fraction = scrollFractionRef.current;
 
     renderGenRef.current += 1;
     renderedPagesRef.current.clear();
 
-    // After layout applies the new wrapper width, restore position & re-render
+    // After layout applies the new wrapper width, restore position & re-render.
+    // Set suppressMetaHideRef before mutating scrollTop so that the resulting
+    // scroll event reports direction "up" and does not hide the meta bar.
     requestAnimationFrame(() => {
+      suppressMetaHideRef.current = true;
       if (container.scrollHeight > 0) {
         container.scrollTop = fraction * container.scrollHeight;
       }
@@ -483,6 +500,11 @@ export function PDFReader({
         container.scrollLeft = 0;
       }
       renderVisiblePages();
+      // Clear flag on the next frame, after the browser has dispatched any
+      // scroll events resulting from our scrollTop/scrollLeft mutations.
+      requestAnimationFrame(() => {
+        suppressMetaHideRef.current = false;
+      });
     });
   }, [zoomFactor, pageInfos, renderVisiblePages]);
 
