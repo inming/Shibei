@@ -627,7 +627,7 @@ function SummarySection({ resource }: { resource: Resource }) {
   if (!summary) return null;
 
   return (
-    <section className={styles.summarySection}>
+    <section data-testid="summary-section" className={styles.summarySection}>
       <div className={styles.sectionHeader}>{t("summary")}</div>
       <div className={styles.summaryText}>{summary}</div>
     </section>

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import { AnnotationPanel } from "./AnnotationPanel";
 import type { Resource } from "@/types";
 
@@ -88,12 +88,10 @@ describe("SummarySection via AnnotationPanel", () => {
   test("renders nothing when both are empty", async () => {
     vi.mocked(cmd.getResourceSummary).mockResolvedValue("");
     const resource = makeResource({ description: null });
-    const { container } = render(
-      <AnnotationPanel resource={resource} {...baseProps} />,
-    );
+    const { container } = render(<AnnotationPanel resource={resource} {...baseProps} />);
     await waitFor(() => {
       expect(vi.mocked(cmd.getResourceSummary)).toHaveBeenCalled();
     });
-    expect(container.querySelector('[class*="summarySection"]')).toBeNull();
+    expect(within(container).queryByTestId("summary-section")).toBeNull();
   });
 });

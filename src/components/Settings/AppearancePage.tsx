@@ -29,7 +29,10 @@ export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageP
   useEffect(() => {
     getAutoLaunchEnabled()
       .then((on) => setAutoLaunch(on))
-      .catch(() => setAutoLaunch(false));
+      .catch((err) => {
+        console.error("Failed to read auto-launch state:", err);
+        setAutoLaunch(false);
+      });
   }, []);
 
   const handleToggleAutoLaunch = async () => {
@@ -42,7 +45,10 @@ export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageP
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(t("autoLaunchFailed", { message: msg }));
-      const actual = await getAutoLaunchEnabled().catch(() => false);
+      const actual = await getAutoLaunchEnabled().catch((resyncErr) => {
+        console.error("Failed to resync auto-launch state:", resyncErr);
+        return false;
+      });
       setAutoLaunch(actual);
     }
   };
