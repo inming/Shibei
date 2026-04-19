@@ -16,5 +16,9 @@
   "pdfPasswordPlaceholder": "请输入 PDF 密码",
   "pdfUnlock": "解锁",
   "pdfPage": "第 {{current}} 页，共 {{total}} 页",
-  "importFile": "导入文件"
+  "importFile": "导入文件",
+  "zoomIn": "放大",
+  "zoomOut": "缩小",
+  "zoomReset": "重置为 100%",
+  "zoomPercentage": "{{value}}%"
 }

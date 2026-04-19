@@ -9,6 +9,7 @@ import { HighlightContextMenu } from "@/components/HighlightContextMenu";
 import { PDFReader } from "@/components/PDFReader";
 import * as cmd from "@/lib/commands";
 import { updateReaderTab } from "@/lib/sessionState";
+import { clampZoom, nextZoom, prevZoom, ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX } from "@/lib/pdfZoom";
 import styles from "./ReaderView.module.css";
 
 // Tauri 2 uses different protocol URLs per platform:
@@ -23,6 +24,7 @@ interface ReaderViewProps {
   initialScrollY?: number | null;
   initialPdfPage?: number | null;
   initialPdfScrollFraction?: number | null;
+  initialPdfZoom?: number | null;
 }
 
 interface SelectionInfo {
@@ -37,6 +39,7 @@ export function ReaderView({
   initialScrollY,
   initialPdfPage,
   initialPdfScrollFraction,
+  initialPdfZoom,
 }: ReaderViewProps) {
   const { t } = useTranslation('reader');
   const { t: tAnnotation } = useTranslation('annotation');
@@ -71,6 +74,9 @@ export function ReaderView({
     | { kind: "position"; page: number; fraction: number; ts: number }
     | null
   >(null);
+  const [pdfZoom, setPdfZoom] = useState<number>(() =>
+    clampZoom(initialPdfZoom ?? ZOOM_DEFAULT)
+  );
 
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
@@ -80,6 +86,12 @@ export function ReaderView({
   // Reset restore-scroll guard on resource change (defensive)
   useEffect(() => {
     didRestoreScroll.current = false;
+  }, [resource.id]);
+
+  // Reset zoom when switching to a different resource
+  useEffect(() => {
+    setPdfZoom(clampZoom(initialPdfZoom ?? ZOOM_DEFAULT));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resource.id]);
 
   // Cleanup pending scroll persist timer on unmount
@@ -430,6 +442,10 @@ export function ReaderView({
     }, 500);
   }, [resource.id]);
 
+  const handleZoomIn = useCallback(() => setPdfZoom((z) => nextZoom(z)), []);
+  const handleZoomOut = useCallback(() => setPdfZoom((z) => prevZoom(z)), []);
+  const handleZoomReset = useCallback(() => setPdfZoom(ZOOM_DEFAULT), []);
+
   // Layout constants — see CLAUDE.md "阅读器双栏布局约束"
   const PANEL_MIN = 220;
   const READER_MIN = 400;
@@ -521,7 +537,7 @@ export function ReaderView({
           <span className={styles.metaTime}>
             {new Date(resource.created_at).toLocaleDateString()}
           </span>
-          {resource.resource_type !== "pdf" && (
+          {resource.resource_type !== "pdf" ? (
             <button
               className={`${styles.invertBtn} ${inverted ? styles.invertBtnActive : ""}`}
               onClick={() => setInverted((v) => !v)}
@@ -529,6 +545,36 @@ export function ReaderView({
             >
               🌓
             </button>
+          ) : (
+            <div className={styles.zoomControls}>
+              <button
+                className={styles.zoomBtn}
+                onClick={handleZoomOut}
+                disabled={pdfZoom <= ZOOM_MIN + 0.001}
+                title={t("zoomOut")}
+              >
+                −
+              </button>
+              <span className={styles.zoomLabel}>
+                {t("zoomPercentage", { value: Math.round(pdfZoom * 100) })}
+              </span>
+              <button
+                className={styles.zoomBtn}
+                onClick={handleZoomIn}
+                disabled={pdfZoom >= ZOOM_MAX - 0.001}
+                title={t("zoomIn")}
+              >
+                +
+              </button>
+              <button
+                className={styles.zoomBtn}
+                onClick={handleZoomReset}
+                disabled={Math.abs(pdfZoom - ZOOM_DEFAULT) < 0.001}
+                title={t("zoomReset")}
+              >
+                ↺
+              </button>
+            </div>
           )}
         </div>
 
@@ -569,7 +615,7 @@ export function ReaderView({
             onReady={() => setIframeLoading(false)}
             onScrollPosition={handlePdfScrollPosition}
             scrollRequest={pdfScrollRequest}
-            zoomFactor={1.0} // TODO: Task 4 will replace with real zoom state
+            zoomFactor={pdfZoom}
           />
         ) : snapshotStatus === "pending" || downloading ? (
           <div className={styles.downloadPrompt}>

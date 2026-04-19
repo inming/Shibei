@@ -16,5 +16,9 @@
   "pdfPasswordPlaceholder": "Enter PDF password",
   "pdfUnlock": "Unlock",
   "pdfPage": "Page {{current}} of {{total}}",
-  "importFile": "Import file"
+  "importFile": "Import file",
+  "zoomIn": "Zoom in",
+  "zoomOut": "Zoom out",
+  "zoomReset": "Reset to 100%",
+  "zoomPercentage": "{{value}}%"
 }
