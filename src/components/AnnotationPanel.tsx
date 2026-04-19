@@ -107,8 +107,14 @@ export function AnnotationPanel({
     return () => observer.disconnect();
   }, [resourceNotes.length]);
 
+  // Reset sticky state when switching resources (panel stays mounted, resource prop swaps)
+  useEffect(() => {
+    setAnnotationsHeaderHidden(false);
+  }, [resource.id]);
+
   // Watch whether annotations header is scrolled ABOVE viewport
   // (not "below viewport" — that case means user hasn't reached it yet, don't show sticky)
+  // Keyed on resource.id so the observer re-attaches if the DOM node is ever replaced.
   useEffect(() => {
     const header = annotationsHeaderRef.current;
     const root = scrollAreaRef.current;
@@ -125,7 +131,7 @@ export function AnnotationPanel({
     );
     observer.observe(header);
     return () => observer.disconnect();
-  }, []);
+  }, [resource.id]);
 
   return (
     <div className={styles.panel} style={style}>
@@ -606,7 +612,7 @@ function SummarySection({ resource }: { resource: Resource }) {
     const desc = resource.description?.trim();
     if (desc) {
       setSummary(desc);
-      return () => { cancelled = true; };
+      return;
     }
     setSummary(null);
     cmd.getResourceSummary(resource.id)
