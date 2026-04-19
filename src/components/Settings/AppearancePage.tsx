@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
 import type { ThemeMode } from "@/hooks/useTheme";
+import { getAutoLaunchEnabled, setAutoLaunchEnabled } from "@/lib/autostart";
 import settingsStyles from "./Settings.module.css";
 import styles from "./AppearancePage.module.css";
 
@@ -21,6 +24,28 @@ const LANGUAGE_OPTIONS = [
 
 export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageProps) {
   const { t, i18n } = useTranslation("settings");
+  const [autoLaunch, setAutoLaunch] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    getAutoLaunchEnabled()
+      .then((on) => setAutoLaunch(on))
+      .catch(() => setAutoLaunch(false));
+  }, []);
+
+  const handleToggleAutoLaunch = async () => {
+    if (autoLaunch === null) return;
+    const next = !autoLaunch;
+    try {
+      await setAutoLaunchEnabled(next);
+      setAutoLaunch(next);
+      toast.success(next ? t("autoLaunchEnabled") : t("autoLaunchDisabled"));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(t("autoLaunchFailed", { message: msg }));
+      const actual = await getAutoLaunchEnabled().catch(() => false);
+      setAutoLaunch(actual);
+    }
+  };
 
   return (
     <>
@@ -55,6 +80,20 @@ export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageP
             </button>
           ))}
         </div>
+      </div>
+
+      <div className={settingsStyles.passwordSection}>
+        <h3 className={settingsStyles.subheading}>{t("startup")}</h3>
+        <label className={settingsStyles.toggleRow}>
+          <input
+            type="checkbox"
+            checked={autoLaunch === true}
+            disabled={autoLaunch === null}
+            onChange={handleToggleAutoLaunch}
+          />
+          <span>{t("autoLaunch")}</span>
+        </label>
+        <div className={settingsStyles.hint}>{t("autoLaunchDescription")}</div>
       </div>
     </>
   );
