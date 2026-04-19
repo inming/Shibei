@@ -446,6 +446,37 @@ export function ReaderView({
   const handleZoomOut = useCallback(() => setPdfZoom((z) => prevZoom(z)), []);
   const handleZoomReset = useCallback(() => setPdfZoom(ZOOM_DEFAULT), []);
 
+  // Keyboard shortcuts for PDF zoom (Ctrl/Cmd +/-/0)
+  useEffect(() => {
+    if (resource.resource_type !== "pdf") return;
+
+    const isEditableTarget = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return true;
+      if (el.isContentEditable) return true;
+      return false;
+    };
+
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (isEditableTarget(e.target)) return;
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        handleZoomIn();
+      } else if (e.key === "-") {
+        e.preventDefault();
+        handleZoomOut();
+      } else if (e.key === "0") {
+        e.preventDefault();
+        handleZoomReset();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [resource.resource_type, handleZoomIn, handleZoomOut, handleZoomReset]);
+
   // Layout constants — see CLAUDE.md "阅读器双栏布局约束"
   const PANEL_MIN = 220;
   const READER_MIN = 400;
