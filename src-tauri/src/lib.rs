@@ -233,6 +233,10 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .manage(cmd_state)
         .manage(Arc::new(sync::EncryptionState::new()))
         .invoke_handler(tauri::generate_handler![
@@ -336,6 +340,12 @@ pub fn run() {
             }
         })
         .setup(move |app| {
+            // If launched by the OS autostart mechanism, minimize immediately
+            if std::env::args().any(|a| a == "--autostart") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.minimize();
+                }
+            }
             // Create server state with app_handle for event emission
             let server_sync_clock = device_id
                 .as_ref()
