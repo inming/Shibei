@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。v2.3.2 插件 PNA 修复完成。v2.3.3 会话持久化完成。v2.3.4 右键菜单防溢出完成。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
+MVP 已完成（Phase 1-8）。**v1.1 全部完成。v1.1.1 全部完成。v1.2 全部完成。v1.2.1 全部完成。v1.3 全部完成（E2EE → v1.3.1）。v1.3.1 全部完成。v1.3.2 全部完成。v1.3.3 全部完成。v1.4 第一期完成（元数据搜索，全文搜索移至 v2.0）。v1.5 全部完成。v1.6 全部完成。v1.7 全部完成（含 MCP 自动配置）。v1.8 全部完成。v2.0 快照全文搜索完成。v2.1 UX 体验改进完成。v2.2 本地备份与恢复完成。v2.3 PDF 支持完成。v2.3.1 UI 细节优化完成。v2.3.2 插件 PNA 修复完成。v2.3.3 会话持久化完成。v2.3.4 右键菜单防溢出完成。v2.4 全部完成（PDF 缩放 + 开机自启 + 阅读器摘要）。下一步：v2.0 其余能力扩展（AI/快捷键/移动端）。**
 
 ---
 
@@ -569,6 +569,64 @@ Chrome 对 content script 发起的 fetch 以**页面 origin** 判定 Private Ne
 
 ---
 
+## v2.4 — PDF 缩放 / 开机自启 / 阅读器摘要
+
+**目标**：PDF 阅读器增加缩放（宽屏下横向全展开纵向可视内容太少）；系统支持开机自启（最小化启动，不抢焦点，覆盖 macOS + Windows）；阅读器右栏顶部加一瞥式摘要。
+
+### PDF 缩放
+
+- [x] **逻辑倍率乘法** — `PDFReader` 接受 `zoomFactor` 受控 prop，在 `.content` 包裹层 `width = zoomFactor * 100%` 改变渲染宽度；scale 公式 `(containerWidth * zoomFactor) / pageInfo.width`；100% 锚定为 fit-to-width（不绑 PDF 72dpi）
+- [x] **范围 / 步进** — 0.5–4.0，步进 0.05；`round2` 防浮点累加漂移（20 次 +0.05 精确落到 2.00）
+- [x] **工具条** — meta 栏右端（PDF 模式取代 🌓 按钮位置），`[−] [百分比] [+] [↺]`，边界自动禁用
+- [x] **快捷键** — `Ctrl/Cmd +/-/0`（跨平台），全局监听 `window`，`INPUT/TEXTAREA/[contenteditable]` focus 时不响应
+- [x] **持久化** — `sessionState.ReaderTab.pdfZoom` 每资料独立；`clampZoom` 在加载时落地；新旧 session 双向兼容（可选字段）
+- [x] **滚动位置保持** — zoom effect 读 `scrollFractionRef.current`（scroll handler 每次存的 pre-zoom fraction），**不在 effect 里现算**——effect 是 post-commit，`scrollHeight` 已是新布局、`scrollTop` 还是旧值，fraction 会错；`suppressMetaHideRef` 在 programmatic scroll 帧内让 `handleScroll` 报 direction='up'，防止 meta bar 被隐藏导致用户无法连点；双 rAF 清理该 flag
+- [x] **水平滚动** — zoomFactor > 1 时出现水平滚动条并居中（`(scrollWidth - clientWidth) / 2`）；zoomFactor ≤ 1 时 `scrollLeft=0`，页面用 `margin: 0 auto` 居中
+- [x] **CSS 约束** — `.content` 不得加 `min-width: 100%`（会压制 zoom < 1 的宽度使缩小无效）；`.container` 用 `overflow: auto` 双向滚动
+- [x] **anchor 兼容** — 完全复用 `range.getClientRects()`，scale 改变时 anchor rect 自动跟随；`PdfAnchor` 持久化结构零改动
+
+### 开机自启
+
+- [x] **插件注册** — `tauri-plugin-autostart`，`MacosLauncher::LaunchAgent`，注册参数 `--autostart`；启动时 setup 检测该 arg 调用 `window.minimize()`，不抢焦点
+- [x] **前端封装** — `src/lib/autostart.ts` 薄封装 `enable/disable/isEnabled`，AppearancePage 消费
+- [x] **Settings 切换** — 外观 → 启动 分区，checkbox + 说明文字；`boolean | null` 三态防闪烁；失败 toast + 回读系统状态重同步；初始 load 失败时 `console.error` 不静吞
+- [x] **Capability** — `autostart:default` 加入 `src-tauri/capabilities/default.json`
+- [x] **单实例兼容** — 现有 `tauri-plugin-single-instance` 与自启并存，手动再次启动不开第二实例
+
+### 阅读器摘要
+
+- [x] **SummarySection** — AnnotationPanel `scrollArea` 顶部渲染摘要，`description.trim() > cmd.getResourceSummary()` 取 `plain_text` 前 200 字；两者都空时整块不渲染；`cancelled` flag 防止 resource 切换时 stale async 写入
+- [x] **结构重组** — `标注 (N)` header 从固定区迁入 `scrollArea` 成为 section header，删除旧的 `.header` class；新增顶部 `stickyAnnotationsHeader` 镜像底部 `stickyNotesHeader`；IntersectionObserver 用 `boundingClientRect.top < rootBounds.top` 方向检测，只在真正向上滚出时显示
+- [x] **资料切换稳定性** — `resource.id` 变化时 reset `annotationsHeaderHidden`；observer dep 挂 `[resource.id]` 跟随重挂载，防止 sticky 从上一资料残留闪烁
+- [x] **padding 对齐** — `.summarySection` 仅设上下 padding，水平 padding 由内部 `.sectionHeader` / `.summaryText` 各自负责，保证摘要 header 与列表外 annotations header 左缘对齐
+- [x] **可测试** — `<section data-testid="summary-section">` + 3 个 Vitest 用例覆盖三种内容状态
+
+### 验证
+
+- PDF 50%/150%/200% 缩放正常，meta bar 连击不消失 ✓
+- 滚到中段缩放后视觉位置保持 ✓
+- anchor 在不同 zoom 下对齐 ✓（手动回归）
+- 跨重启 pdfZoom 持久化 ✓
+- Settings → 启动 toggle + toast + 失败重同步 ✓（UI 层）
+- 摘要三状态（description / plain_text / 空）正确 ✓
+- sticky header 仅向上滚出时出现 ✓
+- 摘要 header 与标注 header 左缘对齐 ✓
+
+### 产出
+
+- 设计文档：`docs/superpowers/specs/2026-04-19-v2.4-pdf-zoom-autolaunch-summary-design.md`
+- 实现计划：`docs/superpowers/plans/2026-04-19-v2.4-pdf-zoom-autolaunch-summary.md`
+- 18 commits on main（`da4c7fd` → `386d4c6`），含 4 次 review/feedback 驱动的修正
+
+### 未做（按实际需求推迟）
+
+- 百分比标签可点击输入任意值（当前纯 label，5% 步进 + 快捷键足够）
+- **打包版自启双平台回归**：`tauri-plugin-autostart` 需实际打包版才能注册正确路径，留待下次发版手动验证（macOS 系统设置 → 登录项、Windows `HKCU\...\Run`）
+- Ctrl+滚轮缩放（用户明确排除，易误触）
+- 全局默认缩放偏好（所有 PDF 共享），每资料独立更符合实际阅读体验
+
+---
+
 ## 版本节奏
 
 | 版本 | 核心主题 | 复杂度 | 性质 |
@@ -589,4 +647,5 @@ Chrome 对 content script 发起的 fetch 以**页面 origin** 判定 Private Ne
 | **v2.3.2** | 插件 PNA 修复 | 低 | 所有本地 HTTP 请求收敛到 Background Service Worker，消除 Chrome 授权弹框 |
 | **v2.3.3** | 会话持久化 | 中 | Tab + 滚动 + 资料库选中/滚动跨重启恢复；Reader Tab 懒挂载 |
 | **v2.3.4** | 右键菜单防溢出 | 低 | `useFlipPosition` / `useSubmenuPosition` 统一管位置；`ResizeObserver` 兜住 async 内容 |
+| **v2.4** | PDF 缩放 + 开机自启 + 阅读器摘要 | 中 | 三合一小版本：PDF 放大/缩小 + 每资料持久化；macOS LaunchAgent / Win 注册表自启（最小化）；AnnotationPanel 顶部 description/plain_text 摘要 + sticky 标注 header |
 | **v2.x** | 导出 / AI / 快捷键 / 移动端 | — | 能力扩展（按需选做） |
