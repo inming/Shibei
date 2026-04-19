@@ -78,6 +78,12 @@ export function ReaderView({
     clampZoom(initialPdfZoom ?? ZOOM_DEFAULT)
   );
 
+  // Persist zoom on change (no debounce — changes are user-driven, low frequency)
+  useEffect(() => {
+    if (resource.resource_type !== "pdf") return;
+    updateReaderTab(resource.id, { pdfZoom });
+  }, [pdfZoom, resource.id, resource.resource_type]);
+
   // Reset scroll guard when initialHighlightId changes
   useEffect(() => {
     didScrollToInitial.current = false;

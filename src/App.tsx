@@ -29,6 +29,7 @@ interface ReaderTab {
   initialScrollY: number | null;
   initialPdfPage: number | null;
   initialPdfScrollFraction: number | null;
+  initialPdfZoom: number | null;
 }
 
 function App() {
@@ -59,6 +60,7 @@ function App() {
           initialScrollY: null,
           initialPdfPage: null,
           initialPdfScrollFraction: null,
+          initialPdfZoom: null,
         });
       } else if (highlightId) {
         const existing = next.get(resource.id)!;
@@ -177,6 +179,7 @@ function App() {
           initialPdfPage: typeof r.entry.pdfPage === "number" ? r.entry.pdfPage : null,
           initialPdfScrollFraction:
             typeof r.entry.pdfScrollFraction === "number" ? r.entry.pdfScrollFraction : null,
+          initialPdfZoom: typeof r.entry.pdfZoom === "number" ? r.entry.pdfZoom : null,
         });
         keptIds.add(r.resource.id);
       }
@@ -391,6 +394,7 @@ function App() {
                 initialScrollY={tab.initialScrollY}
                 initialPdfPage={tab.initialPdfPage}
                 initialPdfScrollFraction={tab.initialPdfScrollFraction}
+                initialPdfZoom={tab.initialPdfZoom}
               />
             </div>
           ) : null,
