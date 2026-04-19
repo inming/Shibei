@@ -8,6 +8,7 @@ import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
 import { useFlipPosition } from "@/hooks/useFlipPosition";
+import * as cmd from "@/lib/commands";
 
 function autoResize(el: HTMLTextAreaElement | null) {
   if (!el) return;
@@ -81,7 +82,9 @@ export function AnnotationPanel({
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const notesHeaderRef = useRef<HTMLDivElement>(null);
+  const annotationsHeaderRef = useRef<HTMLDivElement>(null);
   const [notesHeaderHidden, setNotesHeaderHidden] = useState(false);
+  const [annotationsHeaderHidden, setAnnotationsHeaderHidden] = useState(false);
 
   // Scroll to active highlight when it changes
   useEffect(() => {
@@ -104,11 +107,47 @@ export function AnnotationPanel({
     return () => observer.disconnect();
   }, [resourceNotes.length]);
 
+  // Watch whether annotations header is scrolled ABOVE viewport
+  // (not "below viewport" — that case means user hasn't reached it yet, don't show sticky)
+  useEffect(() => {
+    const header = annotationsHeaderRef.current;
+    const root = scrollAreaRef.current;
+    if (!header || !root) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const scrolledAbove =
+          !entry.isIntersecting &&
+          entry.boundingClientRect.top < (entry.rootBounds?.top ?? 0);
+        setAnnotationsHeaderHidden(scrolledAbove);
+      },
+      { root, threshold: 0 },
+    );
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className={styles.panel} style={style}>
       <ResourceMeta resource={resource} />
-      <div className={styles.header}>{t('annotationsCount', { count: highlights.length })}</div>
+      {annotationsHeaderHidden && (
+        <div
+          className={styles.stickyAnnotationsHeader}
+          onClick={() =>
+            annotationsHeaderRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            })
+          }
+        >
+          {t('annotationsCount', { count: highlights.length })}
+        </div>
+      )}
       <div ref={scrollAreaRef} className={styles.scrollArea}>
+        <SummarySection resource={resource} />
+        <div ref={annotationsHeaderRef} className={styles.sectionHeader}>
+          {t('annotationsCount', { count: highlights.length })}
+        </div>
         <div className={styles.list}>
           {highlights.length === 0 && (
             <div className={styles.empty}>{t('emptyAnnotationsHint')}</div>
@@ -557,6 +596,37 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
     </div>
   );
 });
+
+function SummarySection({ resource }: { resource: Resource }) {
+  const { t } = useTranslation("annotation");
+  const [summary, setSummary] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const desc = resource.description?.trim();
+    if (desc) {
+      setSummary(desc);
+      return () => { cancelled = true; };
+    }
+    setSummary(null);
+    cmd.getResourceSummary(resource.id)
+      .then((s) => {
+        if (cancelled) return;
+        setSummary(s?.trim() || null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [resource.id, resource.description]);
+
+  if (!summary) return null;
+
+  return (
+    <section className={styles.summarySection}>
+      <div className={styles.sectionHeader}>{t("summary")}</div>
+      <div className={styles.summaryText}>{summary}</div>
+    </section>
+  );
+}
 
 function NoteInput({ onAdd }: { onAdd: (content: string) => void }) {
   const { t } = useTranslation('annotation');

@@ -34,5 +34,6 @@
   "deleteCommentFailed": "Failed to delete comment",
   "editCommentFailed": "Failed to edit comment",
   "createHighlightFailed": "Failed to create highlight",
-  "emptyAnnotationsHint": "Select text and right-click to create highlights"
+  "emptyAnnotationsHint": "Select text and right-click to create highlights",
+  "summary": "Summary"
 }

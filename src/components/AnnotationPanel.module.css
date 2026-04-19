@@ -7,15 +7,6 @@
   flex-shrink: 0;
 }
 
-.header {
-  padding: var(--spacing-md);
-  border-bottom: 1px solid var(--color-border-light);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
 
 .scrollArea {
   flex: 1;
@@ -414,4 +405,43 @@
   padding: var(--spacing-xs);
   border: 1px solid var(--color-border);
   border-radius: 4px;
+}
+
+.summarySection {
+  padding: var(--spacing-md) var(--spacing-md) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.sectionHeader {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summaryText {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+.stickyAnnotationsHeader {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stickyAnnotationsHeader:hover {
+  background: var(--color-bg-hover);
 }
