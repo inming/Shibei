@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font: 14px -apple-system, sans-serif; padding: 8px; }
+  pre { max-height: 50vh; overflow: auto; background: #f0f0f0; padding: 8px; font-size: 11px; }
+  canvas { width: 100%; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h3>pdfjs-dist Demo</h3>
+<div id="status">loading…</div>
+<canvas id="page"></canvas>
+<h4>Extracted text (streamTextContent):</h4>
+<pre id="text">—</pre>
+<script type="module">
+import * as pdfjs from './pdf.mjs';
+pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
+
+const host = (window).shibeiHost;
+function log(msg) {
+  host && host.onEvent(JSON.stringify({ kind: 'log', msg }));
+  console.log(msg);
+}
+
+async function run() {
+  try {
+    const url = './sample.pdf';
+    log(`loading ${url}`);
+    const task = pdfjs.getDocument(url);
+    const pdf = await task.promise;
+    log(`loaded, pages=${pdf.numPages}`);
+
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1.0 });
+    const canvas = document.getElementById('page');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    log(`page 1 rendered ${viewport.width}x${viewport.height}`);
+
+    // streamTextContent — the critical API for Shibei's plain_text extraction
+    const textStream = page.streamTextContent({ includeMarkedContent: false });
+    const reader = textStream.getReader();
+    let pieces = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.items) {
+        for (const it of value.items) {
+          if (typeof it.str === 'string') pieces.push(it.str);
+        }
+      }
+    }
+    const full = pieces.join(' ');
+    document.getElementById('text').textContent = full || '(empty)';
+    document.getElementById('status').textContent = `extracted ${full.length} chars`;
+    host && host.onEvent(JSON.stringify({ kind: 'done', chars: full.length, sample: full.substring(0, 80) }));
+  } catch (err) {
+    const e = String(err && err.message || err);
+    document.getElementById('status').textContent = 'ERR: ' + e;
+    host && host.onEvent(JSON.stringify({ kind: 'error', message: e }));
+  }
+}
+run();
+</script>
+</body>
+</html>
