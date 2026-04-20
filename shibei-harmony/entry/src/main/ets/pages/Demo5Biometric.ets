@@ -48,10 +48,16 @@ struct Demo5Biometric {
   private async authAndUse(): Promise<void> {
     try {
       const t0: number = Date.now();
+      // BusinessError 401 was seen with ATL3 + [FACE, FINGERPRINT] on Mate X5.
+      // Lowered to ATL2 and fingerprint-only for Phase 0 verification; ATL3
+      // compatibility matrix for concurrent FACE+FINGERPRINT auth on this
+      // device can be revisited once biometric UX design is locked in.
+      const challenge: Uint8Array = new Uint8Array(16);
+      for (let i = 0; i < challenge.length; i++) { challenge[i] = i; }
       const authParam: userAuth.AuthParam = {
-        challenge: new Uint8Array(32),
-        authType: [userAuth.UserAuthType.FACE, userAuth.UserAuthType.FINGERPRINT],
-        authTrustLevel: userAuth.AuthTrustLevel.ATL3
+        challenge,
+        authType: [userAuth.UserAuthType.FINGERPRINT],
+        authTrustLevel: userAuth.AuthTrustLevel.ATL2
       };
       const widgetParam: userAuth.WidgetParam = { title: '解锁 Demo 5 密钥' };
       const auth: userAuth.UserAuthInstance = userAuth.getUserAuthInstance(authParam, widgetParam);

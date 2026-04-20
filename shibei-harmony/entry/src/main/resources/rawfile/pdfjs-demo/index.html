@@ -14,23 +14,70 @@
 <canvas id="page"></canvas>
 <h4>Extracted text (streamTextContent):</h4>
 <pre id="text">—</pre>
+
+<!--
+  Probe 1: non-module script to confirm inline script executes at all.
+  If host logs "A: inline script" we know basic JS runs.
+-->
+<script>
+(function() {
+  var host = window.shibeiHost;
+  if (host) host.onEvent(JSON.stringify({ kind: 'probe', step: 'A: inline script' }));
+  var s = document.getElementById('status');
+  if (s) s.textContent = 'A: inline script ran';
+})();
+</script>
+
+<!--
+  Probe 2: ES module script. If host logs "B: module start" the ES-module
+  loader works. If this never arrives, ArkWeb's module loader failed.
+-->
 <script type="module">
-import * as pdfjs from './pdf.mjs';
-pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
+(function() {
+  var host = window.shibeiHost;
+  if (host) host.onEvent(JSON.stringify({ kind: 'probe', step: 'B: module start' }));
+  document.getElementById('status').textContent = 'B: module start';
+})();
+</script>
 
-const host = (window).shibeiHost;
-function log(msg) {
-  host && host.onEvent(JSON.stringify({ kind: 'log', msg }));
-  console.log(msg);
-}
+<!--
+  Probe 3: dynamic import of pdf.mjs. This defers fatal failures to a
+  Promise rejection we can catch rather than silently halting module
+  evaluation (which is what happens on a static import resolution error).
+-->
+<script type="module">
+(async function() {
+  var host = window.shibeiHost;
+  function log(o) { if (host) host.onEvent(JSON.stringify(o)); console.log(o); }
+  function setStatus(s) { document.getElementById('status').textContent = s; }
 
-async function run() {
+  log({ kind: 'probe', step: 'C: about to import pdf.mjs' });
+  setStatus('C: importing pdf.mjs');
+
+  let pdfjs;
   try {
-    const url = './sample.pdf';
-    log(`loading ${url}`);
-    const task = pdfjs.getDocument(url);
+    pdfjs = await import('./pdf.mjs');
+    log({ kind: 'probe', step: 'D: pdf.mjs imported', keys: Object.keys(pdfjs).slice(0, 10) });
+    setStatus('D: pdf.mjs imported');
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    log({ kind: 'error', step: 'C', message: msg });
+    setStatus('ERR at C: ' + msg);
+    return;
+  }
+
+  try {
+    pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
+    log({ kind: 'probe', step: 'E: workerSrc set' });
+    setStatus('E: workerSrc set');
+
+    const task = pdfjs.getDocument('./sample.pdf');
+    log({ kind: 'probe', step: 'F: getDocument task created' });
+    setStatus('F: waiting for doc');
+
     const pdf = await task.promise;
-    log(`loaded, pages=${pdf.numPages}`);
+    log({ kind: 'probe', step: 'G: pdf loaded', pages: pdf.numPages });
+    setStatus('G: pdf loaded, pages=' + pdf.numPages);
 
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: 1.0 });
@@ -39,12 +86,12 @@ async function run() {
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
-    log(`page 1 rendered ${viewport.width}x${viewport.height}`);
+    log({ kind: 'probe', step: 'H: page rendered', w: viewport.width, h: viewport.height });
+    setStatus('H: rendered, extracting text...');
 
-    // streamTextContent — the critical API for Shibei's plain_text extraction
     const textStream = page.streamTextContent({ includeMarkedContent: false });
     const reader = textStream.getReader();
-    let pieces = [];
+    const pieces = [];
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -56,15 +103,14 @@ async function run() {
     }
     const full = pieces.join(' ');
     document.getElementById('text').textContent = full || '(empty)';
-    document.getElementById('status').textContent = `extracted ${full.length} chars`;
-    host && host.onEvent(JSON.stringify({ kind: 'done', chars: full.length, sample: full.substring(0, 80) }));
+    setStatus('extracted ' + full.length + ' chars');
+    log({ kind: 'done', chars: full.length, sample: full.substring(0, 80) });
   } catch (err) {
-    const e = String(err && err.message || err);
-    document.getElementById('status').textContent = 'ERR: ' + e;
-    host && host.onEvent(JSON.stringify({ kind: 'error', message: e }));
+    const msg = err && err.message ? err.message : String(err);
+    log({ kind: 'error', step: 'post-import', message: msg });
+    setStatus('ERR post-import: ' + msg);
   }
-}
-run();
+})();
 </script>
 </body>
 </html>
