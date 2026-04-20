@@ -27,6 +27,34 @@
   workerSrc must still be a non-empty string (pdfjs throws otherwise), so we
   set it to a harmless placeholder; it's never actually fetched.
 -->
+<script>
+// ES2024 Uint8Array.prototype.toHex / fromHex are not yet in ArkWeb's
+// Chromium. pdfjs v4 uses them for PDF fingerprints; polyfill before
+// loading the bundles.
+(function() {
+  var P = Uint8Array.prototype;
+  if (typeof P.toHex !== 'function') {
+    P.toHex = function() {
+      var out = '';
+      for (var i = 0; i < this.length; i++) {
+        var h = this[i].toString(16);
+        out += h.length < 2 ? '0' + h : h;
+      }
+      return out;
+    };
+  }
+  if (typeof Uint8Array.fromHex !== 'function') {
+    Uint8Array.fromHex = function(hex) {
+      var len = hex.length >> 1;
+      var arr = new Uint8Array(len);
+      for (var i = 0; i < len; i++) {
+        arr[i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+      return arr;
+    };
+  }
+})();
+</script>
 <script src="./pdf-bundle.js"></script>
 <script src="./pdf-worker-bundle.js"></script>
 <script>
