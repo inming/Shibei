@@ -6,6 +6,6 @@
   "author": "",
   "license": "AGPL-3.0",
   "dependencies": {
-    "libshibei_core.so": "file:./src/main/cpp/types/libshibei_core"
+    "libshibei_core.so": "file:./types/libshibei_core"
   }
 }
