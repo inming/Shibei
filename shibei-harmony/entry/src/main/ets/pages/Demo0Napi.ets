@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import testNapi from 'libshibei_core.so';
+import { formatErr } from '../utils/formatErr';
 
 @Entry
 @Component
@@ -15,9 +16,10 @@ struct Demo0Napi {
       this.status = 'OK';
       hilog.info(0x0000, 'shibei', 'demo0 hello: %{public}s, sum=%{public}d', greet, sum);
     } catch (err) {
+      const msg = formatErr(err);
       this.status = 'ERROR';
-      this.result = JSON.stringify(err);
-      hilog.error(0x0000, 'shibei', 'demo0 fail: %{public}s', JSON.stringify(err));
+      this.result = msg;
+      hilog.error(0x0000, 'shibei', 'demo0 fail: %{public}s', msg);
     }
   }
 
