@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import testNapi from 'libshibei_core.so';
+import { hello, add } from 'libshibei_core.so';
 
 @Entry
 @Component
@@ -9,8 +9,8 @@ struct Demo0Napi {
 
   private run(): void {
     try {
-      const greet: string = testNapi.hello();
-      const sum: number = testNapi.add(3, 4);
+      const greet: string = hello();
+      const sum: number = add(3, 4);
       this.result = `hello: ${greet}\nadd(3,4): ${sum}`;
       this.status = 'OK';
       hilog.info(0x0000, 'shibei', 'demo0 hello: %{public}s, sum=%{public}d', greet, sum);
