@@ -13,15 +13,6 @@ class BridgeHost {
   onEvent(payload: string): void {
     this.outer.receiveEvent(payload);
   }
-
-  // WebView calls this to obtain the pdf.worker.mjs bundle source as a
-  // string. ArkWeb blocks both ES module imports and fetch() of sibling
-  // files under file://; handing the worker code across the JS bridge
-  // lets the page build a blob: URL (the one scheme pdfjs and Worker
-  // accept without restriction).
-  getWorkerBundle(): string {
-    return this.outer.workerBundleText;
-  }
 }
 
 const ASSETS: Array<string> = ['index.html', 'pdf-bundle.js', 'pdf-worker-bundle.js', 'sample.pdf'];
