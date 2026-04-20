@@ -15,7 +15,7 @@ struct Demo0Napi {
       this.result = `hello: ${greet}\nadd(3,4): ${sum}`;
       this.status = 'OK';
       hilog.info(0x0000, 'shibei', 'demo0 hello: %{public}s, sum=%{public}d', greet, sum);
-    } catch (err) {
+    } catch (err: Error) {
       const msg = formatErr(err);
       this.status = 'ERROR';
       this.result = msg;
