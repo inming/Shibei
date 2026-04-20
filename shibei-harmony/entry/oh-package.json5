@@ -5,8 +5,7 @@
   "main": "",
   "author": "",
   "license": "AGPL-3.0",
-  "types": "./types/libshibei_core/index.d.ts",
   "dependencies": {
-    "libshibei_core.so": "file:./libs/arm64-v8a/libshibei_core.so"
+    "libshibei_core.so": "file:./src/main/cpp/types/libshibei_core"
   }
 }
