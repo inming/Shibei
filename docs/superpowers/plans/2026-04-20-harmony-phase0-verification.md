@@ -88,9 +88,16 @@ ls "$HOME/Library/Huawei/Sdk" 2>/dev/null || ls "$USERPROFILE/AppData/Local/Huaw
 
 - [ ] **Step 2: Set HarmonyOS NDK environment variable**
 
-Add to `~/.zshrc` (macOS) or equivalent:
+**DevEco Studio 6.x (macOS)** bundles the entire SDK inside the app package. The NDK root is:
+```
+/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native
+```
+
+(DevEco 5.x used `~/Library/Huawei/Sdk/HarmonyOS-NEXT-DB*/openharmony/native` — if you happen to be on the older version, use that path instead.)
+
+Add to `~/.zshrc`:
 ```bash
-export OHOS_NDK_HOME="$HOME/Library/Huawei/Sdk/HarmonyOS-NEXT-DB1/openharmony/native"
+export OHOS_NDK_HOME="/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native"
 export PATH="$OHOS_NDK_HOME/llvm/bin:$PATH"
 ```
 
@@ -98,10 +105,10 @@ Verify:
 ```bash
 source ~/.zshrc
 which aarch64-unknown-linux-ohos-clang
-# Expected: a path under $OHOS_NDK_HOME/llvm/bin
+# Expected: /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang
 ```
 
-If the binary is not found, check actual path — in some SDK versions the binary is named `aarch64-linux-ohos-clang` without `unknown`. Record the correct name for later.
+On DevEco 6.1.0 the binary is exactly `aarch64-unknown-linux-ohos-clang` (confirmed 2026-04-20). If a future SDK renames it, check `ls $OHOS_NDK_HOME/llvm/bin/aarch64-*` and update `.cargo/config.toml` accordingly.
 
 - [ ] **Step 3: Install Rust ohos target**
 
