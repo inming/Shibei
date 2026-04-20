@@ -35,3 +35,12 @@ WixTools/
 .superpowers/
 .superpowers/
 .worktrees/
+
+# HarmonyOS / DevEco Studio generated
+**/.hvigor/
+**/.cxx/
+**/.preview/
+**/oh_modules/
+**/local.properties
+shibei-harmony/**/build/
+shibei-harmony/entry/libs/*/libshibei_core.so
