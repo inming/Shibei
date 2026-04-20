@@ -12,6 +12,24 @@
 
 ---
 
+## ArkTS Strict-Mode Corrections (2026-04-20)
+
+The original ArkTS code in Tasks 1 and 5–11 was drafted against plain TypeScript and **does not compile under ArkTS strict mode**. When implementing each demo, apply these rules to the plan's code blocks:
+
+| Rule | Bad (plain TS) | Good (ArkTS strict) |
+|---|---|---|
+| `arkts-no-any-unknown` | `err: unknown` | `err: Error` (or a typed union) |
+| `arkts-no-obj-literals-as-types` | `Array<{ a: string }>` | `interface Entry { a: string }` then `Entry[]` |
+| `arkts-no-untyped-obj-literals` | `{ a: 'x' } // no type context` | object literal must assign to a declared interface/class variable |
+| catch without type | `catch (err) { ... }` | `catch (err: Error) { ... }` (ArkTS allows explicit catch type, unlike plain TS) |
+| `arkts-no-any-unknown` on state | `@State log: any[] = []` | `@State log: string[] = []` or a typed interface |
+
+Reference fixes already applied in commit `f64c1b4` (Index.ets, formatErr.ets, Demo0Napi.ets). Future demo pages must be written with these rules from the start.
+
+`router.pushUrl` deprecation warning is intentionally ignored at Phase 0; migrating to the `Navigation` component is Plan 3's concern.
+
+---
+
 ## Verification Targets
 
 Seven real-device questions Phase 0 must answer:
