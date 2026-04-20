@@ -9,75 +9,52 @@
 </style>
 </head>
 <body>
-<h3>pdfjs-dist Demo</h3>
+<h3>pdfjs-dist Demo (IIFE bundle, worker disabled)</h3>
 <div id="status">loading…</div>
 <canvas id="page"></canvas>
 <h4>Extracted text (streamTextContent):</h4>
 <pre id="text">—</pre>
 
 <!--
-  Probe 1: non-module script to confirm inline script executes at all.
-  If host logs "A: inline script" we know basic JS runs.
+  ArkWeb rejects cross-file ES module imports (verified Mate X5 / HarmonyOS 6.1).
+  pdf.mjs was bundled to an IIFE that exposes window.pdfjsLib, loaded via a
+  classic script tag. Worker is disabled so pdfjs runs pdf.worker's logic on
+  the main thread — fine for Phase 0's small fixture; production will need to
+  decide whether to allow a worker (requires pre-packaging the worker too).
 -->
+<script src="./pdf-bundle.js"></script>
 <script>
-(function() {
-  var host = window.shibeiHost;
-  if (host) host.onEvent(JSON.stringify({ kind: 'probe', step: 'A: inline script' }));
-  var s = document.getElementById('status');
-  if (s) s.textContent = 'A: inline script ran';
-})();
-</script>
-
-<!--
-  Probe 2: ES module script. If host logs "B: module start" the ES-module
-  loader works. If this never arrives, ArkWeb's module loader failed.
--->
-<script type="module">
-(function() {
-  var host = window.shibeiHost;
-  if (host) host.onEvent(JSON.stringify({ kind: 'probe', step: 'B: module start' }));
-  document.getElementById('status').textContent = 'B: module start';
-})();
-</script>
-
-<!--
-  Probe 3: dynamic import of pdf.mjs. This defers fatal failures to a
-  Promise rejection we can catch rather than silently halting module
-  evaluation (which is what happens on a static import resolution error).
--->
-<script type="module">
 (async function() {
   var host = window.shibeiHost;
   function log(o) { if (host) host.onEvent(JSON.stringify(o)); console.log(o); }
   function setStatus(s) { document.getElementById('status').textContent = s; }
 
-  log({ kind: 'probe', step: 'C: about to import pdf.mjs' });
-  setStatus('C: importing pdf.mjs');
-
-  let pdfjs;
   try {
-    pdfjs = await import('./pdf.mjs');
-    log({ kind: 'probe', step: 'D: pdf.mjs imported', keys: Object.keys(pdfjs).slice(0, 10) });
-    setStatus('D: pdf.mjs imported');
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    log({ kind: 'error', step: 'C', message: msg });
-    setStatus('ERR at C: ' + msg);
-    return;
-  }
+    setStatus('A: bundle loaded, pdfjsLib = ' + (typeof window.pdfjsLib));
+    log({ kind: 'probe', step: 'A: bundle loaded', typeof_pdfjsLib: typeof window.pdfjsLib });
+    var pdfjs = window.pdfjsLib;
+    if (!pdfjs || !pdfjs.getDocument) {
+      setStatus('ERR: pdfjsLib missing or incomplete');
+      log({ kind: 'error', step: 'A', message: 'pdfjsLib missing' });
+      return;
+    }
 
-  try {
-    pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
-    log({ kind: 'probe', step: 'E: workerSrc set' });
-    setStatus('E: workerSrc set');
+    // Disable the web worker. pdfjs will run its worker logic on the main
+    // thread. Avoids the cross-file fetch for pdf.worker.mjs that ArkWeb
+    // doesn't allow.
+    pdfjs.GlobalWorkerOptions.workerSrc = '';
+    // Some pdfjs versions also honour this; set both for robustness.
+    if (pdfjs.disableWorker !== undefined) pdfjs.disableWorker = true;
+    setStatus('B: worker disabled');
+    log({ kind: 'probe', step: 'B: worker disabled' });
 
-    const task = pdfjs.getDocument('./sample.pdf');
-    log({ kind: 'probe', step: 'F: getDocument task created' });
-    setStatus('F: waiting for doc');
+    const task = pdfjs.getDocument({ url: './sample.pdf', disableWorker: true });
+    setStatus('C: getDocument task created');
+    log({ kind: 'probe', step: 'C: getDocument created' });
 
     const pdf = await task.promise;
-    log({ kind: 'probe', step: 'G: pdf loaded', pages: pdf.numPages });
-    setStatus('G: pdf loaded, pages=' + pdf.numPages);
+    setStatus('D: pdf loaded, pages=' + pdf.numPages);
+    log({ kind: 'probe', step: 'D: pdf loaded', pages: pdf.numPages });
 
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: 1.0 });
@@ -86,8 +63,8 @@
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
-    log({ kind: 'probe', step: 'H: page rendered', w: viewport.width, h: viewport.height });
-    setStatus('H: rendered, extracting text...');
+    setStatus('E: page rendered');
+    log({ kind: 'probe', step: 'E: page rendered', w: viewport.width, h: viewport.height });
 
     const textStream = page.streamTextContent({ includeMarkedContent: false });
     const reader = textStream.getReader();
@@ -107,8 +84,9 @@
     log({ kind: 'done', chars: full.length, sample: full.substring(0, 80) });
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
-    log({ kind: 'error', step: 'post-import', message: msg });
-    setStatus('ERR post-import: ' + msg);
+    const stack = err && err.stack ? err.stack.toString().substring(0, 300) : '';
+    setStatus('ERR: ' + msg);
+    log({ kind: 'error', message: msg, stack });
   }
 })();
 </script>
