@@ -1,14 +1,20 @@
 fn main() {
-    napi_build::setup();
-
-    // HarmonyOS targets need a small C shim to register the module via
-    // napi_module_register at .so load time (see src/shim.c for why).
     let target = std::env::var("TARGET").unwrap_or_default();
     if target.ends_with("-ohos") {
-        cc::Build::new().file("src/shim.c").compile("shibei_shim");
-        // Force the linker to keep the shim's constructor — LTO + dead-code
-        // elimination would otherwise drop the whole shim object because no
-        // Rust code calls it explicitly.
+        let ndk = std::env::var("OHOS_NDK_HOME")
+            .expect("OHOS_NDK_HOME must point to the HarmonyOS NDK root");
+        let sysroot_include = format!("{ndk}/sysroot/usr/include");
+
+        cc::Build::new()
+            .file("src/shim.c")
+            .include(&sysroot_include)
+            .compile("shibei_shim");
+
+        // Pull the shim's constructor in despite LTO / dead-code elimination
+        // (nothing in Rust references it).
         println!("cargo:rustc-link-arg=-Wl,-u,register_shibei_core");
+
+        // Link against HarmonyOS's NAPI runtime for napi_* symbols.
+        println!("cargo:rustc-link-lib=ace_napi.z");
     }
 }

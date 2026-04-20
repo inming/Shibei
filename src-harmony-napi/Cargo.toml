@@ -8,12 +8,15 @@ license = "AGPL-3.0"
 crate-type = ["cdylib"]
 name = "shibei_core"
 
+# Phase 0 verification concluded that napi-rs 2.x on HarmonyOS NEXT is not
+# functional out of the box (napi_register_module_v1 runs but exports come
+# back undefined from ArkTS). Using a hand-written C shim that calls
+# napi_* directly for each exported function. Rust provides plain extern "C"
+# implementations; the shim marshals between JS and Rust.
+
 [dependencies]
-napi = { version = "2", default-features = false, features = ["napi4"] }
-napi-derive = "2"
 
 [build-dependencies]
-napi-build = "2"
 cc = "1"
 
 [profile.release]
