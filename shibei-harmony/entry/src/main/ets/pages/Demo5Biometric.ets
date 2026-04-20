@@ -55,15 +55,21 @@ struct Demo5Biometric {
       };
       const widgetParam: userAuth.WidgetParam = { title: '解锁 Demo 5 密钥' };
       const auth: userAuth.UserAuthInstance = userAuth.getUserAuthInstance(authParam, widgetParam);
+      // HarmonyOS 6.1 API: auth.on('result', ...) expects an IAuthCallback
+      // object with an onResult(UserAuthResult) method, not a bare function.
+      // UserAuthResult replaces the deprecated AuthResultInfo.
       await new Promise<void>((resolve, reject) => {
-        auth.on('result', (result: userAuth.AuthResultInfo) => {
-          this.appendLog(`auth result: code=${result.result} token=${result.token ? 'yes' : 'no'}`);
-          if (result.result === userAuth.UserAuthResultCode.SUCCESS) {
-            resolve();
-          } else {
-            reject(new Error(`auth failed code=${result.result}`));
+        const cb: userAuth.IAuthCallback = {
+          onResult: (r: userAuth.UserAuthResult) => {
+            this.appendLog(`auth result: code=${r.result} token=${r.token ? 'yes' : 'no'}`);
+            if (r.result === userAuth.UserAuthResultCode.SUCCESS) {
+              resolve();
+            } else {
+              reject(new Error(`auth failed code=${r.result}`));
+            }
           }
-        });
+        };
+        auth.on('result', cb);
         auth.start();
       });
       const t1: number = Date.now();
