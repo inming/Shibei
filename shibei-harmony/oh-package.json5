@@ -1,4 +1,5 @@
 {
+  "modelVersion": "6.1.0",
   "name": "shibei-harmony",
   "version": "1.0.0",
   "description": "Shibei HarmonyOS Phase 0 verification",
