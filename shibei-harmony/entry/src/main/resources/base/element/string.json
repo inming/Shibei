@@ -1,6 +1,7 @@
 {
   "string": [
     { "name": "entry_desc", "value": "Shibei Phase 0 Entry" },
-    { "name": "entry_label", "value": "拾贝 Phase 0" }
+    { "name": "entry_label", "value": "拾贝 Phase 0" },
+    { "name": "perm_reason_biometric", "value": "使用指纹/人脸解锁拾贝保险库（Phase 0 验证）" }
   ]
 }

@@ -26,7 +26,14 @@
     "requestPermissions": [
       { "name": "ohos.permission.INTERNET" },
       { "name": "ohos.permission.GET_NETWORK_INFO" },
-      { "name": "ohos.permission.ACCESS_BIOMETRIC" },
+      {
+        "name": "ohos.permission.ACCESS_BIOMETRIC",
+        "reason": "$string:perm_reason_biometric",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
       { "name": "ohos.permission.KEEP_BACKGROUND_RUNNING" }
     ]
   }
