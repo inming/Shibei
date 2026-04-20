@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 16px -apple-system, sans-serif; padding: 16px; line-height: 1.6; }
+  p { margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<h1>拾贝 选词测试</h1>
+<p>这是第一段用于测试长按选词交互的中文文本。拾贝项目旨在帮助用户建立一个个人的只读资料库。</p>
+<p>The second paragraph is in English for multi-language selection testing. Select any span of these words and drag the handles.</p>
+<p>第三段混合 Mixed Chinese and English 在同一个句子里面，测试边界。</p>
+<p>更多内容用于滚动测试。更多内容用于滚动测试。更多内容用于滚动测试。更多内容用于滚动测试。更多内容用于滚动测试。</p>
+<script>
+(function() {
+  let lastFired = 0;
+  const host = (window).shibeiHost;
+  document.addEventListener('selectionchange', () => {
+    const now = Date.now();
+    const delta = lastFired ? now - lastFired : 0;
+    lastFired = now;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) {
+      host && host.onEvent(JSON.stringify({ kind: 'empty', delta }));
+      return;
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    host && host.onEvent(JSON.stringify({
+      kind: 'selection',
+      text: sel.toString().substring(0, 40),
+      len: sel.toString().length,
+      rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+      delta
+    }));
+  });
+})();
+</script>
+</body>
+</html>
