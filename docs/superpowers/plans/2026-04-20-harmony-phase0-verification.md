@@ -21,7 +21,8 @@ The original ArkTS code in Tasks 1 and 5–11 was drafted against plain TypeScri
 | `arkts-no-any-unknown` | `err: unknown` | `err: Error` (or a typed union) |
 | `arkts-no-obj-literals-as-types` | `Array<{ a: string }>` | `interface Entry { a: string }` then `Entry[]` |
 | `arkts-no-untyped-obj-literals` | `{ a: 'x' } // no type context` | object literal must assign to a declared interface/class variable |
-| catch without type | `catch (err) { ... }` | `catch (err: Error) { ... }` (ArkTS allows explicit catch type, unlike plain TS) |
+| catch: no type annotation allowed | `catch (err: Error) { ... }` | `catch (err) { ... }` — `err` is implicitly typed `Error` by the ArkTS compiler; access `err.name` / `err.message` directly. `arkts-no-types-in-catch` forbids explicit annotations, `arkts-no-any-unknown` forbids `any`/`unknown`, so bare `catch (err)` is the only valid form. |
+| error formatting | `formatErr(err)` helper | inline `` `${err.name}: ${err.message}` `` — avoids the helper's `unknown` typing issue |
 | `arkts-no-any-unknown` on state | `@State log: any[] = []` | `@State log: string[] = []` or a typed interface |
 
 Reference fixes already applied in commit `f64c1b4` (Index.ets, formatErr.ets, Demo0Napi.ets). Future demo pages must be written with these rules from the start.
