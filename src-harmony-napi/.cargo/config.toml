@@ -1,0 +1,7 @@
+[target.aarch64-unknown-linux-ohos]
+linker = "aarch64-unknown-linux-ohos-clang"
+ar = "llvm-ar"
+rustflags = [
+  "-C", "link-arg=-fuse-ld=lld",
+  "-C", "link-arg=--target=aarch64-unknown-linux-ohos"
+]

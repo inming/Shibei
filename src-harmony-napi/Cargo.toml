@@ -1,0 +1,22 @@
+[package]
+name = "shibei-core"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+
+[lib]
+crate-type = ["cdylib"]
+name = "shibei_core"
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi4"] }
+napi-derive = "2"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+strip = true
