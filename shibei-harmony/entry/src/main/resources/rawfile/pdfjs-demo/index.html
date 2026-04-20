@@ -60,7 +60,21 @@
     setStatus('B: workerSrc placeholder set');
     log({ kind: 'probe', step: 'B: workerSrc set' });
 
-    const task = pdfjs.getDocument({ url: './sample.pdf' });
+    // Fetching ./sample.pdf via pdfjs internal fetch() hits ArkWeb's
+    // file:// cross-file restriction. Bring the bytes in through the
+    // bridge instead and hand them to pdfjs as a Uint8Array.
+    const pdfB64 = host.getSamplePdfBase64();
+    if (!pdfB64 || pdfB64.length < 100) {
+      setStatus('ERR: sample pdf base64 empty');
+      log({ kind: 'error', step: 'C', message: 'empty pdf base64' });
+      return;
+    }
+    const binStr = atob(pdfB64);
+    const pdfBytes = new Uint8Array(binStr.length);
+    for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
+    log({ kind: 'probe', step: 'B+: pdf bytes decoded', bytes: pdfBytes.length });
+
+    const task = pdfjs.getDocument({ data: pdfBytes });
     setStatus('C: getDocument task created');
     log({ kind: 'probe', step: 'C: getDocument created' });
 
