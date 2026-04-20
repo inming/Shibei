@@ -1,0 +1,13 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/Demo0Napi",
+    "pages/Demo1FoldStatus",
+    "pages/Demo2WebSelection",
+    "pages/Demo3PdfJs",
+    "pages/Demo4FileProtocol",
+    "pages/Demo5Biometric",
+    "pages/Demo6BackgroundTask",
+    "pages/Demo7NetworkSwitch"
+  ]
+}

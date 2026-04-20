@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "com.shibei.harmony.phase0",
+    "vendor": "shibei",
+    "versionCode": 1,
+    "versionName": "0.0.1",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}
