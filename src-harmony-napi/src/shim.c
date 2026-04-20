@@ -20,6 +20,9 @@
 // Rust-side extern "C" functions (src/lib.rs)
 extern const char* shibei_hello(void);
 extern int shibei_add(int a, int b);
+extern const char* shibei_s3_smoke_test(
+    const char* endpoint, const char* region, const char* bucket,
+    const char* access_key, const char* secret_key);
 
 static napi_value hello_wrap(napi_env env, napi_callback_info info) {
     (void)info;
@@ -46,10 +49,33 @@ static napi_value add_wrap(napi_env env, napi_callback_info info) {
     return result;
 }
 
+static napi_value s3_smoke_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 5;
+    napi_value args[5] = {NULL, NULL, NULL, NULL, NULL};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+
+    char bufs[5][2048];
+    const char* ptrs[5];
+    for (size_t i = 0; i < 5; i++) {
+        bufs[i][0] = '\0';
+        ptrs[i] = bufs[i];
+        if (i < argc) {
+            size_t len = 0;
+            napi_get_value_string_utf8(env, args[i], bufs[i], sizeof(bufs[i]), &len);
+        }
+    }
+
+    const char* result = shibei_s3_smoke_test(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4]);
+    napi_value out = NULL;
+    napi_create_string_utf8(env, result, strlen(result), &out);
+    return out;
+}
+
 static napi_value init(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
-        {"hello", NULL, hello_wrap, NULL, NULL, NULL, napi_default, NULL},
-        {"add",   NULL, add_wrap,   NULL, NULL, NULL, napi_default, NULL},
+        {"hello",      NULL, hello_wrap,     NULL, NULL, NULL, napi_default, NULL},
+        {"add",        NULL, add_wrap,        NULL, NULL, NULL, napi_default, NULL},
+        {"s3SmokeTest", NULL, s3_smoke_wrap, NULL, NULL, NULL, napi_default, NULL},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);
     return exports;
