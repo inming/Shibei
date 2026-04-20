@@ -128,6 +128,8 @@ If rustup reports the target is not available for your channel, ensure you're on
 3. Enable developer mode on Mate X5: Settings → 关于手机 → tap 版本号 7 times.
 4. Connect Mate X5 via USB and run `hdc list targets` — should print device serial.
 
+`hdc` binary on DevEco 6.1.0 is at `$OHOS_SDK_HOME/toolchains/hdc` where `OHOS_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony`. Add `$OHOS_SDK_HOME/toolchains` to PATH alongside the NDK llvm bin.
+
 - [ ] **Step 5: Record environment snapshot in the report template**
 
 Create the report skeleton (filled in later tasks):
