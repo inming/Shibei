@@ -679,8 +679,12 @@ git commit -m "build(harmony): cross-compile script + cargo config"
 
 ## Task 4: Load NAPI from ArkTS (Demo 0 — Smoke Test)
 
+> **Correction (2026-04-20)**: the original paths below were wrong. HarmonyOS ohpm requires native module declarations to live under `entry/src/main/cpp/types/<libname>/Index.d.ts` (capital `Index`) with a matching `oh-package.json5` declaring it as a package. `entry/oh-package.json5` then points `dependencies.libshibei_core.so` at **that types folder** (not at the `.so` file). The steps below are the corrected version; refer to commit `c023def` for the concrete fix applied.
+
 **Files:**
-- Create: `shibei-harmony/entry/types/libshibei_core/index.d.ts`
+- Create: `shibei-harmony/entry/src/main/cpp/types/libshibei_core/Index.d.ts`
+- Create: `shibei-harmony/entry/src/main/cpp/types/libshibei_core/oh-package.json5` (declares the types folder as a local ohpm package named `libshibei_core.so`)
+- Modify: `shibei-harmony/entry/oh-package.json5` (dependency target → the types folder, no top-level `types` field)
 - Modify: `shibei-harmony/entry/src/main/ets/pages/Demo0Napi.ets`
 
 - [ ] **Step 1: Write type declarations `shibei-harmony/entry/types/libshibei_core/index.d.ts`**
