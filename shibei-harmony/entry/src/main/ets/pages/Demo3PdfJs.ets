@@ -2,7 +2,6 @@ import { webview } from '@kit.ArkWeb';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
-import { util } from '@kit.ArkTS';
 
 class BridgeHost {
   private outer: Demo3PdfJs;
@@ -35,7 +34,6 @@ struct Demo3PdfJs {
   @State count: number = 0;
   @State localPath: string = '';
   @State setupStatus: string = 'preparing assets…';
-  workerBundleText: string = '';
   private bridge: BridgeHost = new BridgeHost(this);
 
   aboutToAppear(): void {
@@ -47,25 +45,16 @@ struct Demo3PdfJs {
       } catch (e) {
         // already exists is fine
       }
-      let workerBytes: Uint8Array | null = null;
       for (const name of ASSETS) {
         const bytes: Uint8Array = ctx.resourceManager.getRawFileContentSync(`pdfjs-demo/${name}`);
         const destPath: string = `${destDir}/${name}`;
         const file = fs.openSync(destPath, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.READ_WRITE);
         fs.writeSync(file.fd, bytes.buffer);
         fs.closeSync(file);
-        if (name === 'pdf-worker-bundle.js') {
-          workerBytes = bytes;
-        }
-      }
-      if (workerBytes) {
-        const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
-        this.workerBundleText = decoder.decodeToString(workerBytes);
       }
       this.localPath = `file://${destDir}/index.html`;
-      this.setupStatus = `assets ready (worker bundle ${this.workerBundleText.length} chars)`;
-      hilog.info(0x0000, 'shibei', 'demo3 staged assets, worker text %{public}d chars',
-        this.workerBundleText.length);
+      this.setupStatus = `assets ready at ${destDir}`;
+      hilog.info(0x0000, 'shibei', 'demo3 staged assets to %{public}s', destDir);
     } catch (err) {
       const msg: string = `${err.name}: ${err.message}`;
       this.setupStatus = `setup failed: ${msg}`;
@@ -95,7 +84,7 @@ struct Demo3PdfJs {
           .javaScriptProxy({
             object: this.bridge,
             name: 'shibeiHost',
-            methodList: ['onEvent', 'getWorkerBundle'],
+            methodList: ['onEvent'],
             controller: this.controller
           })
           .height('55%');
