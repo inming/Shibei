@@ -9,21 +9,26 @@
 </style>
 </head>
 <body>
-<h3>pdfjs-dist Demo (bridge-delivered worker)</h3>
+<h3>pdfjs-dist Demo (dual classic-script load)</h3>
 <div id="status">loading…</div>
 <canvas id="page"></canvas>
 <h4>Extracted text (streamTextContent):</h4>
 <pre id="text">—</pre>
 
 <!--
-  ArkWeb blocks cross-file fetches under file:// for both ES-module loader
-  and window.fetch. The only transport that consistently works is the
-  ArkTS JS bridge (shibeiHost). The worker bundle text is delivered via
-  host.getWorkerBundle() and wrapped in a blob: URL, which pdfjs accepts
-  as workerSrc. Blob URLs are same-origin to the page and don't trigger
-  any of the cross-file protections we've hit.
+  Load order matters:
+    1. pdf-bundle.js       -> window.pdfjsLib
+    2. pdf-worker-bundle.js -> window.pdfjsWorker (via esbuild --global-name)
+
+  pdfjs's fake-worker path checks globalThis.pdfjsWorker.WorkerMessageHandler
+  FIRST; when present, it uses that handler directly on the main thread and
+  never calls import(workerSrc) — which ArkWeb rejects for file:// assets.
+
+  workerSrc must still be a non-empty string (pdfjs throws otherwise), so we
+  set it to a harmless placeholder; it's never actually fetched.
 -->
 <script src="./pdf-bundle.js"></script>
+<script src="./pdf-worker-bundle.js"></script>
 <script>
 (async function() {
   var host = window.shibeiHost;
@@ -31,43 +36,37 @@
   function setStatus(s) { document.getElementById('status').textContent = s; }
 
   try {
-    setStatus('A: bundle loaded');
-    log({ kind: 'probe', step: 'A: bundle loaded', typeof_pdfjsLib: typeof window.pdfjsLib });
     var pdfjs = window.pdfjsLib;
+    var wg = window.pdfjsWorker;
+    log({
+      kind: 'probe',
+      step: 'A: globals',
+      pdfjsLib: typeof pdfjs,
+      pdfjsWorker: typeof wg,
+      hasHandler: !!(wg && wg.WorkerMessageHandler)
+    });
     if (!pdfjs || !pdfjs.getDocument) {
-      setStatus('ERR: pdfjsLib missing');
-      log({ kind: 'error', step: 'A', message: 'pdfjsLib missing' });
+      setStatus('ERR: pdfjsLib missing'); return;
+    }
+    if (!wg || !wg.WorkerMessageHandler) {
+      setStatus('ERR: pdfjsWorker global missing');
+      log({ kind: 'error', step: 'A', message: 'pdfjsWorker not set by worker bundle' });
       return;
     }
 
-    if (!host || typeof host.getWorkerBundle !== 'function') {
-      setStatus('ERR: host.getWorkerBundle missing');
-      log({ kind: 'error', step: 'B', message: 'bridge missing getWorkerBundle' });
-      return;
-    }
-
-    setStatus('B: requesting worker bundle from bridge');
-    const wCode = host.getWorkerBundle();
-    log({ kind: 'probe', step: 'C: worker bundle received', bytes: wCode ? wCode.length : 0 });
-    if (!wCode || wCode.length < 1000) {
-      setStatus('ERR: worker bundle empty');
-      log({ kind: 'error', step: 'C', message: 'empty worker bundle' });
-      return;
-    }
-
-    const wBlob = new Blob([wCode], { type: 'application/javascript' });
-    const wUrl = URL.createObjectURL(wBlob);
-    pdfjs.GlobalWorkerOptions.workerSrc = wUrl;
-    setStatus('D: workerSrc set to blob URL');
-    log({ kind: 'probe', step: 'D: workerSrc set' });
+    // Satisfy pdfjs's "No workerSrc specified" guard. Value is never fetched
+    // because the mainThreadWorkerMessageHandler path short-circuits import().
+    pdfjs.GlobalWorkerOptions.workerSrc = 'about:blank';
+    setStatus('B: workerSrc placeholder set');
+    log({ kind: 'probe', step: 'B: workerSrc set' });
 
     const task = pdfjs.getDocument({ url: './sample.pdf' });
-    setStatus('E: getDocument task created');
-    log({ kind: 'probe', step: 'E: getDocument created' });
+    setStatus('C: getDocument task created');
+    log({ kind: 'probe', step: 'C: getDocument created' });
 
     const pdf = await task.promise;
-    setStatus('F: pdf loaded, pages=' + pdf.numPages);
-    log({ kind: 'probe', step: 'F: pdf loaded', pages: pdf.numPages });
+    setStatus('D: pdf loaded, pages=' + pdf.numPages);
+    log({ kind: 'probe', step: 'D: pdf loaded', pages: pdf.numPages });
 
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: 1.0 });
@@ -76,8 +75,8 @@
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
-    setStatus('G: page rendered');
-    log({ kind: 'probe', step: 'G: page rendered', w: viewport.width, h: viewport.height });
+    setStatus('E: page rendered');
+    log({ kind: 'probe', step: 'E: page rendered', w: viewport.width, h: viewport.height });
 
     const textStream = page.streamTextContent({ includeMarkedContent: false });
     const reader = textStream.getReader();
