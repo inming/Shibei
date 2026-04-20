@@ -21,7 +21,7 @@ class BridgeHost {
 // HarmonyOS 6.1). file:// in the el2 sandbox works, so we copy the four
 // demo assets out of rawfile into filesDir on first page appearance and
 // load the WebView from there.
-const ASSETS: Array<string> = ['index.html', 'pdf-bundle.js', 'sample.pdf'];
+const ASSETS: Array<string> = ['index.html', 'pdf-bundle.js', 'pdf-worker-bundle.js', 'sample.pdf'];
 
 @Entry
 @Component

@@ -9,18 +9,20 @@
 </style>
 </head>
 <body>
-<h3>pdfjs-dist Demo (IIFE bundle, worker disabled)</h3>
+<h3>pdfjs-dist Demo (IIFE bundle + Blob-URL worker)</h3>
 <div id="status">loading…</div>
 <canvas id="page"></canvas>
 <h4>Extracted text (streamTextContent):</h4>
 <pre id="text">—</pre>
 
 <!--
-  ArkWeb rejects cross-file ES module imports (verified Mate X5 / HarmonyOS 6.1).
-  pdf.mjs was bundled to an IIFE that exposes window.pdfjsLib, loaded via a
-  classic script tag. Worker is disabled so pdfjs runs pdf.worker's logic on
-  the main thread — fine for Phase 0's small fixture; production will need to
-  decide whether to allow a worker (requires pre-packaging the worker too).
+  pdfjs v4 mandates GlobalWorkerOptions.workerSrc (or workerPort) — fake
+  worker fallback was removed. We can't import pdf.worker.mjs via ES
+  modules on ArkWeb (cross-file module imports fail). Workaround:
+    1. pre-bundle pdf.worker.mjs to IIFE as pdf-worker-bundle.js
+    2. fetch() it as text from file:// (classic fetch, not module loader)
+    3. wrap in a Blob + Object URL, hand to pdfjs as workerSrc
+  Blob URLs bypass both file:// and resource:// module restrictions.
 -->
 <script src="./pdf-bundle.js"></script>
 <script>
@@ -30,31 +32,37 @@
   function setStatus(s) { document.getElementById('status').textContent = s; }
 
   try {
-    setStatus('A: bundle loaded, pdfjsLib = ' + (typeof window.pdfjsLib));
+    setStatus('A: bundle loaded');
     log({ kind: 'probe', step: 'A: bundle loaded', typeof_pdfjsLib: typeof window.pdfjsLib });
     var pdfjs = window.pdfjsLib;
     if (!pdfjs || !pdfjs.getDocument) {
-      setStatus('ERR: pdfjsLib missing or incomplete');
+      setStatus('ERR: pdfjsLib missing');
       log({ kind: 'error', step: 'A', message: 'pdfjsLib missing' });
       return;
     }
 
-    // Disable the web worker. pdfjs will run its worker logic on the main
-    // thread. Avoids the cross-file fetch for pdf.worker.mjs that ArkWeb
-    // doesn't allow.
-    pdfjs.GlobalWorkerOptions.workerSrc = '';
-    // Some pdfjs versions also honour this; set both for robustness.
-    if (pdfjs.disableWorker !== undefined) pdfjs.disableWorker = true;
-    setStatus('B: worker disabled');
-    log({ kind: 'probe', step: 'B: worker disabled' });
+    setStatus('B: fetching worker bundle');
+    log({ kind: 'probe', step: 'B: fetching worker bundle' });
+    const wRes = await fetch('./pdf-worker-bundle.js');
+    if (!wRes.ok) {
+      throw new Error('worker fetch failed: ' + wRes.status + ' ' + wRes.statusText);
+    }
+    const wCode = await wRes.text();
+    log({ kind: 'probe', step: 'C: worker bundle fetched', bytes: wCode.length });
 
-    const task = pdfjs.getDocument({ url: './sample.pdf', disableWorker: true });
-    setStatus('C: getDocument task created');
-    log({ kind: 'probe', step: 'C: getDocument created' });
+    const wBlob = new Blob([wCode], { type: 'application/javascript' });
+    const wUrl = URL.createObjectURL(wBlob);
+    pdfjs.GlobalWorkerOptions.workerSrc = wUrl;
+    setStatus('D: workerSrc set to blob URL');
+    log({ kind: 'probe', step: 'D: workerSrc set', workerUrl: wUrl.substring(0, 40) });
+
+    const task = pdfjs.getDocument({ url: './sample.pdf' });
+    setStatus('E: getDocument task created');
+    log({ kind: 'probe', step: 'E: getDocument created' });
 
     const pdf = await task.promise;
-    setStatus('D: pdf loaded, pages=' + pdf.numPages);
-    log({ kind: 'probe', step: 'D: pdf loaded', pages: pdf.numPages });
+    setStatus('F: pdf loaded, pages=' + pdf.numPages);
+    log({ kind: 'probe', step: 'F: pdf loaded', pages: pdf.numPages });
 
     const page = await pdf.getPage(1);
     const viewport = page.getViewport({ scale: 1.0 });
@@ -63,8 +71,8 @@
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
-    setStatus('E: page rendered');
-    log({ kind: 'probe', step: 'E: page rendered', w: viewport.width, h: viewport.height });
+    setStatus('G: page rendered');
+    log({ kind: 'probe', step: 'G: page rendered', w: viewport.width, h: viewport.height });
 
     const textStream = page.streamTextContent({ includeMarkedContent: false });
     const reader = textStream.getReader();
