@@ -9,20 +9,19 @@
 </style>
 </head>
 <body>
-<h3>pdfjs-dist Demo (IIFE bundle + Blob-URL worker)</h3>
+<h3>pdfjs-dist Demo (bridge-delivered worker)</h3>
 <div id="status">loading…</div>
 <canvas id="page"></canvas>
 <h4>Extracted text (streamTextContent):</h4>
 <pre id="text">—</pre>
 
 <!--
-  pdfjs v4 mandates GlobalWorkerOptions.workerSrc (or workerPort) — fake
-  worker fallback was removed. We can't import pdf.worker.mjs via ES
-  modules on ArkWeb (cross-file module imports fail). Workaround:
-    1. pre-bundle pdf.worker.mjs to IIFE as pdf-worker-bundle.js
-    2. fetch() it as text from file:// (classic fetch, not module loader)
-    3. wrap in a Blob + Object URL, hand to pdfjs as workerSrc
-  Blob URLs bypass both file:// and resource:// module restrictions.
+  ArkWeb blocks cross-file fetches under file:// for both ES-module loader
+  and window.fetch. The only transport that consistently works is the
+  ArkTS JS bridge (shibeiHost). The worker bundle text is delivered via
+  host.getWorkerBundle() and wrapped in a blob: URL, which pdfjs accepts
+  as workerSrc. Blob URLs are same-origin to the page and don't trigger
+  any of the cross-file protections we've hit.
 -->
 <script src="./pdf-bundle.js"></script>
 <script>
@@ -41,20 +40,26 @@
       return;
     }
 
-    setStatus('B: fetching worker bundle');
-    log({ kind: 'probe', step: 'B: fetching worker bundle' });
-    const wRes = await fetch('./pdf-worker-bundle.js');
-    if (!wRes.ok) {
-      throw new Error('worker fetch failed: ' + wRes.status + ' ' + wRes.statusText);
+    if (!host || typeof host.getWorkerBundle !== 'function') {
+      setStatus('ERR: host.getWorkerBundle missing');
+      log({ kind: 'error', step: 'B', message: 'bridge missing getWorkerBundle' });
+      return;
     }
-    const wCode = await wRes.text();
-    log({ kind: 'probe', step: 'C: worker bundle fetched', bytes: wCode.length });
+
+    setStatus('B: requesting worker bundle from bridge');
+    const wCode = host.getWorkerBundle();
+    log({ kind: 'probe', step: 'C: worker bundle received', bytes: wCode ? wCode.length : 0 });
+    if (!wCode || wCode.length < 1000) {
+      setStatus('ERR: worker bundle empty');
+      log({ kind: 'error', step: 'C', message: 'empty worker bundle' });
+      return;
+    }
 
     const wBlob = new Blob([wCode], { type: 'application/javascript' });
     const wUrl = URL.createObjectURL(wBlob);
     pdfjs.GlobalWorkerOptions.workerSrc = wUrl;
     setStatus('D: workerSrc set to blob URL');
-    log({ kind: 'probe', step: 'D: workerSrc set', workerUrl: wUrl.substring(0, 40) });
+    log({ kind: 'probe', step: 'D: workerSrc set' });
 
     const task = pdfjs.getDocument({ url: './sample.pdf' });
     setStatus('E: getDocument task created');
