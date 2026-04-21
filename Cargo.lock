@@ -4511,6 +4511,7 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "rust-s3",
+ "shibei-napi-macros",
  "tokio",
 ]
 
@@ -4531,6 +4532,19 @@ dependencies = [
 
 [[package]]
 name = "shibei-events"
+version = "0.1.0"
+
+[[package]]
+name = "shibei-napi-codegen"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "shibei-napi-macros"
 version = "0.1.0"
 
 [[package]]

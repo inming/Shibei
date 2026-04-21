@@ -1,0 +1,15 @@
+[package]
+name = "shibei-napi-codegen"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Reads #[shibei_napi]-annotated Rust fns and writes NAPI C shim + FFI bindings + ArkTS .d.ts to src-harmony-napi/generated/ and shibei-harmony/entry/types/libshibei_core/."
+
+[[bin]]
+name = "shibei-napi-codegen"
+path = "src/main.rs"
+
+[dependencies]
+syn = { version = "2", features = ["full", "parsing"] }
+proc-macro2 = "1"
+quote = "1"

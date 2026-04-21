@@ -1,0 +1,9 @@
+[package]
+name = "shibei-napi-macros"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Marker proc-macro attribute #[shibei_napi] consumed by shibei-napi-codegen."
+
+[lib]
+proc-macro = true

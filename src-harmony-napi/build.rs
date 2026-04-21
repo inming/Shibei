@@ -6,7 +6,7 @@ fn main() {
         let sysroot_include = format!("{ndk}/sysroot/usr/include");
 
         cc::Build::new()
-            .file("src/shim.c")
+            .file("generated/shim.c")
             .include(&sysroot_include)
             .compile("shibei_shim");
 
