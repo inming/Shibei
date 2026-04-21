@@ -55,55 +55,58 @@ struct Demo11Library {
     hilog.info(0x0000, 'shibei', 'Demo11 open resource %{public}s', id);
   }
 
+  // @Entry requires a single root container in build(); guard the init
+  // states as sibling branches inside one Stack rather than early-returning.
   build() {
-    if (!this.initReady) {
-      Column() {
-        if (this.initError) {
-          Text(`init failed: ${this.initError}`).fontColor('#c00');
-        } else {
-          Text('初始化中…').fontColor('#888');
+    Stack() {
+      if (!this.initReady) {
+        Column() {
+          if (this.initError) {
+            Text(`init failed: ${this.initError}`).fontColor('#c00');
+          } else {
+            Text('初始化中…').fontColor('#888');
+          }
         }
-      }.width('100%').height('100%').justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center);
-      return;
+        .width('100%').height('100%')
+        .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center);
+      } else {
+        SideBarContainer(SideBarContainerType.Overlay) {
+          FolderDrawer({
+            selectedFolderId: $selectedFolderId,
+            onPick: (id: string) => this.onFolderPick(id),
+          });
+
+          Column() {
+            // TopBar
+            Row() {
+              Button('☰').fontSize(20).backgroundColor(Color.Transparent).fontColor('#333')
+                .onClick(() => { this.drawerOpen = !this.drawerOpen; });
+              Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
+                .textAlign(TextAlign.Center);
+              // Spacer matching the ☰ button width so the title stays centered.
+              Text('').width(40);
+            }
+            .width('100%')
+            .padding({ left: 8, right: 8, top: 8, bottom: 8 });
+
+            ResourceList({
+              folderId: this.selectedFolderId,
+              onOpenResource: (id: string) => this.onOpenResource(id),
+            });
+
+            if (this.tappedResourceId) {
+              Text(`(Phase 3 will open: ${this.tappedResourceId})`)
+                .fontSize(11).fontColor('#bbb').margin({ top: 8, bottom: 8 });
+            }
+          }.width('100%').height('100%');
+        }
+        .showSideBar(this.drawerOpen)
+        .sideBarWidth(260)
+        .minSideBarWidth(200)
+        .maxSideBarWidth(320)
+        .width('100%').height('100%');
+      }
     }
-
-    SideBarContainer(SideBarContainerType.Overlay) {
-      FolderDrawer({
-        selectedFolderId: $selectedFolderId,
-        onPick: (id: string) => this.onFolderPick(id),
-      });
-
-      Column() {
-        // TopBar
-        Row() {
-          Button('☰').fontSize(20).backgroundColor(Color.Transparent).fontColor('#333')
-            .onClick(() => { this.drawerOpen = !this.drawerOpen; });
-          Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
-            .textAlign(TextAlign.Center);
-          // Spacer matching the ☰ button width so the title stays centered.
-          Text('').width(40);
-        }
-        .width('100%')
-        .padding({ left: 8, right: 8, top: 8, bottom: 8 })
-        .border({ width: { bottom: 0.5 }, color: '#EEE' });
-
-        ResourceList({
-          folderId: this.selectedFolderId,
-          onOpenResource: (id: string) => this.onOpenResource(id),
-        });
-
-        if (this.tappedResourceId) {
-          Text(`(Phase 3 will open: ${this.tappedResourceId})`)
-            .fontSize(11).fontColor('#bbb').margin({ top: 8, bottom: 8 });
-        }
-      }.width('100%').height('100%');
-    }
-    .showSideBar(this.drawerOpen)
-    .sideBarWidth(260)
-    .minSideBarWidth(200)
-    .maxSideBarWidth(320)
-    .controlButton({ showButton: false })
-    .width('100%')
-    .height('100%');
+    .width('100%').height('100%');
   }
 }
