@@ -77,17 +77,15 @@ struct Demo11Library {
           });
 
           Column() {
-            // TopBar
+            // TopBar — the ☰ toggle is SideBarContainer's built-in control
+            // button (top-left corner of the parent); don't draw our own.
+            // Left padding reserves room so the title doesn't sit under it.
             Row() {
-              Button('☰').fontSize(20).backgroundColor(Color.Transparent).fontColor('#333')
-                .onClick(() => { this.drawerOpen = !this.drawerOpen; });
               Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
                 .textAlign(TextAlign.Center);
-              // Spacer matching the ☰ button width so the title stays centered.
-              Text('').width(40);
             }
             .width('100%')
-            .padding({ left: 8, right: 8, top: 8, bottom: 8 });
+            .padding({ left: 48, right: 48, top: 12, bottom: 12 });
 
             ResourceList({
               folderId: this.selectedFolderId,
