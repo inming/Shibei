@@ -6,7 +6,7 @@
 - 后置消费者：Phase 3（阅读与标注）
 - 设计文档：`docs/superpowers/specs/2026-04-20-harmony-mobile-mvp-design.md` §二、§三、§四、§六、§七
 - 预计工期：4~5 周（1 人）
-- 状态：🚧 进行中（Track A1 ✅ + A2 ✅ + A3 ✅ + B 部分 ✅ 合入 main；A4/A5/剩余 B/C/D/E/F 待开工）
+- 状态：🚧 进行中（Track A1 ✅ + A2 ✅ + A3 ✅ + A4 批 2 ✅ + B 部分 ✅ 合入 main；A4 批 1/3/4/5/A5/剩余 B/C/D/E/F 待开工）
 
 ---
 
@@ -123,9 +123,50 @@ lockVault() -> void
 2. **NAPI export 名 `init` 被 ArkTS 保留** —— module linker 抛 `SyntaxError: does not provide an export name 'init'`。重命名 shim register fn 无效（57d79ea 无效），必须把公开导出名也换掉。Rust `init` → `init_app`，JS `initApp`。0136008 修复。
 3. **`.so` 二进制不进 git** —— 另一台机器没 cross-compile 工具链时发现问题，原因是该机器用的是 pull 前缓存的旧 `.so`，不是最新构建。短暂提交二进制（d7b81d9）后回滚（3de11a0），补 `docs/harmony-dev-setup.md` 一次性配置文档。两个 memory 条目固化：[ArkTS NAPI 导入风格](file:///Users/work/.claude/projects/-Users-work-workspace-Shibei/memory/feedback_arkts_napi_import.md) + [Harmony .so workflow](file:///Users/work/.claude/projects/-Users-work-workspace-Shibei/memory/feedback_harmony_so_workflow.md)。
 
-### Track A4 / A5 / 剩余 B / C / D / E / F — 待开工
+### Track A4 批 2 — 查询命令（2026-04-21 完成）
 
-下一步起手 **Track A4 批 2（`listFolders` / `listResources` / `searchResources` / `listTags` / `getResource` / `getResourceSummary`）** —— 开始真消费 shibei-db CRUD。A4 批 1（setS3Config / setE2EEPassword）推迟到 Track C 之前（需要 S3 网络栈 + Argon2id 解 keyring）。
+6 个 sync 查询命令上线，全走 `with_conn` 读连接 helper + `serde_json::to_string`
+出 JSON 字符串（codegen 暂未支持 struct 返回；Track A5 时扩）：
+
+```
+listFolders() -> string                           // JSON Vec<Folder>
+listResources(folderId, tagIdsJson, sortJson) -> string
+searchResources(query, tagIdsJson) -> string
+listTags() -> string
+getResource(id) -> string                         // {"resource": Resource|null}
+getResourceSummary(id, maxChars) -> string
+```
+
+关联改动：
+
+- `shibei-db::folders::list_all` 新增 —— 返回全量活跃 folder 扁平列表
+- `state::init` 新增 `ensure_inbox_folder` 调用 —— mobile 首启见"收件箱"默认项，与 desktop 一致
+- `ShibeiService` 扩展到 13 个方法 + 5 个 TS 接口（`Folder` / `Resource` / `SearchResult` / `Tag` / `SortInput`），JSON 在 facade 层解析，组件拿到强类型
+
+**验收（Mate X5 Demo 10，2026-04-21）** 6/6 全绿：
+
+| 查询 | 实测（空库新装） |
+|---|---|
+| `listFolders()` | 1 行 `收件箱(__inbox__)` |
+| `listResources('__all__')` | 0 rows |
+| `listTags()` | 0 rows |
+| `searchResources('hello')` | 0 hits |
+| `getResource('bogus-id')` | `null` |
+| `getResourceSummary('bogus-id', 100)` | `""` |
+
+**偏离 plan**：
+
+1. **`getResourceSummary` 对不存在的 resource 折叠到 `""`**（首版返 error，`41ac907` 修）。对齐 `getResource` 的 null-folding 策略，UI 不用 try/catch 处理"stale deep link"。
+2. **ArkTS strict mode 3 条规则踩坑**（`04aa3a7` 修），补 memory `feedback_arkts_strict_mode.md`：禁对象字面量类型、禁 `any`/`unknown`、禁 `in` 操作符。facade 用命名 interface (`ErrorEnvelope` / `GetResourceEnvelope`) 绕开。
+
+### Track A4 批 1 / 批 3 / 批 4 / 批 5 / A5 / 剩余 B / C / D / E / F — 待开工
+
+两条并行候选：
+
+- **Track E Library 骨架**：用批 2 数据把 FolderDrawer + ResourceList 渲染起来，从"demo 按钮"跨到"真资料库页面"。折叠态单栏先，展开态后补。
+- **Track A4 批 1 + 批 3**：`setS3Config` / `setE2EEPassword` / `syncMetadata` 串起 Onboard + 首次同步，需要 shibei-sync keyring + Argon2id + S3 网络栈联通。
+
+推荐先做 E（无前置链，能立刻跑真数据）。批 1/3 留给 Track C Onboard 一起上。
 
 ---
 
