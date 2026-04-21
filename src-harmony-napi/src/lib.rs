@@ -12,6 +12,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 pub mod commands;
+pub mod progress;
 pub mod runtime;
 pub mod state;
 mod s3_smoke;

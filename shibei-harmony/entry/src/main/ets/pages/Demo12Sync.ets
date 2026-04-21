@@ -7,6 +7,7 @@ import {
   S3ConfigInput,
   SyncResult,
   SyncResultSuccess,
+  SyncProgressEvent,
 } from '../services/ShibeiService';
 import { router, promptAction } from '@kit.ArkUI';
 
@@ -36,6 +37,16 @@ struct Demo12Sync {
   @State syncing: boolean = false;
   @State unlocking: boolean = false;
 
+  // Progress bar driven by the sync-progress event. `showProgress` gates
+  // the bar's visibility — set true when runSync kicks off, flipped back
+  // to false either on the terminal "done" tick or on sync failure.
+  @State showProgress: boolean = false;
+  @State progressPhase: string = '';
+  @State progressCurrent: number = 0;
+  @State progressTotal: number = 0;
+
+  private unsubProgress: (() => void) | null = null;
+
   async aboutToAppear(): Promise<void> {
     const ctx = getContext(this) as common.UIAbilityContext;
     this.dataDir = ctx.filesDir;
@@ -45,6 +56,30 @@ struct Demo12Sync {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.initLine = `ERR: ${code}`;
+    }
+    // Subscribe once per page mount. The unsubscribe is invoked in
+    // aboutToDisappear so that hot-reload / page pop doesn't leak the
+    // threadsafe function on the Rust side.
+    this.unsubProgress = ShibeiService.instance.onSyncProgress((ev: SyncProgressEvent) => {
+      if (ev.phase === 'done') {
+        // Keep the completed bar up for a beat so the jump from the last
+        // partial tick → done is visible, then hide.
+        this.progressPhase = 'done';
+        this.progressCurrent = this.progressTotal;
+        setTimeout(() => { this.showProgress = false; }, 400);
+        return;
+      }
+      this.showProgress = true;
+      this.progressPhase = ev.phase;
+      this.progressCurrent = ev.current;
+      this.progressTotal = ev.total;
+    });
+  }
+
+  aboutToDisappear(): void {
+    if (this.unsubProgress) {
+      this.unsubProgress();
+      this.unsubProgress = null;
     }
   }
 
@@ -142,6 +177,12 @@ struct Demo12Sync {
   private async runSync(): Promise<void> {
     this.syncing = true;
     this.syncLine = 'syncing… (could take a while on first run)';
+    // Reset the bar — we don't show it until the first phase tick comes in
+    // (some sync runs complete with zero work and skip phases entirely).
+    this.progressPhase = '';
+    this.progressCurrent = 0;
+    this.progressTotal = 0;
+    this.showProgress = false;
     try {
       const t0: number = Date.now();
       const result: SyncResult = await ShibeiService.instance.syncMetadata();
@@ -155,8 +196,17 @@ struct Demo12Sync {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.syncLine = `ERR: ${code}`;
+      this.showProgress = false;
     }
     this.syncing = false;
+  }
+
+  private phaseLabel(phase: string): string {
+    if (phase === 'uploading') return '上传本地变更';
+    if (phase === 'downloading') return '下载远端变更';
+    if (phase === 'downloading_snapshots') return '下载快照';
+    if (phase === 'done') return '完成';
+    return phase;
   }
 
   private refreshCounts(): void {
@@ -226,6 +276,18 @@ struct Demo12Sync {
           .enabled(!this.syncing)
           .width('100%').margin({ top: 8 })
           .onClick(() => this.runSync());
+        if (this.showProgress) {
+          // `total` may legitimately be 0 for phases where the engine
+          // reports a single "done" tick without prior counts — clamp it so
+          // the linear Progress component doesn't render at NaN %.
+          Progress({
+            value: this.progressCurrent,
+            total: this.progressTotal > 0 ? this.progressTotal : 1,
+            type: ProgressType.Linear,
+          }).width('100%').margin({ top: 8 });
+          Text(`${this.phaseLabel(this.progressPhase)} ${this.progressCurrent}/${this.progressTotal}`)
+            .fontSize(11).fontColor('#666').margin({ top: 2 });
+        }
         Text(this.syncLine).fontSize(12).margin({ top: 4 });
         Text(this.counts).fontSize(12).fontColor('#666').margin({ top: 4 });
 

@@ -172,16 +172,38 @@ pub async fn set_e2ee_password(password: String) -> Result<String, String> {
 /// sync_log entries, pulls remote JSONL + snapshot manifest, applies with
 /// LWW. Returns a JSON SyncResult on success or an error.* string.
 ///
+/// Emits `{phase,current,total}` progress JSON to any active
+/// `subscribeSyncProgress` listener. A final `{"phase":"done",…}` tick is
+/// sent on success — the UI uses it to hide the progress bar.
+///
 /// Requires setS3Config called at least once AND (if the remote bucket has
 /// `meta/keyring.json`) setE2EEPassword called successfully this session.
 #[shibei_napi(async)]
 pub async fn sync_metadata() -> Result<String, String> {
     let engine = build_sync_engine().await?;
+    let cb: shibei_sync::engine::ProgressCallback = Box::new(|phase, current, total| {
+        crate::progress::emit(phase, current, total);
+    });
     let result = engine
-        .sync(None)
+        .sync(Some(&cb))
         .await
         .map_err(|e| format!("error.syncFailed: {e}"))?;
+    crate::progress::emit("done", 0, 0);
     Ok(to_json(&result))
+}
+
+/// Subscribe to sync-progress events. The callback fires whenever the
+/// sync engine advances through a phase (uploading / downloading / applying
+/// snapshots), with a final `{"phase":"done"}` tick when syncMetadata
+/// returns Ok. Payload is JSON: `{"phase":"<str>","current":N,"total":N}`.
+/// Returns an unsubscribe fn; Demo 12 / Onboard call it on page unmount.
+///
+/// Last-subscriber-wins: if two listeners subscribe, only the newer one
+/// receives events. In practice only one UI is showing progress at a time.
+#[shibei_napi(event)]
+pub fn subscribe_sync_progress(cb: ThreadsafeCallback<String>) -> Subscription {
+    crate::progress::set(std::sync::Arc::new(cb));
+    Subscription::new()
 }
 
 fn build_raw_backend() -> Result<shibei_sync::backend::S3Backend, String> {

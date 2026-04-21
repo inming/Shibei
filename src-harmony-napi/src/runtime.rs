@@ -25,7 +25,7 @@ pub struct ThreadsafeCallback<T> {
 unsafe impl<T: Send> Send for ThreadsafeCallback<T> {}
 unsafe impl<T: Send> Sync for ThreadsafeCallback<T> {}
 
-impl<T: Copy> ThreadsafeCallback<T> {
+impl<T: Send> ThreadsafeCallback<T> {
     /// Constructed by generated FFI bindings. Do not call from user code.
     pub fn new(
         ctx: *mut c_void,
@@ -40,6 +40,9 @@ impl<T: Copy> ThreadsafeCallback<T> {
     }
 
     /// Schedules `payload` for delivery on the ArkTS thread. Non-blocking.
+    /// For `T = String` the emit closure converts to a CString which is
+    /// strdup'd by C before returning, so the caller's String is safely
+    /// dropped when this fn unwinds.
     pub fn call(&self, payload: T) {
         if self.is_cancelled() {
             return;

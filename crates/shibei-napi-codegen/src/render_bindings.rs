@@ -61,6 +61,7 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 extern "C" {
     fn shibei_async_resolve(ctx: *mut c_void, ok: c_int, payload: *const c_char);
     fn shibei_event_emit_i64(ctx: *mut c_void, payload: i64);
+    fn shibei_event_emit_string(ctx: *mut c_void, payload: *const c_char);
 }
 
 #[no_mangle]
@@ -170,7 +171,11 @@ fn emit_event(out: &mut String, cmd: &Command) {
     // Build an Arc<AtomicBool> cancel flag + store it in a Box we return as the
     // subscription token (round-trips through C as opaque void*).
     let _ = writeln!(out, "    let cancel = Arc::new(AtomicBool::new(false));");
-    let _ = writeln!(out, "    let cb = crate::runtime::ThreadsafeCallback::<{}>::new(ctx, cancel.clone(), |ctx, v| {{ shibei_event_emit_i64(ctx, v); }});", cmd.ret_scalar_rust());
+    let emit_closure = match cmd.ret {
+        ScalarType::String => "|ctx, v: String| { let c = CString::new(v).unwrap_or_default(); shibei_event_emit_string(ctx, c.as_ptr()); }",
+        _ => "|ctx, v| { shibei_event_emit_i64(ctx, v); }",
+    };
+    let _ = writeln!(out, "    let cb = crate::runtime::ThreadsafeCallback::<{}>::new(ctx, cancel.clone(), {emit_closure});", cmd.ret_scalar_rust());
     let user_args = cmd.args.iter().map(|a| a.rust_name.clone())
         .chain(std::iter::once("cb".to_string()))
         .collect::<Vec<_>>().join(", ");

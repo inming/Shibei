@@ -48,6 +48,7 @@ fn emit_extern_decls(out: &mut String, commands: &[Command]) {
     out.push_str("\n// C callbacks invoked from Rust worker threads.\n");
     out.push_str("void shibei_async_resolve(void* ctx, int ok, const char* payload);\n");
     out.push_str("void shibei_event_emit_i64(void* ctx, int64_t payload);\n");
+    out.push_str("void shibei_event_emit_string(void* ctx, const char* payload);\n");
     out.push('\n');
 }
 
@@ -100,7 +101,7 @@ fn emit_wrappers(out: &mut String, commands: &[Command]) {
     out.push_str("// ── Shared async plumbing ─────────────────────────────────────────\n");
     out.push_str(ASYNC_CTX_SNIPPET);
 
-    out.push_str("\n// ── Shared event plumbing (i64 payload) ───────────────────────────\n");
+    out.push_str("\n// ── Shared event plumbing (i64 + string payloads) ────────────────\n");
     out.push_str(EVENT_CTX_SNIPPET);
 
     out.push_str("\n// ── Per-command NAPI wrappers ─────────────────────────────────────\n");
@@ -267,7 +268,11 @@ fn emit_event_wrapper(out: &mut String, cmd: &Command) {
     let _ = writeln!(w, "    EventCtx* ctx = (EventCtx*)calloc(1, sizeof(EventCtx));");
     let _ = writeln!(w, "    napi_value res_name = NULL;");
     let _ = writeln!(w, "    napi_create_string_utf8(env, \"{}_tsfn\", NAPI_AUTO_LENGTH, &res_name);", cmd.js_name);
-    let _ = writeln!(w, "    napi_create_threadsafe_function(env, args[{cb_idx}], NULL, res_name, 0, 1, NULL, NULL, NULL, event_i64_cb, &ctx->tsfn);");
+    let complete_cb = match cmd.ret {
+        ScalarType::String => "event_string_cb",
+        _ => "event_i64_cb",
+    };
+    let _ = writeln!(w, "    napi_create_threadsafe_function(env, args[{cb_idx}], NULL, res_name, 0, 1, NULL, NULL, NULL, {complete_cb}, &ctx->tsfn);");
     let call_args = cmd.args.iter().map(|a| match a.ty {
         ScalarType::String => format!("buf_{}", a.rust_name),
         _ => format!("v_{}", a.rust_name),
@@ -401,5 +406,25 @@ static void event_i64_cb(napi_env env, napi_value js_cb, void* ctx_ptr, void* da
     napi_value ret = NULL;
     napi_call_function(env, undef, js_cb, 1, &v, &ret);
     free(p);
+}
+
+// Called by Rust worker thread to fire a single string event. `payload` is
+// Rust-owned for the duration of this call; we strdup before returning so the
+// Rust side can free its CString immediately.
+void shibei_event_emit_string(void* ctx_ptr, const char* payload) {
+    EventCtx* ctx = (EventCtx*)ctx_ptr;
+    char* copy = payload ? strdup(payload) : NULL;
+    napi_call_threadsafe_function(ctx->tsfn, copy, napi_tsfn_nonblocking);
+}
+
+static void event_string_cb(napi_env env, napi_value js_cb, void* ctx_ptr, void* data) {
+    (void)ctx_ptr;
+    char* s = (char*)data;
+    napi_value v = NULL;
+    napi_create_string_utf8(env, s ? s : "", NAPI_AUTO_LENGTH, &v);
+    napi_value undef = NULL; napi_get_undefined(env, &undef);
+    napi_value ret = NULL;
+    napi_call_function(env, undef, js_cb, 1, &v, &ret);
+    if (s) free(s);
 }
 "#;

@@ -15,6 +15,7 @@ import {
   setS3Config as napiSetS3Config,
   setE2eePassword as napiSetE2eePassword,
   syncMetadata as napiSyncMetadata,
+  subscribeSyncProgress as napiSubscribeSyncProgress,
   decryptPairingPayload as napiDecryptPairingPayload,
   listFolders as napiListFolders,
   listResources as napiListResources,
@@ -135,6 +136,25 @@ export class ShibeiService {
     return JSON.parse(raw) as SyncResult;
   }
 
+  /// Subscribe to per-phase progress emitted by `syncMetadata`. The callback
+  /// receives one tick whenever the engine advances (uploading / downloading
+  /// / applying / snapshots), plus a final `{phase:"done"}` tick on success.
+  /// Returns the unsubscribe fn — caller must invoke it on unmount.
+  ///
+  /// Last-subscriber-wins on the Rust side: wiring a second listener while
+  /// the first is alive silently dispossesses the first. In practice only
+  /// one progress UI (Demo 12 / Onboard) is mounted at a time.
+  onSyncProgress(listener: (ev: SyncProgressEvent) => void): () => void {
+    return napiSubscribeSyncProgress((raw: string) => {
+      try {
+        const ev = JSON.parse(raw) as SyncProgressEvent;
+        listener(ev);
+      } catch (e) {
+        hilog.warn(0x0000, 'shibei', 'bad sync-progress payload: %{public}s', raw);
+      }
+    });
+  }
+
   // ── Queries (Track A4 batch 2) ────────────────────────────
   //
   // Each NAPI command returns a JSON string; the facade parses it here so
@@ -251,6 +271,16 @@ export interface SyncResultSkipped {
 }
 
 export type SyncResult = SyncResultSuccess | SyncResultSkipped;
+
+/// Progress tick emitted during syncMetadata. `phase` values the engine
+/// currently produces: "uploading" | "downloading" | "downloading_snapshots"
+/// | "done". Unknown phases are safe to ignore — the UI falls back to an
+/// indeterminate bar.
+export interface SyncProgressEvent {
+  phase: string;
+  current: number;
+  total: number;
+}
 
 // NAPI error-envelope shape. `error` is present iff the Rust side folded a
 // failure into the JSON response. Declared as a named interface (ArkTS

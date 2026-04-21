@@ -4517,6 +4517,7 @@ dependencies = [
  "shibei-db",
  "shibei-events",
  "shibei-napi-macros",
+ "shibei-pairing",
  "shibei-sync",
  "tokio",
  "uuid",

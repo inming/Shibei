@@ -20,6 +20,8 @@ extern char* shibei_ffi_decrypt_pairing_payload(const char* pin, const char* env
 extern char* shibei_ffi_set_s3_config(const char* config_json);
 extern void shibei_ffi_set_e2ee_password(const char* password, void* ctx);
 extern void shibei_ffi_sync_metadata(void* ctx);
+extern void* shibei_ffi_subscribe_sync_progress(void* ctx);
+extern void shibei_ffi_subscribe_sync_progress_unsubscribe(void* token);
 extern char* shibei_ffi_list_folders(void);
 extern char* shibei_ffi_list_resources(const char* folder_id, const char* tag_ids_json, const char* sort_json);
 extern char* shibei_ffi_search_resources(const char* query, const char* tag_ids_json);
@@ -36,6 +38,7 @@ extern void shibei_ffi_on_tick_unsubscribe(void* token);
 // C callbacks invoked from Rust worker threads.
 void shibei_async_resolve(void* ctx, int ok, const char* payload);
 void shibei_event_emit_i64(void* ctx, int64_t payload);
+void shibei_event_emit_string(void* ctx, const char* payload);
 
 // ── Shared async plumbing ─────────────────────────────────────────
 typedef struct {
@@ -65,7 +68,7 @@ static void async_complete_cb(napi_env env, napi_value js_cb, void* ctx_ptr, voi
     free(ctx);
 }
 
-// ── Shared event plumbing (i64 payload) ───────────────────────────
+// ── Shared event plumbing (i64 + string payloads) ────────────────
 typedef struct {
     napi_threadsafe_function tsfn;
     void* token;  // opaque Rust subscription handle
@@ -92,7 +95,28 @@ static void event_i64_cb(napi_env env, napi_value js_cb, void* ctx_ptr, void* da
     free(p);
 }
 
+// Called by Rust worker thread to fire a single string event. `payload` is
+// Rust-owned for the duration of this call; we strdup before returning so the
+// Rust side can free its CString immediately.
+void shibei_event_emit_string(void* ctx_ptr, const char* payload) {
+    EventCtx* ctx = (EventCtx*)ctx_ptr;
+    char* copy = payload ? strdup(payload) : NULL;
+    napi_call_threadsafe_function(ctx->tsfn, copy, napi_tsfn_nonblocking);
+}
+
+static void event_string_cb(napi_env env, napi_value js_cb, void* ctx_ptr, void* data) {
+    (void)ctx_ptr;
+    char* s = (char*)data;
+    napi_value v = NULL;
+    napi_create_string_utf8(env, s ? s : "", NAPI_AUTO_LENGTH, &v);
+    napi_value undef = NULL; napi_get_undefined(env, &undef);
+    napi_value ret = NULL;
+    napi_call_function(env, undef, js_cb, 1, &v, &ret);
+    if (s) free(s);
+}
+
 // ── Per-command NAPI wrappers ─────────────────────────────────────
+static napi_value subscribe_sync_progress_unsubscribe_wrap(napi_env env, napi_callback_info info);
 static napi_value on_tick_unsubscribe_wrap(napi_env env, napi_callback_info info);
 
 static napi_value init_app_wrap(napi_env env, napi_callback_info info) {
@@ -196,6 +220,33 @@ static napi_value sync_metadata_wrap(napi_env env, napi_callback_info info) {
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_sync_metadata(ctx);
     return promise;
+}
+
+static napi_value subscribe_sync_progress_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    EventCtx* ctx = (EventCtx*)calloc(1, sizeof(EventCtx));
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "subscribeSyncProgress_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, args[0], NULL, res_name, 0, 1, NULL, NULL, NULL, event_string_cb, &ctx->tsfn);
+    ctx->token = shibei_ffi_subscribe_sync_progress(ctx);
+    // Return a JS fn that unsubscribes when invoked.
+    napi_value unsubscribe = NULL;
+    napi_create_function(env, "unsubscribe", NAPI_AUTO_LENGTH, subscribe_sync_progress_unsubscribe_wrap, ctx, &unsubscribe);
+    return unsubscribe;
+}
+
+static napi_value subscribe_sync_progress_unsubscribe_wrap(napi_env env, napi_callback_info info) {
+    void* data = NULL;
+    napi_get_cb_info(env, info, NULL, NULL, NULL, &data);
+    EventCtx* ctx = (EventCtx*)data;
+    if (ctx && ctx->token) {
+        shibei_ffi_subscribe_sync_progress_unsubscribe(ctx->token);
+        ctx->token = NULL;
+        napi_release_threadsafe_function(ctx->tsfn, napi_tsfn_release);
+    }
+    napi_value undef = NULL; napi_get_undefined(env, &undef); return undef;
 }
 
 static napi_value list_folders_wrap(napi_env env, napi_callback_info info) {
@@ -373,6 +424,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"setS3Config", NULL, set_s3_config_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"setE2eePassword", NULL, set_e2ee_password_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"syncMetadata", NULL, sync_metadata_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"subscribeSyncProgress", NULL, subscribe_sync_progress_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listFolders", NULL, list_folders_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listResources", NULL, list_resources_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"searchResources", NULL, search_resources_wrap, NULL, NULL, NULL, napi_default, NULL},

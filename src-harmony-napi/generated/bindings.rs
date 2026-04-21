@@ -29,6 +29,7 @@ fn runtime() -> &'static tokio::runtime::Runtime {
 extern "C" {
     fn shibei_async_resolve(ctx: *mut c_void, ok: c_int, payload: *const c_char);
     fn shibei_event_emit_i64(ctx: *mut c_void, payload: i64);
+    fn shibei_event_emit_string(ctx: *mut c_void, payload: *const c_char);
 }
 
 #[no_mangle]
@@ -122,6 +123,22 @@ pub unsafe extern "C" fn shibei_ffi_sync_metadata(ctx: *mut c_void) {
             }
         }
     });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_subscribe_sync_progress(ctx: *mut c_void) -> *mut c_void {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cb = crate::runtime::ThreadsafeCallback::<String>::new(ctx, cancel.clone(), |ctx, v: String| { let c = CString::new(v).unwrap_or_default(); shibei_event_emit_string(ctx, c.as_ptr()); });
+    let _sub: crate::runtime::Subscription = crate::commands::subscribe_sync_progress(cb);
+    // Ownership: cancel flag's Arc is returned as the C token.
+    Arc::into_raw(cancel) as *mut c_void
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_subscribe_sync_progress_unsubscribe(token: *mut c_void) {
+    if token.is_null() { return; }
+    let cancel = unsafe { Arc::from_raw(token as *const AtomicBool) };
+    cancel.store(true, Ordering::SeqCst);
 }
 
 #[no_mangle]
