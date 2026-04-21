@@ -4,12 +4,17 @@ import { router } from '@kit.ArkUI';
 import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
 import { ResourceList } from '../components/ResourceList';
+import { KEY_FOLD_STATUS } from '../app/AppStorageKeys';
+import { FoldStatus } from '../app/FoldObserver';
 
-// Track E — Library skeleton (folded-state single column).
-// Architecture: SideBarContainer(Overlay) → left is FolderDrawer, right is
-// main column containing a TopBar + ResourceList. Picking a folder closes
-// the drawer and updates `selectedFolderId`, which `@Watch` in ResourceList
-// picks up to reload.
+// Track E — Library with dual-state layout.
+//   FOLDED   → SideBarContainer(Overlay); drawer slides out under the ☰
+//   EXPANDED → SideBarContainer(Embed); drawer is always visible, ☰ is
+//              hidden because there's no reason to collapse the side rail
+//              on a wide screen.
+// Picking a folder updates `selectedFolderId`, which ResourceList reloads
+// off. On FOLDED we also close the drawer after a pick; on EXPANDED the
+// drawer stays open.
 
 @Entry
 @Component
@@ -19,6 +24,9 @@ struct Demo11Library {
   @State drawerOpen: boolean = false;
   @State selectedFolderId: string = INBOX_FOLDER_ID;
   @State selectedFolderLabel: string = '收件箱';
+  // Kept in sync with FoldObserver; updates here trigger an automatic
+  // re-layout between Embed / Overlay without reopening the page.
+  @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
 
   async aboutToAppear(): Promise<void> {
     // Same init path Demo 9 / Demo 10 use — idempotent, so coming here
@@ -45,7 +53,12 @@ struct Demo11Library {
       const found = folders.find(f => f.id === id);
       this.selectedFolderLabel = found ? found.name : id;
     }
-    this.drawerOpen = false;
+    // Only collapse the drawer in the folded single-column mode; on an
+    // expanded device (tablet / unfolded Mate X5) the drawer is an always-
+    // on side rail so dismissing it on every pick would be annoying.
+    if (this.foldStatus === FoldStatus.FOLDED) {
+      this.drawerOpen = false;
+    }
   }
 
   private onOpenResource(id: string): void {
@@ -75,22 +88,34 @@ struct Demo11Library {
         .width('100%').height('100%')
         .justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center);
       } else {
-        SideBarContainer(SideBarContainerType.Overlay) {
+        SideBarContainer(
+          this.foldStatus === FoldStatus.EXPANDED
+            ? SideBarContainerType.Embed
+            : SideBarContainerType.Overlay,
+        ) {
           FolderDrawer({
             selectedFolderId: $selectedFolderId,
             onPick: (id: string) => this.onFolderPick(id),
           });
 
           Column() {
-            // TopBar — manual ☰ that tracks `drawerOpen`. The built-in
-            // SideBarContainer control button is hidden via
+            // TopBar — manual ☰ that tracks `drawerOpen` (folded mode only).
+            // The built-in SideBarContainer control button is hidden via
             // .showControlButton(false) below so the drawer doesn't end up
             // overlapping a fixed-position toggle when it slides in.
+            //
+            // In expanded mode the drawer is always visible (Embed), so we
+            // hide the toggle entirely with a Stack slot that reserves the
+            // 44px width for symmetry with the ⚙ on the right.
             Row() {
-              Text(this.drawerOpen ? '✕' : '☰')
-                .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
-                .width(44).height(44).textAlign(TextAlign.Center)
-                .onClick(() => { this.drawerOpen = !this.drawerOpen; });
+              if (this.foldStatus === FoldStatus.EXPANDED) {
+                Text('').width(44).height(44);
+              } else {
+                Text(this.drawerOpen ? '✕' : '☰')
+                  .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
+                  .width(44).height(44).textAlign(TextAlign.Center)
+                  .onClick(() => { this.drawerOpen = !this.drawerOpen; });
+              }
               Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 .textAlign(TextAlign.Center)
@@ -107,6 +132,14 @@ struct Demo11Library {
               // Plain Text + onClick (rather than Button) so the glyph isn't
               // squeezed by Button's default inner padding — ⚙ was clipping
               // inside a 40×40 Button on Mate X5.
+              Text('🔍')
+                .fontSize(20)
+                .width(44).height(44).textAlign(TextAlign.Center)
+                .onClick(() => {
+                  router.pushUrl({ url: 'pages/Search' }).catch((err: Error) => {
+                    hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
+                  });
+                });
               Text('⚙')
                 .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
                 .width(44).height(44).textAlign(TextAlign.Center)
@@ -128,7 +161,7 @@ struct Demo11Library {
           }.width('100%').height('100%')
           .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
         }
-        .showSideBar(this.drawerOpen)
+        .showSideBar(this.foldStatus === FoldStatus.EXPANDED ? true : this.drawerOpen)
         .sideBarWidth(260)
         .minSideBarWidth(200)
         .maxSideBarWidth(320)

@@ -17,6 +17,7 @@
     "pages/Demo12Sync",
     "pages/Onboard",
     "pages/LockScreen",
-    "pages/Settings"
+    "pages/Settings",
+    "pages/Search"
   ]
 }

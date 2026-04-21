@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { ShibeiService } from '../services/ShibeiService';
 import { loadTheme, applyTheme } from '../app/ThemeManager';
+import { FoldObserver } from '../app/FoldObserver';
 
 // Cold-start routing (Track C/F):
 //   no saved S3 config            → pages/Onboard      (fresh install)
@@ -25,6 +26,9 @@ import { loadTheme, applyTheme } from '../app/ThemeManager';
 export default class EntryAbility extends UIAbility {
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'shibei', 'EntryAbility onCreate');
+    // Start the fold observer before any page can render so components
+    // relying on @StorageProp(KEY_FOLD_STATUS) get a valid initial value.
+    FoldObserver.instance.start();
   }
 
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {

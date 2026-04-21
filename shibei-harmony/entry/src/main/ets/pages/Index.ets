@@ -24,7 +24,8 @@ struct Index {
     { title: '12. Config + Sync (A4 batch 1+3)', url: 'pages/Demo12Sync' },
     { title: '13. Onboard wizard (Track C)', url: 'pages/Onboard' },
     { title: '14. Settings (Track F)', url: 'pages/Settings' },
-    { title: '15. Lock screen', url: 'pages/LockScreen' }
+    { title: '15. Lock screen', url: 'pages/LockScreen' },
+    { title: '16. Search (Track E)', url: 'pages/Search' }
   ];
 
   build() {
