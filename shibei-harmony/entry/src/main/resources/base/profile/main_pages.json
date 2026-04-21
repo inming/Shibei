@@ -8,6 +8,7 @@
     "pages/Demo4FileProtocol",
     "pages/Demo5Biometric",
     "pages/Demo6BackgroundTask",
-    "pages/Demo7NetworkSwitch"
+    "pages/Demo7NetworkSwitch",
+    "pages/Demo8NapiCodegen"
   ]
 }
