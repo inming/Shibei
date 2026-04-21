@@ -259,6 +259,10 @@ export function testS3Connection(
   return invoke("cmd_test_s3_connection", { endpoint, region, bucket, accessKey, secretKey });
 }
 
+export function generatePairingPayload(pin: string): Promise<string> {
+  return invoke("cmd_generate_pairing_payload", { pin });
+}
+
 export function downloadSnapshot(resourceId: string): Promise<boolean> {
   return invoke("cmd_download_snapshot", { resourceId });
 }

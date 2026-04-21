@@ -5,6 +5,7 @@ import type { SyncConfig } from "@/types";
 import type { OrphanScanResult } from "@/lib/commands";
 import toast from "react-hot-toast";
 import { Modal } from "@/components/Modal";
+import { PairingDialog } from "./PairingDialog";
 import styles from "./Settings.module.css";
 
 function formatError(err: unknown): string {
@@ -44,6 +45,9 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmInput, setConfirmInput] = useState("");
   const [purging, setPurging] = useState(false);
+
+  // Pairing dialog
+  const [pairingOpen, setPairingOpen] = useState(false);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -244,7 +248,17 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
         >
           {saving ? t('saving') : t('saveConfig')}
         </button>
+        <button
+          className={styles.secondary}
+          onClick={() => setPairingOpen(true)}
+          disabled={!hasCredentials || !bucket}
+          title={(!hasCredentials || !bucket) ? t('pairing.disabledTooltip') : undefined}
+        >
+          {t('addMobileDevice')}
+        </button>
       </div>
+
+      {pairingOpen && <PairingDialog onClose={() => setPairingOpen(false)} />}
 
       {hasCredentials && (
         <div className={styles.passwordSection}>

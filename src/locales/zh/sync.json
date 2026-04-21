@@ -59,5 +59,18 @@
   "syncSettings": "同步设置",
   "lockApp": "锁定应用",
   "keychainUnavailable": "系统钥匙串不可用，请手动输入密码",
-  "keyMismatch": "加密密钥已变更，请重新输入密码"
+  "keyMismatch": "加密密钥已变更，请重新输入密码",
+  "addMobileDevice": "添加移动设备",
+  "pairing": {
+    "title": "配对移动设备",
+    "instructions": "在手机拾贝中扫描二维码并输入下方 PIN 完成首次配对。",
+    "pin": "PIN 码",
+    "expiresIn": "{{seconds}} 秒后失效",
+    "expired": "已过期",
+    "regenerate": "重新生成",
+    "noShareWarning": "请勿截图或分享此二维码和 PIN",
+    "disabledTooltip": "请先在上方配置并测试 S3 连接",
+    "generating": "生成中…",
+    "generateFailed": "生成配对失败：{{error}}"
+  }
 }

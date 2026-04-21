@@ -1,0 +1,97 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  min-width: 320px;
+}
+
+.instructions {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.qrWrap {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border-radius: 4px;
+  padding: 8px;
+  box-sizing: content-box;
+}
+
+.qrWrap img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.qrExpired {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+  font-weight: 600;
+  border-radius: 4px;
+}
+
+.qrLoading {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pinLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pinValue {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 28px;
+  letter-spacing: 4px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.countdown {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  min-height: 1.2em;
+}
+
+.countdownExpired {
+  color: var(--color-danger, #d04040);
+  font-weight: 600;
+}
+
+.warning {
+  font-size: var(--font-size-xs, 11px);
+  color: var(--color-warning, #b8860b);
+  text-align: center;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+
+.error {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger, #d04040);
+  text-align: center;
+  margin: 0;
+}

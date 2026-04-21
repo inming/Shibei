@@ -59,5 +59,18 @@
   "syncSettings": "Sync settings",
   "lockApp": "Lock app",
   "keychainUnavailable": "System keychain unavailable, please enter password manually",
-  "keyMismatch": "Encryption key has changed, please re-enter password"
+  "keyMismatch": "Encryption key has changed, please re-enter password",
+  "addMobileDevice": "Add mobile device",
+  "pairing": {
+    "title": "Pair mobile device",
+    "instructions": "Scan this QR code in the Shibei mobile app and enter the PIN below to complete first-time pairing.",
+    "pin": "PIN",
+    "expiresIn": "Expires in {{seconds}}s",
+    "expired": "Expired",
+    "regenerate": "Regenerate",
+    "noShareWarning": "Do not screenshot or share this QR code and PIN",
+    "disabledTooltip": "Please configure and test the S3 connection above first",
+    "generating": "Generating…",
+    "generateFailed": "Failed to generate pairing: {{error}}"
+  }
 }

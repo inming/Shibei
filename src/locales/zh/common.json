@@ -40,6 +40,11 @@
     "restore_db_missing": "备份中缺少数据库文件",
     "restore_failed": "恢复失败",
     "readPdfFailed": "读取 PDF 失败",
-    "readFileFailed": "读取文件失败"
+    "readFileFailed": "读取文件失败",
+    "pairingInvalidPin": "PIN 必须为 6 位数字",
+    "pairingSyncNotConfigured": "请先配置 S3 同步",
+    "pairingCredentialsMissing": "S3 凭据缺失，请重新保存",
+    "pairingPayloadTooLarge": "配置过大，请缩短 endpoint 等字段",
+    "pairingInternal": "生成配对失败，请重试"
   }
 }

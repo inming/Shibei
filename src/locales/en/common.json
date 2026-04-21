@@ -40,6 +40,11 @@
     "restore_db_missing": "Database file missing from backup",
     "restore_failed": "Restore failed",
     "readPdfFailed": "Failed to read PDF",
-    "readFileFailed": "Failed to read file"
+    "readFileFailed": "Failed to read file",
+    "pairingInvalidPin": "PIN must be 6 digits",
+    "pairingSyncNotConfigured": "Please configure S3 sync first",
+    "pairingCredentialsMissing": "S3 credentials missing, please save them again",
+    "pairingPayloadTooLarge": "Configuration too large, please shorten the endpoint or other fields",
+    "pairingInternal": "Failed to generate pairing, please try again"
   }
 }
