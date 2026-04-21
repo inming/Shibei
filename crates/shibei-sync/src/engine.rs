@@ -38,7 +38,8 @@ pub enum SyncError {
     DecryptionFailed(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SyncResult {
     Success {
         uploaded: usize,

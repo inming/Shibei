@@ -74,6 +74,151 @@ pub fn lock_vault() {
 }
 
 // ────────────────────────────────────────────────────────────
+// S3 config + E2EE unlock + sync (Track A4 batch 1 + 3)
+// ────────────────────────────────────────────────────────────
+
+/// Persist S3 endpoint/region/bucket + credentials. Mirrors desktop
+/// `cmd_save_sync_config`. Does not touch the network; safe to call with
+/// placeholder values during onboarding form validation.
+///
+/// Input is a JSON object `{"endpoint","region","bucket","accessKey","secretKey"}`
+/// to keep the NAPI ABI one-string-in, one-string-out. Empty endpoint → AWS.
+#[shibei_napi]
+pub fn set_s3_config(config_json: String) -> String {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Input {
+        endpoint: Option<String>,
+        region: String,
+        bucket: String,
+        access_key: String,
+        secret_key: String,
+    }
+    let input: Input = match serde_json::from_str(&config_json) {
+        Ok(v) => v,
+        Err(e) => return format!("error.badConfigJson: {e}"),
+    };
+    let result = with_conn(|conn| {
+        shibei_sync::sync_state::set(conn, "config:s3_endpoint", input.endpoint.as_deref().unwrap_or(""))?;
+        shibei_sync::sync_state::set(conn, "config:s3_region", &input.region)?;
+        shibei_sync::sync_state::set(conn, "config:s3_bucket", &input.bucket)?;
+        shibei_sync::credentials::store_credentials(conn, &input.access_key, &input.secret_key)?;
+        Ok(())
+    });
+    match result {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}
+
+/// Fetch `meta/keyring.json` from S3, Argon2id-derive the wrapping key from
+/// `password`, unwrap the Master Key, and cache it in AppState. After this,
+/// syncMetadata can run with E2EE enabled. Mirrors desktop
+/// `cmd_unlock_encryption` minus the `config:encryption_sync_completed`
+/// reset (mobile first-sync semantics handled by syncMetadata itself).
+#[shibei_napi(async)]
+pub async fn set_e2ee_password(password: String) -> Result<String, String> {
+    use shibei_sync::backend::SyncBackend;
+
+    let backend = build_raw_backend().map_err(|e| format!("error.buildBackend: {e}"))?;
+    let data = backend
+        .download("meta/keyring.json")
+        .await
+        .map_err(|e| format!("error.keyDownloadFailed: {e}"))?;
+    let json = String::from_utf8(data).map_err(|e| format!("error.keyFileFormatError: {e}"))?;
+    let keyring =
+        shibei_sync::keyring::Keyring::from_json(&json).map_err(|e| format!("error.keyFileParseFailed: {e}"))?;
+
+    let mk = keyring.unlock(&password).map_err(|e| match e {
+        shibei_sync::keyring::KeyringError::WrongPassword => "error.wrongPassword".to_string(),
+        shibei_sync::keyring::KeyringError::Tampered => "error.keyFileTampered".to_string(),
+        other => format!("error.unlockFailed: {other}"),
+    })?;
+
+    let app = state::get()?;
+    app.encryption.set_key(mk);
+    with_conn(|conn| shibei_sync::sync_state::set(conn, "config:encryption_enabled", "true"))?;
+    Ok("ok".to_string())
+}
+
+/// Run one pass of SyncEngine against the local DB. Uploads pending
+/// sync_log entries, pulls remote JSONL + snapshot manifest, applies with
+/// LWW. Returns a JSON SyncResult on success or an error.* string.
+///
+/// Requires setS3Config called at least once AND (if the remote bucket has
+/// `meta/keyring.json`) setE2EEPassword called successfully this session.
+#[shibei_napi(async)]
+pub async fn sync_metadata() -> Result<String, String> {
+    let engine = build_sync_engine().await?;
+    let result = engine
+        .sync(None)
+        .await
+        .map_err(|e| format!("error.syncFailed: {e}"))?;
+    Ok(to_json(&result))
+}
+
+fn build_raw_backend() -> Result<shibei_sync::backend::S3Backend, String> {
+    let (endpoint, region, bucket, access_key, secret_key) = with_conn(|conn| {
+        let endpoint = shibei_sync::sync_state::get(conn, "config:s3_endpoint")?.unwrap_or_default();
+        let region = shibei_sync::sync_state::get(conn, "config:s3_region")?
+            .ok_or_else(|| shibei_db::DbError::NotFound("config:s3_region".into()))?;
+        let bucket = shibei_sync::sync_state::get(conn, "config:s3_bucket")?
+            .ok_or_else(|| shibei_db::DbError::NotFound("config:s3_bucket".into()))?;
+        let (ak, sk) = shibei_sync::credentials::load_credentials(conn)?
+            .ok_or_else(|| shibei_db::DbError::NotFound("credentials".into()))?;
+        Ok((endpoint, region, bucket, ak, sk))
+    })?;
+    let cfg = shibei_sync::backend::S3Config {
+        endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
+        region,
+        bucket,
+        access_key,
+        secret_key,
+    };
+    shibei_sync::backend::S3Backend::new(cfg).map_err(|e| format!("error.s3Init: {e}"))
+}
+
+async fn build_sync_engine() -> Result<shibei_sync::engine::SyncEngine, String> {
+    use shibei_sync::backend::SyncBackend;
+    use std::sync::Arc;
+
+    let raw = build_raw_backend()?;
+    let app = state::get()?;
+
+    let local_e2ee = with_conn(|conn| shibei_sync::sync_state::get(conn, "config:encryption_enabled"))
+        .ok()
+        .flatten()
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
+    let encryption_enabled = if local_e2ee {
+        true
+    } else {
+        raw.head("meta/keyring.json").await.map(|m| m.is_some()).unwrap_or(false)
+    };
+
+    let backend: Arc<dyn SyncBackend> = if encryption_enabled {
+        let mk = app
+            .encryption
+            .get_key()
+            .ok_or_else(|| "error.encryptionNotUnlocked".to_string())?;
+        Arc::new(shibei_sync::encrypted_backend::EncryptedBackend::new(Arc::new(raw), mk))
+    } else {
+        Arc::new(raw)
+    };
+
+    let clock = Arc::new(shibei_db::hlc::HlcClock::new(app.device_id.clone()));
+
+    Ok(shibei_sync::engine::SyncEngine::new(
+        app.db_pool.clone(),
+        backend,
+        app.device_id.clone(),
+        clock,
+        app.data_dir.clone(),
+    ))
+}
+
+// ────────────────────────────────────────────────────────────
 // Queries (Track A4 batch 2)
 //
 // Complex return types (Vec<Folder>, Option<Resource>, Vec<SearchResult>,

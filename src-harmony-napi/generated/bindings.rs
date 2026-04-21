@@ -74,6 +74,51 @@ pub unsafe extern "C" fn shibei_ffi_lock_vault() -> () {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_set_s3_config(config_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::set_s3_config(cstr_to_string(config_json));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_set_e2ee_password(password: *const c_char, ctx: *mut c_void) {
+    let password = cstr_to_string(password);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::set_e2ee_password(password).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_sync_metadata(ctx: *mut c_void) {
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::sync_metadata().await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_list_folders() -> *mut c_char {
     let s = crate::commands::list_folders();
     leak_cstring(s)

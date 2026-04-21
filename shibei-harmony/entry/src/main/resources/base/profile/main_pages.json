@@ -13,6 +13,7 @@
     "pages/Demo9Lifecycle",
     "pages/Demo10Queries",
     "pages/Demo11Library",
-    "pages/Demo11ReaderStub"
+    "pages/Demo11ReaderStub",
+    "pages/Demo12Sync"
   ]
 }

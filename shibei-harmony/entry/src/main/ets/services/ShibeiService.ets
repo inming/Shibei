@@ -12,6 +12,9 @@ import {
   hasSavedConfig as napiHasSavedConfig,
   isUnlocked as napiIsUnlocked,
   lockVault as napiLockVault,
+  setS3Config as napiSetS3Config,
+  setE2eePassword as napiSetE2eePassword,
+  syncMetadata as napiSyncMetadata,
   listFolders as napiListFolders,
   listResources as napiListResources,
   searchResources as napiSearchResources,
@@ -69,6 +72,34 @@ export class ShibeiService {
 
   lockVault(): void {
     napiLockVault();
+  }
+
+  // ── Config + sync (Track A4 batch 1 + 3) ──────────────────
+
+  /// Persist S3 config + credentials. No network call. Overwrites any
+  /// previously-saved values.
+  setS3Config(cfg: S3ConfigInput): void {
+    const result: string = napiSetS3Config(JSON.stringify(cfg));
+    if (result !== 'ok') {
+      throw new ShibeiError(result);
+    }
+  }
+
+  /// Download `meta/keyring.json` from S3, Argon2id-derive wrapper key
+  /// from `password`, unwrap the Master Key and cache it. Async because
+  /// the S3 round-trip dominates (~200ms).
+  async setE2eePassword(password: string): Promise<void> {
+    const result: string = await napiSetE2eePassword(password);
+    if (result !== 'ok') {
+      throw new ShibeiError(result);
+    }
+  }
+
+  /// Run one full sync pass. Returns the parsed SyncResult JSON envelope:
+  ///   { kind: "success", uploaded, downloaded, applied } | { kind: "skipped" }
+  async syncMetadata(): Promise<SyncResult> {
+    const raw: string = await napiSyncMetadata();
+    return JSON.parse(raw) as SyncResult;
   }
 
   // ── Queries (Track A4 batch 2) ────────────────────────────
@@ -166,6 +197,27 @@ export interface SortInput {
   by?: 'created_at' | 'annotated_at';
   order?: 'asc' | 'desc';
 }
+
+export interface S3ConfigInput {
+  endpoint?: string;
+  region: string;
+  bucket: string;
+  accessKey: string;
+  secretKey: string;
+}
+
+export interface SyncResultSuccess {
+  kind: 'success';
+  uploaded: number;
+  downloaded: number;
+  applied: number;
+}
+
+export interface SyncResultSkipped {
+  kind: 'skipped';
+}
+
+export type SyncResult = SyncResultSuccess | SyncResultSkipped;
 
 // NAPI error-envelope shape. `error` is present iff the Rust side folded a
 // failure into the JSON response. Declared as a named interface (ArkTS

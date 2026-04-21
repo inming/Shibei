@@ -16,6 +16,9 @@ extern bool shibei_ffi_is_initialized(void);
 extern bool shibei_ffi_has_saved_config(void);
 extern bool shibei_ffi_is_unlocked(void);
 extern void shibei_ffi_lock_vault(void);
+extern char* shibei_ffi_set_s3_config(const char* config_json);
+extern void shibei_ffi_set_e2ee_password(const char* password, void* ctx);
+extern void shibei_ffi_sync_metadata(void* ctx);
 extern char* shibei_ffi_list_folders(void);
 extern char* shibei_ffi_list_resources(const char* folder_id, const char* tag_ids_json, const char* sort_json);
 extern char* shibei_ffi_search_resources(const char* query, const char* tag_ids_json);
@@ -134,6 +137,49 @@ static napi_value lock_vault_wrap(napi_env env, napi_callback_info info) {
     shibei_ffi_lock_vault();
     napi_get_undefined(env, &result);
     return result;
+}
+
+static napi_value set_s3_config_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_config_json[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_config_json, sizeof(buf_config_json), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_set_s3_config(buf_config_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value set_e2ee_password_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_password[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_password, sizeof(buf_password), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "setE2eePassword_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_set_e2ee_password(buf_password, ctx);
+    return promise;
+}
+
+static napi_value sync_metadata_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 0;
+    napi_value* args = NULL;
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "syncMetadata_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_sync_metadata(ctx);
+    return promise;
 }
 
 static napi_value list_folders_wrap(napi_env env, napi_callback_info info) {
@@ -307,6 +353,9 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"hasSavedConfig", NULL, has_saved_config_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"isUnlocked", NULL, is_unlocked_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockVault", NULL, lock_vault_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"setS3Config", NULL, set_s3_config_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"setE2eePassword", NULL, set_e2ee_password_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"syncMetadata", NULL, sync_metadata_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listFolders", NULL, list_folders_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listResources", NULL, list_resources_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"searchResources", NULL, search_resources_wrap, NULL, NULL, NULL, napi_default, NULL},
