@@ -6,7 +6,7 @@
 - 后置消费者：Phase 3（阅读与标注）
 - 设计文档：`docs/superpowers/specs/2026-04-20-harmony-mobile-mvp-design.md` §二、§三、§四、§六、§七
 - 预计工期：4~5 周（1 人）
-- 状态：🚧 进行中（Track A2 ✅ 合入 main；Track A1/A3/A4/A5/B/C/D/E/F 待开工）
+- 状态：🚧 进行中（Track A1 ✅ + A2 ✅ 合入 main；A3/A4/A5/B/C/D/E/F 待开工）
 
 ---
 
@@ -44,9 +44,47 @@
 6. **src-tauri 依赖瘦身**：`rust-s3` / `async-trait` / `chacha20poly1305` / `hkdf` / `sha2` / `zeroize` / `flate2` / `scraper` / `pdf-extract` / `zip` 全部迁到对应 crate。保留 `base64` / `keyring` / `argon2` / `rand`（commands/server 直接用）。
 7. **plan 原说 "Day 1 末 Go/No-Go 判断是否退回 `src-tauri` 暴露成 lib 的 fallback"**：Day 1 `shibei-db` 拆分一次成功，无需 fallback。
 
-### Track A1 / A3 / A4 / A5 / B / C / D / E / F — 待开工
+### Track A1 — NAPI codegen（2026-04-21 完成，M1.b Go）
 
-见 §二 依赖图，下一步起手 **Track A1（codegen 工具）** — W1 末 Go/No-Go（M1.b）。
+3 个 commit 合入 main，Mate X5 真机 3 条路径全通。
+
+| # | Commit | 说明 |
+|---|---|---|
+| 1 | `7219581` | `feat(harmony-napi): codegen tool for NAPI bindings (Track A1)` — `crates/shibei-napi-macros` 空 proc-macro marker + `crates/shibei-napi-codegen` syn-based 解析 + 3 个渲染器（shim.c / bindings.rs / Index.d.ts） |
+| 2 | `6fc44cf` | `fix(harmony): build script uses workspace-level target dir` — workspace 后 `target/` 移到仓库根，脚本 + `.cargo/config.toml` 升到根部 |
+| 3 | `f147e1e` | `feat(harmony): Demo 8 page for NAPI codegen validation` — Mate X5 验证页 |
+
+**5 个注解命令全绿**（3 sync + 1 async + 1 event）：
+
+```
+[sync ] hello          () -> string
+[sync ] add            (i32,i32) -> i32
+[sync ] s3_smoke_test  (5 strings) -> string
+[async] echo_async     async(string) -> Promise<string>     (50ms latency验证过)
+[event] on_tick        (i64,cb) -> () => void (unsub)        (启停正常，AtomicBool cancel 观察无误)
+```
+
+**验收（2026-04-21 Mate X5 真机 + 主机）**：
+
+- `cargo test --workspace`：**189 passed, 3 ignored**（+5 codegen parser unit tests）
+- `cargo clippy --workspace --all-targets`：无新增 warning
+- `scripts/build-harmony-napi.sh release`：`libshibei_core.so` 4.2 MB，零 warning
+- **Mate X5 Demo 8 端到端**：
+  - sync `hello()` → 正确字符串
+  - async `echoAsync("hi")` → Promise 约 50ms resolve 到 `"echo:hi"`
+  - event `onTick(500, cb)` → 每 500ms 触发回调；`unsub()` 后立刻停
+
+**偏离 plan**：
+
+1. **codegen 位置**：plan §4.1 写 `src-harmony-napi/codegen/`，实际放 `crates/shibei-napi-codegen/` —— 与其他 workspace crates 一致。
+2. **marker 用 proc-macro 而非 build.rs 触发 codegen**：plan §4.1 已决策"不挂 build.rs，手动 `cargo run -p shibei-napi-codegen`"，实施上用 no-op proc-macro（`crates/shibei-napi-macros/`）让 rustc 接受 `#[shibei_napi]`；codegen 是独立 bin，手动调用，CI 守恒用 `git diff --exit-code`。
+3. **Async 返回类型仅实现 `Result<String, _>`**：`render_bindings.emit_async` 其他分支 stub reject；Phase 2 批 3（`sync_metadata` 等）前补齐。
+4. **Event payload 仅 `i64`**：`on_tick` 足以证明 threadsafe_function + AtomicBool cancel 路径；其他 payload 类型等 Track A5 事件转发时泛化。
+5. **`.cargo/config.toml` 升到 workspace 根**：A2 之后 `target/` 移到仓库根，原 `src-harmony-napi/.cargo/config.toml` 的 OHOS linker 设置不再生效；升级后所有方向调用 `cargo build -p shibei-core --target aarch64-unknown-linux-ohos` 都能找到正确 linker。
+
+### Track A3 / A4 / A5 / B / C / D / E / F — 待开工
+
+见 §二 依赖图，下一步起手 **Track A3（AppState 单例）** + **Track B（ArkTS 外壳骨架）** —— 两者独立，可并行。
 
 ---
 

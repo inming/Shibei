@@ -38,6 +38,8 @@ crates/
   shibei-backup/        # 本地备份/恢复（zip + manifest.json + VACUUM'd shibei.db + storage/）
   shibei-pairing/       # 配对 envelope 密码学（HKDF-SHA256 + XChaCha20-Poly1305，零 Tauri/SQLite 依赖）
   shibei-pair-decrypt/  # 开发者 CLI：从 (pin, envelope) 解出 plain payload
+  shibei-napi-macros/   # `#[shibei_napi]` no-op proc-macro，让 rustc 接受 marker（真正工作由 codegen 做）
+  shibei-napi-codegen/  # NAPI 代码生成（syn 解析 commands.rs → shim.c + bindings.rs + Index.d.ts）
 src-tauri/          # Rust 后端（Tauri core — Phase 2 A2 后仅保留 Tauri 集成层）
   src/
     commands/       # Tauri command handlers（38 个命令，含 cmd_search_resources/cmd_export_backup/cmd_import_backup/cmd_get_ai_tool_paths/cmd_generate_pairing_payload）
