@@ -93,6 +93,12 @@ fn ensure_inbox(pool: &SharedPool) -> Result<(), String> {
 ///
 /// Refresh the bundle periodically by re-downloading
 /// https://curl.se/ca/cacert.pem into `src-harmony-napi/ca-bundle.pem`.
+///
+/// FIXME(tech-debt 2026-04-21): include_bytes! adds ~300 KB to every
+/// release .so and couples CA trust updates to Rust rebuilds. Preferred
+/// replacement is to ship cacert.pem as a HAP rawfile resource and
+/// accept its path through initApp(dataDir, caBundlePath). See
+/// docs/superpowers/techdebt/2026-04-21-harmony-tls-ca-bundle.md.
 static CA_BUNDLE_PEM: &[u8] = include_bytes!("../ca-bundle.pem");
 
 fn ensure_ca_bundle(data_dir: &std::path::Path) -> Result<(), String> {
