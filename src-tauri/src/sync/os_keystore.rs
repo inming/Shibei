@@ -89,6 +89,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Touches the real OS keychain; run manually with --ignored
     fn test_load_returns_none_when_no_entry() {
         let _ = delete_master_key(); // ensure clean
         let result = load_master_key().expect("load should succeed");
@@ -96,6 +97,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Touches the real OS keychain; run manually with --ignored
     fn test_delete_when_no_entry_succeeds() {
         let _ = delete_master_key(); // ensure clean
         let result = delete_master_key();
