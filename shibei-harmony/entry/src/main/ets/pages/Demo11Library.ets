@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { router } from '@kit.ArkUI';
 import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
 import { ResourceList } from '../components/ResourceList';
@@ -18,7 +19,6 @@ struct Demo11Library {
   @State drawerOpen: boolean = false;
   @State selectedFolderId: string = INBOX_FOLDER_ID;
   @State selectedFolderLabel: string = '收件箱';
-  @State tappedResourceId: string = '';
 
   async aboutToAppear(): Promise<void> {
     // Same init path Demo 9 / Demo 10 use — idempotent, so coming here
@@ -49,10 +49,15 @@ struct Demo11Library {
   }
 
   private onOpenResource(id: string): void {
-    // Phase 3 will push the Reader page here. For Phase 2 we just record
-    // the tap so the user can confirm the event path.
-    this.tappedResourceId = id;
+    // Push to the stub reader; Phase 3 replaces the stub with the real
+    // ArkWeb + annotator.js page behind the same route.
     hilog.info(0x0000, 'shibei', 'Demo11 open resource %{public}s', id);
+    router.pushUrl({
+      url: 'pages/Demo11ReaderStub',
+      params: { resourceId: id },
+    }).catch((err: Error) => {
+      hilog.error(0x0000, 'shibei', 'router.pushUrl fail: %{public}s', err.message);
+    });
   }
 
   // @Entry requires a single root container in build(); guard the init
@@ -99,10 +104,6 @@ struct Demo11Library {
               onOpenResource: (id: string) => this.onOpenResource(id),
             });
 
-            if (this.tappedResourceId) {
-              Text(`(Phase 3 will open: ${this.tappedResourceId})`)
-                .fontSize(11).fontColor('#bbb').margin({ top: 8, bottom: 8 });
-            }
           }.width('100%').height('100%');
         }
         .showSideBar(this.drawerOpen)
