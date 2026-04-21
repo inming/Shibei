@@ -6,7 +6,47 @@
 - 后置消费者：Phase 3（阅读与标注）
 - 设计文档：`docs/superpowers/specs/2026-04-20-harmony-mobile-mvp-design.md` §二、§三、§四、§六、§七
 - 预计工期：4~5 周（1 人）
-- 状态：📝 待执行
+- 状态：🚧 进行中（Track A2 ✅ 合入 main；Track A1/A3/A4/A5/B/C/D/E/F 待开工）
+
+---
+
+## 进度记录
+
+### Track A2 — 桌面 crates 拆分（2026-04-21 完成，合入 main 于 `489338c`）
+
+5 个 commit 全部按计划合入，加 Phase 1 基线 2 个（workspace 初始化 + shibei-pairing），顶层 workspace 现有 7 个 crate：
+
+| # | Commit | 说明 | 测试 |
+|---|---|---|---|
+| 1 | `d0c2a6a` | `feat(workspace): extract shibei-db crate` — 8 DB CRUD 模块 + 7 SQL migrations + HLC + sync_log + SyncContext | 96 |
+| 2 | `12e6e42` | `feat(workspace): extract shibei-events crate` — 9 个领域事件名常量 | 0 |
+| 3 | `cc72db8` | `feat(workspace): extract shibei-storage crate` — storage + plain_text + pdf_text | 14 |
+| 4 | `e62b624` | `feat(workspace): extract shibei-sync crate` — backend/engine/crypto/keyring/encrypted_backend/pairing/sync_state/… | 51 |
+| 5 | `9d7f632` | `feat(workspace): extract shibei-backup crate` — 本地备份 zip + restore | 4 |
+
+合入后 `src-tauri/src/` 只剩 `commands/` + `server/` + `lib.rs` + `main.rs` + `annotator.js`；domain 代码全部在 `crates/` 下，通过 `src-tauri/src/lib.rs` 的 `pub use shibei_* as …` facade 保证 `crate::db::…` / `crate::sync::…` / `crate::backup::…` / `crate::events::…` / `crate::storage::…` / `crate::plain_text::…` / `crate::pdf_text::…` 全部 call site **零改动**。
+
+**验收（2026-04-21，main 基线）**：
+
+- `cargo test --workspace`：**184 passed, 3 ignored**（6 shibei + 4 backup + 96 db + 13 pairing + 14 storage + 51 sync），与 Phase 1 post-merge 基线完全一致
+- `cargo clippy --workspace --all-targets`：2 个预存 warning（无新增）
+- `cargo check --workspace --all-targets`：全绿
+- `tsc --noEmit`：全绿
+- Frontend vitest：32 failed / 111 passed —— 已验证与 main 基线相同（**预存，非 A2 引入**）
+
+**偏离计划的细节**：
+
+1. **hlc / sync_log / SyncContext 归 shibei-db**，而非 plan 原说的 shibei-sync。原因：db CRUD 要在同事务写 sync_log，若留 shibei-sync 会形成 sync → db → sync 循环。`sync/lib.rs` 加 `pub use shibei_db::{hlc, sync_log, SyncContext}` facade，老路径仍可用。
+2. **`search::backfill_plain_text` 改成泛型 `F: Fn(&str) -> String`**，避免 shibei-db 拉 `scraper` / `pdf-extract`。2 个 caller（`src-tauri/src/lib.rs` 启动路径、`shibei-backup/src/lib.rs` 恢复路径）显式注入 extractor。
+3. **`test_db` / `init_db` 加 `test-support` feature**。原 `#[cfg(test)]` 在下游 crate 测试里不可见，`src-tauri/Cargo.toml` 的 `[dev-dependencies]` 显式启用。
+4. **`keyring::compute_verification_hash` 从 `pub(crate)` 升到 `pub`**。原先 in-crate 访问即可，跨 crate 后需要完整 `pub`。
+5. **`shibei-events` 暂只做常量 crate，不带 `EventEmitter` trait**。原 plan §3.3 的 trait 等 Track A5（NAPI 事件转发）再加；桌面目前全部通过 `AppHandle::emit` 直接调，sync engine 也不 emit，trait 没有消费者。
+6. **src-tauri 依赖瘦身**：`rust-s3` / `async-trait` / `chacha20poly1305` / `hkdf` / `sha2` / `zeroize` / `flate2` / `scraper` / `pdf-extract` / `zip` 全部迁到对应 crate。保留 `base64` / `keyring` / `argon2` / `rand`（commands/server 直接用）。
+7. **plan 原说 "Day 1 末 Go/No-Go 判断是否退回 `src-tauri` 暴露成 lib 的 fallback"**：Day 1 `shibei-db` 拆分一次成功，无需 fallback。
+
+### Track A1 / A3 / A4 / A5 / B / C / D / E / F — 待开工
+
+见 §二 依赖图，下一步起手 **Track A1（codegen 工具）** — W1 末 Go/No-Go（M1.b）。
 
 ---
 

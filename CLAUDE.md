@@ -13,6 +13,7 @@
 - v2.4 升级（PDF 缩放 / 开机自启 / 阅读器摘要）：`docs/superpowers/specs/2026-04-19-v2.4-pdf-zoom-autolaunch-summary-design.md`
 - 鸿蒙移动端 MVP 设计：`docs/superpowers/specs/2026-04-20-harmony-mobile-mvp-design.md`
 - 鸿蒙 Phase 1（桌面端配对 QR）：`docs/superpowers/plans/2026-04-21-phase1-pairing-qr.md`
+- 鸿蒙 Phase 2（骨架 + 核心能力，Track A2 已合入）：`docs/superpowers/plans/2026-04-21-phase2-skeleton.md`
 - 许可证：AGPL-3.0
 
 ## 技术栈
@@ -30,15 +31,19 @@
 ```
 Cargo.toml          # 顶层 workspace（members: src-tauri, src-harmony-napi, crates/*）
 crates/
-  shibei-pairing/       # 配对 envelope 密码学（HKDF-SHA256 + XChaCha20-Poly1305）
+  shibei-db/            # 数据层：SQLite schema + CRUD + FTS5 + HLC + sync_log + SyncContext（+ 7 SQL migrations）
+  shibei-events/        # 9 个领域事件名常量（desktop + mobile 共享）
+  shibei-storage/       # 文件系统存储（snapshot.html/.pdf）+ plain_text（HTML→text，scraper）+ pdf_text（PDF→text，pdf-extract）
+  shibei-sync/          # S3 同步（HLC LWW、sync_log 拉取、SyncBackend trait、SyncEngine、凭据、全量导出、E2EE、pairing 配对 payload、os_keystore、keyring）
+  shibei-backup/        # 本地备份/恢复（zip + manifest.json + VACUUM'd shibei.db + storage/）
+  shibei-pairing/       # 配对 envelope 密码学（HKDF-SHA256 + XChaCha20-Poly1305，零 Tauri/SQLite 依赖）
   shibei-pair-decrypt/  # 开发者 CLI：从 (pin, envelope) 解出 plain payload
-src-tauri/          # Rust 后端（Tauri core）
+src-tauri/          # Rust 后端（Tauri core — Phase 2 A2 后仅保留 Tauri 集成层）
   src/
     commands/       # Tauri command handlers（38 个命令，含 cmd_search_resources/cmd_export_backup/cmd_import_backup/cmd_get_ai_tool_paths/cmd_generate_pairing_payload）
-    db/             # 数据库操作（migration、folders/resources/tags/highlights/comments/search CRUD，含软删除+HLC+FTS5）
     server/         # 本地 HTTP server（axum，插件通信）
-    storage/        # 文件系统存储逻辑
-    sync/           # S3 云同步（HLC 时钟、sync_log、sync_state、SyncBackend trait、SyncEngine、凭据、全量导出、E2EE 加密、pairing 配对 payload）
+    lib.rs          # 启动逻辑 + facade re-exports（`pub use shibei_db as db;` 等，保留 `crate::db::…` / `crate::sync::…` 老路径）
+    main.rs
     annotator.js    # 标注注入脚本（嵌入到 HTML 中）
   migrations/       # SQL migration 文件
 src/                # React 前端
