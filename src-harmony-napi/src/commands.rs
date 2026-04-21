@@ -195,11 +195,18 @@ pub fn get_resource(id: String) -> String {
 
 /// Plain-text prefix of the indexed body. `max_chars <= 0` → default 200;
 /// empty string when plain_text hasn't been extracted yet (fresh import,
-/// PDF still running backfill, sync-apply before re-index).
+/// PDF still running backfill, sync-apply before re-index) OR when the
+/// resource doesn't exist (stale deep link, soft-deleted) — same null-
+/// folding policy as `get_resource`, so the UI can render a blank
+/// preview without a special-case try/catch.
 #[shibei_napi]
 pub fn get_resource_summary(id: String, max_chars: i32) -> String {
     let limit = if max_chars <= 0 { 200 } else { max_chars as usize };
-    let result = with_conn(|conn| shibei_db::resources::get_plain_text(conn, &id));
+    let result = with_conn(|conn| match shibei_db::resources::get_plain_text(conn, &id) {
+        Ok(v) => Ok(v),
+        Err(shibei_db::DbError::NotFound(_)) => Ok(None),
+        Err(e) => Err(e),
+    });
     match result {
         Ok(Some(text)) => {
             let total = text.chars().count();
