@@ -77,15 +77,22 @@ struct Demo11Library {
           });
 
           Column() {
-            // TopBar — the ☰ toggle is SideBarContainer's built-in control
-            // button (top-left corner of the parent); don't draw our own.
-            // Left padding reserves room so the title doesn't sit under it.
+            // TopBar — manual ☰ that tracks `drawerOpen`. The built-in
+            // SideBarContainer control button is hidden via
+            // .showControlButton(false) below so the drawer doesn't end up
+            // overlapping a fixed-position toggle when it slides in.
             Row() {
+              Button(this.drawerOpen ? '✕' : '☰')
+                .fontSize(20).fontColor('#333')
+                .backgroundColor(Color.Transparent)
+                .width(40).height(40)
+                .onClick(() => { this.drawerOpen = !this.drawerOpen; });
               Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
                 .textAlign(TextAlign.Center);
+              Text('').width(40);  // spacer to keep title centered
             }
             .width('100%')
-            .padding({ left: 48, right: 48, top: 12, bottom: 12 });
+            .padding({ left: 8, right: 8, top: 6, bottom: 6 });
 
             ResourceList({
               folderId: this.selectedFolderId,
@@ -102,6 +109,7 @@ struct Demo11Library {
         .sideBarWidth(260)
         .minSideBarWidth(200)
         .maxSideBarWidth(320)
+        .showControlButton(false)
         .width('100%').height('100%');
       }
     }
