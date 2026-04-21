@@ -107,9 +107,21 @@ pub fn delete_search_index(conn: &Connection, resource_id: &str) -> Result<(), D
 }
 
 /// Backfill plain_text for resources that don't have it yet.
-/// Reads snapshot HTML from disk, extracts text, and stores in DB.
-/// Best-effort: skips resources whose snapshot files can't be read.
-pub fn backfill_plain_text(conn: &Connection, base_dir: &std::path::Path) -> Result<u32, DbError> {
+/// Reads snapshot HTML from disk, extracts text via the injected extractor,
+/// and stores in DB. Best-effort: skips resources whose snapshot files can't
+/// be read.
+///
+/// `extract` is injected (not hard-coded to `scraper`) so shibei-db stays
+/// free of HTML / PDF parsing dependencies. The desktop caller wires in
+/// `plain_text::extract_plain_text`.
+pub fn backfill_plain_text<F>(
+    conn: &Connection,
+    base_dir: &std::path::Path,
+    extract: F,
+) -> Result<u32, DbError>
+where
+    F: Fn(&str) -> String,
+{
     let mut stmt = conn.prepare(
         "SELECT id FROM resources WHERE plain_text IS NULL AND deleted_at IS NULL",
     )?;
@@ -122,7 +134,7 @@ pub fn backfill_plain_text(conn: &Connection, base_dir: &std::path::Path) -> Res
         let html_path = base_dir.join("storage").join(id).join("snapshot.html");
         match std::fs::read_to_string(&html_path) {
             Ok(html) => {
-                let text = crate::plain_text::extract_plain_text(&html);
+                let text = extract(&html);
                 if !text.is_empty() {
                     let _ = super::resources::set_plain_text(conn, id, &text);
                     filled += 1;
@@ -386,7 +398,7 @@ pub fn mark_fts_initialized(conn: &Connection) -> Result<(), DbError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{comments, folders, highlights, resources, tags, test_db};
+    use crate::{comments, folders, highlights, resources, tags, test_db};
 
     fn test_anchor() -> highlights::Anchor {
         serde_json::json!({

@@ -4478,6 +4478,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shibei-db",
  "shibei-pairing",
  "tauri",
  "tauri-build",
@@ -4503,6 +4504,21 @@ dependencies = [
  "cc",
  "rust-s3",
  "tokio",
+]
+
+[[package]]
+name = "shibei-db"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]

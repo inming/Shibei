@@ -1,12 +1,16 @@
 mod backup;
 mod commands;
-mod db;
 mod events;
 mod server;
 mod pdf_text;
 mod plain_text;
 mod storage;
 pub mod sync;
+
+// Phase 2 crate refactor: facade re-export keeps the `crate::db::…` and
+// `crate::sync::{hlc,sync_log,SyncContext}` call sites in commands/server
+// unchanged while the implementations live in the `shibei-db` crate.
+pub use shibei_db as db;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -392,7 +396,11 @@ pub fn run() {
                         match db::search::is_fts_initialized(&conn) {
                             Ok(false) => {
                                 // Backfill plain_text for resources missing it
-                                match db::search::backfill_plain_text(&conn, &fts_base_dir) {
+                                match db::search::backfill_plain_text(
+                                    &conn,
+                                    &fts_base_dir,
+                                    plain_text::extract_plain_text,
+                                ) {
                                     Ok(n) if n > 0 => {
                                         eprintln!("[shibei] Backfilled plain_text for {} resources", n);
                                     }

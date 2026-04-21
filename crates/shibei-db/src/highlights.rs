@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 use super::{now_iso8601, DbError};
-use crate::sync::{self, SyncContext};
+use super::{sync_log, SyncContext};
 
 /// Anchor is stored as opaque JSON — the backend does not interpret its structure.
 /// HTML anchors have `{ text_position, text_quote }`.
@@ -51,7 +51,7 @@ pub fn create_highlight(
     if let Some(ctx) = sync_ctx {
         let payload = serde_json::to_string(&highlight)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "highlight",
             &highlight.id,
@@ -151,7 +151,7 @@ pub fn delete_highlight(
         if let Some(highlight) = highlight_before {
             let payload = serde_json::to_string(&highlight)
                 .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-            sync::sync_log::append(
+            sync_log::append(
                 conn,
                 "highlight",
                 id,
@@ -189,7 +189,7 @@ pub fn update_highlight_color(
     if let Some(ctx) = sync_ctx {
         let payload = serde_json::to_string(&highlight)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "highlight",
             id,
@@ -267,7 +267,7 @@ pub fn count_by_resource_ids(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{comments, folders, resources, test_db};
+    use crate::{comments, folders, resources, test_db};
 
     fn test_anchor() -> Anchor {
         serde_json::json!({

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::resources::Resource;
 use super::{now_iso8601, DbError};
-use crate::sync::{self, SyncContext};
+use super::{sync_log, SyncContext};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tag {
@@ -34,7 +34,7 @@ pub fn create_tag(
     if let Some(ctx) = sync_ctx {
         let payload = serde_json::to_string(&tag)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "tag",
             &tag.id,
@@ -72,7 +72,7 @@ pub fn update_tag(
         };
         let payload = serde_json::to_string(&tag)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "tag",
             id,
@@ -117,7 +117,7 @@ pub fn delete_tag(
         if let Some(tag) = tag_before {
             let payload = serde_json::to_string(&tag)
                 .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-            sync::sync_log::append(
+            sync_log::append(
                 conn,
                 "tag",
                 id,
@@ -183,7 +183,7 @@ pub fn add_tag_to_resource(
         let resource = super::resources::get_resource(conn, resource_id)?;
         let tag_ids = get_tag_ids_for_resource(conn, resource_id)?;
         let payload = build_resource_with_tags_payload(&resource, &tag_ids);
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "resource",
             resource_id,
@@ -215,7 +215,7 @@ pub fn remove_tag_from_resource(
         let resource = super::resources::get_resource(conn, resource_id)?;
         let tag_ids = get_tag_ids_for_resource(conn, resource_id)?;
         let payload = build_resource_with_tags_payload(&resource, &tag_ids);
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "resource",
             resource_id,
@@ -353,7 +353,7 @@ pub fn get_resources_by_tag(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{folders, resources, test_db};
+    use crate::{folders, resources, test_db};
 
     #[test]
     fn test_create_tag() {
