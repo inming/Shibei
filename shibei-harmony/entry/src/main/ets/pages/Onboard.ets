@@ -214,7 +214,7 @@ struct Onboard {
   }
 
   private enterLibrary(): void {
-    router.replaceUrl({ url: 'pages/Demo11Library' }).catch((err: Error) => {
+    router.replaceUrl({ url: 'pages/Library' }).catch((err: Error) => {
       hilog.error(0x0000, 'shibei', 'replaceUrl fail: %{public}s', err.message);
     });
   }
@@ -246,17 +246,7 @@ struct Onboard {
   @Builder
   StepWelcome() {
     Column() {
-      // Long-press (2s) on the title to reach the dev demo menu. Auto-
-      // routing in EntryAbility normally hides pages/Index; this backdoor
-      // preserves dev access during Phase 2.
-      Text('拾贝').fontSize(36).fontWeight(FontWeight.Bold).margin({ top: 120, bottom: 12 })
-        .gesture(
-          LongPressGesture({ duration: 2000 }).onAction(() => {
-            router.pushUrl({ url: 'pages/Index' }).catch((err: Error) => {
-              hilog.warn(0x0000, 'shibei', 'dev-menu pushUrl fail: %{public}s', err.message);
-            });
-          })
-        );
+      Text('拾贝').fontSize(36).fontWeight(FontWeight.Bold).margin({ top: 120, bottom: 12 });
       Text('个人只读资料库').fontSize(16).fontColor('#666').margin({ bottom: 48 });
       Text('连接你的桌面端,同步书签、笔记与全文搜索索引。')
         .fontSize(14).fontColor('#888').textAlign(TextAlign.Center)

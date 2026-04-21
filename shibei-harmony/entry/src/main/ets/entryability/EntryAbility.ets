@@ -8,7 +8,7 @@ import { FoldObserver } from '../app/FoldObserver';
 // Cold-start routing (Track C/F):
 //   no saved S3 config            → pages/Onboard      (fresh install)
 //   saved config + locked vault   → pages/LockScreen   (E2EE password re-entry)
-//   saved config + unlocked vault → pages/Demo11Library
+//   saved config + unlocked vault → pages/Library
 //
 // The vault is always locked on cold start in Phase 2 — the Master Key
 // lives in memory only. Phase 3 will wire HUKS biometric unwrap so the
@@ -18,10 +18,6 @@ import { FoldObserver } from '../app/FoldObserver';
 //
 // If NAPI init fails we fall through to Onboard so the user at least sees
 // the wizard's error banner instead of a blank window.
-//
-// The dev demo menu (pages/Index) is still reachable — Onboard's Welcome
-// title, LockScreen title, and Demo 11 Library header all long-press
-// into it.
 
 export default class EntryAbility extends UIAbility {
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
@@ -49,7 +45,7 @@ export default class EntryAbility extends UIAbility {
       if (!ShibeiService.instance.hasSavedConfig()) {
         route = 'pages/Onboard';
       } else if (ShibeiService.instance.isUnlocked()) {
-        route = 'pages/Demo11Library';
+        route = 'pages/Library';
       } else {
         route = 'pages/LockScreen';
       }

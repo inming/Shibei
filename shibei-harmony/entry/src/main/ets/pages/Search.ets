@@ -63,7 +63,7 @@ struct SearchPage {
 
   private openResource(id: string): void {
     router.pushUrl({
-      url: 'pages/Demo11ReaderStub',
+      url: 'pages/Reader',
       params: { resourceId: id },
     }).catch((err: Error) => {
       hilog.error(0x0000, 'shibei', 'pushUrl fail: %{public}s', err.message);

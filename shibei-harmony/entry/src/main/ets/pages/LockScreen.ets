@@ -28,7 +28,7 @@ struct LockScreen {
     try {
       await ShibeiService.instance.setE2eePassword(this.password);
       this.password = '';
-      router.replaceUrl({ url: 'pages/Demo11Library' }).catch((err: Error) => {
+      router.replaceUrl({ url: 'pages/Library' }).catch((err: Error) => {
         hilog.error(0x0000, 'shibei', 'replaceUrl fail: %{public}s', err.message);
       });
     } catch (err) {
@@ -42,14 +42,7 @@ struct LockScreen {
     Column() {
       Text('已锁定').fontSize(28).fontWeight(FontWeight.Bold)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
-        .margin({ top: 120, bottom: 8 })
-        .gesture(
-          LongPressGesture({ duration: 2000 }).onAction(() => {
-            router.pushUrl({ url: 'pages/Index' }).catch((err: Error) => {
-              hilog.warn(0x0000, 'shibei', 'dev-menu pushUrl fail: %{public}s', err.message);
-            });
-          })
-        );
+        .margin({ top: 120, bottom: 8 });
       Text('输入加密密码以继续').fontSize(13)
         .fontColor($r('sys.color.ohos_id_color_text_secondary'))
         .margin({ bottom: 48 });

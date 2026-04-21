@@ -1,23 +1,10 @@
 {
   "src": [
-    "pages/Index",
-    "pages/Demo0Napi",
-    "pages/Demo1FoldStatus",
-    "pages/Demo2WebSelection",
-    "pages/Demo3PdfJs",
-    "pages/Demo4FileProtocol",
-    "pages/Demo5Biometric",
-    "pages/Demo6BackgroundTask",
-    "pages/Demo7NetworkSwitch",
-    "pages/Demo8NapiCodegen",
-    "pages/Demo9Lifecycle",
-    "pages/Demo10Queries",
-    "pages/Demo11Library",
-    "pages/Demo11ReaderStub",
-    "pages/Demo12Sync",
     "pages/Onboard",
     "pages/LockScreen",
-    "pages/Settings",
-    "pages/Search"
+    "pages/Library",
+    "pages/Reader",
+    "pages/Search",
+    "pages/Settings"
   ]
 }

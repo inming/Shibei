@@ -18,7 +18,7 @@ import { FoldStatus } from '../app/FoldObserver';
 
 @Entry
 @Component
-struct Demo11Library {
+struct Library {
   @State initReady: boolean = false;
   @State initError: string = '';
   @State drawerOpen: boolean = false;
@@ -29,8 +29,7 @@ struct Demo11Library {
   @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
 
   async aboutToAppear(): Promise<void> {
-    // Same init path Demo 9 / Demo 10 use — idempotent, so coming here
-    // after those demos still works.
+    // init is idempotent — EntryAbility also calls it on cold start.
     try {
       const ctx = getContext(this) as common.UIAbilityContext;
       await ShibeiService.instance.init(ctx.filesDir);
@@ -38,7 +37,7 @@ struct Demo11Library {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.initError = code;
-      hilog.error(0x0000, 'shibei', 'Demo11 init fail: %{public}s', code);
+      hilog.error(0x0000, 'shibei', 'Library init fail: %{public}s', code);
     }
   }
 
@@ -64,9 +63,8 @@ struct Demo11Library {
   private onOpenResource(id: string): void {
     // Push to the stub reader; Phase 3 replaces the stub with the real
     // ArkWeb + annotator.js page behind the same route.
-    hilog.info(0x0000, 'shibei', 'Demo11 open resource %{public}s', id);
     router.pushUrl({
-      url: 'pages/Demo11ReaderStub',
+      url: 'pages/Reader',
       params: { resourceId: id },
     }).catch((err: Error) => {
       hilog.error(0x0000, 'shibei', 'router.pushUrl fail: %{public}s', err.message);
@@ -118,17 +116,7 @@ struct Demo11Library {
               }
               Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                .textAlign(TextAlign.Center)
-                // Long-press (2s) the title to escape to the dev demo menu.
-                // Auto-routing in EntryAbility normally makes pages/Index
-                // unreachable; this backdoor is the Phase 2 dev escape.
-                .gesture(
-                  LongPressGesture({ duration: 2000 }).onAction(() => {
-                    router.pushUrl({ url: 'pages/Index' }).catch((err: Error) => {
-                      hilog.warn(0x0000, 'shibei', 'dev-menu pushUrl fail: %{public}s', err.message);
-                    });
-                  })
-                );
+                .textAlign(TextAlign.Center);
               // Plain Text + onClick (rather than Button) so the glyph isn't
               // squeezed by Button's default inner padding — ⚙ was clipping
               // inside a 40×40 Button on Mate X5.
