@@ -1,7 +1,7 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::db::DbError;
+use shibei_db::DbError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FullSnapshot {
@@ -142,7 +142,7 @@ pub fn export_full_state(conn: &Connection, device_id: &str) -> Result<FullSnaps
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{folders, test_db};
+    use shibei_db::{folders, test_db};
 
     #[test]
     fn test_export_full_state() {

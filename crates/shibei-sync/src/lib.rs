@@ -12,7 +12,7 @@ pub mod sync_state;
 
 // Phase 2 crate refactor: hlc / sync_log / SyncContext live in shibei-db so the
 // data layer can write sync_log rows without a reverse dependency. Re-exported
-// here to keep `crate::sync::hlc::…` / `crate::sync::SyncContext` call sites
+// here to keep `crate::hlc::…` / `crate::SyncContext` call sites
 // in commands/server/engine unchanged.
 pub use shibei_db::{hlc, sync_log, SyncContext};
 

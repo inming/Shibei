@@ -47,7 +47,7 @@ impl<B: SyncBackend + 'static> SyncBackend for EncryptedBackend<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::backend::mock::MockBackend;
+    use crate::backend::mock::MockBackend;
     use std::sync::Arc;
 
     fn test_key() -> Zeroizing<[u8; 32]> {

@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use super::credentials;
 use super::sync_state;
-use crate::db::DbError;
+use shibei_db::DbError;
 
 #[derive(Error, Debug)]
 pub enum PairError {
@@ -82,7 +82,7 @@ pub fn build_pairing_envelope(conn: &Connection, pin: &str) -> Result<String, Pa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::init_db;
+    use shibei_db::init_db;
     use serde_json::Value;
     use tempfile::tempdir;
 

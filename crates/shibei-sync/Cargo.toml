@@ -1,0 +1,39 @@
+[package]
+name = "shibei-sync"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Shibei S3 sync engine (HLC LWW merge, E2EE, pairing, keyring)."
+
+[lib]
+name = "shibei_sync"
+
+[dependencies]
+shibei-db = { path = "../shibei-db" }
+shibei-pairing = { path = "../shibei-pairing" }
+shibei-storage = { path = "../shibei-storage" }
+rusqlite = { version = "0.34", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = { version = "0.27", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1.89"
+rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+zeroize = { version = "1", features = ["derive"] }
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+flate2 = "1.1"
+uuid = { version = "1", features = ["v4"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+shibei-db = { path = "../shibei-db", features = ["test-support"] }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }

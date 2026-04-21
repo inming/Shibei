@@ -25,18 +25,11 @@ chrono = { version = "0.4", features = ["serde"] }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tower-http = { version = "0.6", features = ["cors", "limit"] }
-base64 = "0.22"
 r2d2 = "0.8"
 r2d2_sqlite = { version = "0.27", features = ["bundled"] }
-rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
-async-trait = "0.1.89"
-chacha20poly1305 = "0.10"
 argon2 = "0.5"
-hkdf = "0.12"
-sha2 = "0.10"
 rand = "0.8"
-zeroize = { version = "1", features = ["derive"] }
-flate2 = "1.1"
+base64 = "0.22"
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-deep-link = "2.4.8"
@@ -48,6 +41,7 @@ shibei-pairing = { path = "../crates/shibei-pairing" }
 shibei-db = { path = "../crates/shibei-db" }
 shibei-events = { path = "../crates/shibei-events" }
 shibei-storage = { path = "../crates/shibei-storage" }
+shibei-sync = { path = "../crates/shibei-sync" }
 
 [dev-dependencies]
 tempfile = "3"
