@@ -12,6 +12,7 @@ import {
   hasSavedConfig as napiHasSavedConfig,
   isUnlocked as napiIsUnlocked,
   lockVault as napiLockVault,
+  resetDevice as napiResetDevice,
   setS3Config as napiSetS3Config,
   setE2eePassword as napiSetE2eePassword,
   syncMetadata as napiSyncMetadata,
@@ -74,6 +75,17 @@ export class ShibeiService {
 
   lockVault(): void {
     napiLockVault();
+  }
+
+  /// Factory-reset this device: clears local DB contents, cached snapshot
+  /// files, and the in-memory Master Key. Subsequent cold start will land
+  /// on Onboard because S3 config is wiped. Does NOT touch remote S3 data
+  /// — the next sync after re-onboarding will repopulate everything.
+  resetDevice(): void {
+    const result: string = napiResetDevice();
+    if (result !== 'ok') {
+      throw new ShibeiError(result);
+    }
   }
 
   // ── Pairing QR decrypt ────────────────────────────────────

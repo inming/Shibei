@@ -12,3 +12,4 @@ export const PREF_LIBRARY_LEFT_WIDTH = 'library-left-width';
 export const PREF_ANNOTATION_WIDTH = 'annotation-drawer-width';
 export const PREF_AUTO_LOCK_MINUTES = 'autoLockMinutes';
 export const PREF_MK_BIOMETRIC_WRAPPED = 'mk_biometric_wrapped';
+export const PREF_THEME = 'shibei-theme';               // 'system' | 'light' | 'dark'

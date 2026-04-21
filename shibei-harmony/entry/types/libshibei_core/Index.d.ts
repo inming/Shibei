@@ -6,6 +6,7 @@ export const isInitialized: () => boolean;
 export const hasSavedConfig: () => boolean;
 export const isUnlocked: () => boolean;
 export const lockVault: () => void;
+export const resetDevice: () => string;
 export const decryptPairingPayload: (pin: string, envelopeJson: string) => string;
 export const setS3Config: (configJson: string) => string;
 export const setE2eePassword: (password: string) => Promise<string>;

@@ -75,6 +75,12 @@ pub unsafe extern "C" fn shibei_ffi_lock_vault() -> () {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_reset_device() -> *mut c_char {
+    let s = crate::commands::reset_device();
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_decrypt_pairing_payload(pin: *const c_char, envelope_json: *const c_char) -> *mut c_char {
     let s = crate::commands::decrypt_pairing_payload(cstr_to_string(pin), cstr_to_string(envelope_json));
     leak_cstring(s)

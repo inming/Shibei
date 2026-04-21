@@ -104,7 +104,15 @@ struct Demo11Library {
                     });
                   })
                 );
-              Text('').width(40);  // spacer to keep title centered
+              Button('⚙')
+                .fontSize(18).fontColor('#333')
+                .backgroundColor(Color.Transparent)
+                .width(40).height(40)
+                .onClick(() => {
+                  router.pushUrl({ url: 'pages/Settings' }).catch((err: Error) => {
+                    hilog.warn(0x0000, 'shibei', 'Settings pushUrl fail: %{public}s', err.message);
+                  });
+                });
             }
             .width('100%')
             .padding({ left: 8, right: 8, top: 6, bottom: 6 });

@@ -73,6 +73,84 @@ pub fn lock_vault() {
     state::lock_vault();
 }
 
+/// Factory-reset this device: wipes all business-table rows (resources /
+/// folders / tags / annotations / sync_log / sync_state), deletes cached
+/// snapshots on disk, and clears the in-memory Master Key. The DB schema
+/// and the AppState singleton itself stay intact — subsequent commands
+/// work without re-running `initApp`.
+///
+/// Returns "ok" on success, `error.*` string on failure. Invoked from
+/// Settings → 数据 → 重置设备 after a confirmation dialog. Next cold
+/// start will land on Onboard because `hasSavedConfig()` is driven off
+/// `config:s3_bucket`, which gets cleared here.
+#[shibei_napi]
+pub fn reset_device() -> String {
+    match reset_device_inner() {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}
+
+fn reset_device_inner() -> Result<(), String> {
+    // 1) Clear in-memory encryption state first so that, if anything below
+    // fails, we don't leave an app that can still sync with the old MK.
+    state::lock_vault();
+
+    // 2) Wipe all user-owned rows in a single transaction. We enumerate
+    // tables via sqlite_master rather than hardcoding the list so a future
+    // migration's new table can't silently be left behind.
+    let app = state::get()?;
+    {
+        let pool = app
+            .db_pool
+            .read()
+            .map_err(|e| format!("error.poolPoisoned: {e}"))?;
+        let mut conn = pool.get().map_err(|e| format!("error.dbConn: {e}"))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("error.txBegin: {e}"))?;
+        // `_content`, `_data`, `_idx`, `_docsize`, `_config` are FTS5 shadow
+        // tables — clearing them directly corrupts the index; DELETE FROM
+        // `search_index` (the virtual table) cascades correctly.
+        let names: Vec<String> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT name FROM sqlite_master \
+                     WHERE type='table' \
+                     AND name NOT LIKE 'sqlite_%' \
+                     AND name NOT LIKE '%\\_content' ESCAPE '\\' \
+                     AND name NOT LIKE '%\\_data' ESCAPE '\\' \
+                     AND name NOT LIKE '%\\_idx' ESCAPE '\\' \
+                     AND name NOT LIKE '%\\_docsize' ESCAPE '\\' \
+                     AND name NOT LIKE '%\\_config' ESCAPE '\\'",
+                )
+                .map_err(|e| format!("error.enumTables: {e}"))?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| format!("error.enumTables: {e}"))?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("error.enumTables: {e}"))?
+        };
+        for name in &names {
+            // DELETE rather than DROP so the schema (+ migrations state)
+            // stays intact. Table names come from sqlite_master — no
+            // user input, safe to interpolate.
+            tx.execute(&format!(r#"DELETE FROM "{}""#, name), [])
+                .map_err(|e| format!("error.wipeTable({name}): {e}"))?;
+        }
+        tx.commit().map_err(|e| format!("error.txCommit: {e}"))?;
+    }
+
+    // 3) Remove the on-disk snapshot cache. Sync will re-download on demand.
+    // Tolerate NotFound — first-time reset on a fresh install has no dir.
+    let storage_dir = app.data_dir.join("storage");
+    if storage_dir.exists() {
+        std::fs::remove_dir_all(&storage_dir)
+            .map_err(|e| format!("error.wipeStorage: {e}"))?;
+    }
+    Ok(())
+}
+
 // ────────────────────────────────────────────────────────────
 // Pairing QR decrypt (shared with Onboard Step 3)
 // ────────────────────────────────────────────────────────────
