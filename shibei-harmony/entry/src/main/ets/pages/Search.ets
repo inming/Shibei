@@ -70,17 +70,28 @@ struct SearchPage {
     });
   }
 
+  // Render every matched field, not just the first. Ordering puts the
+  // "more specific" matches (标注 / 评论 / 标题) ahead of body, because
+  // body almost always matches any query the user types and would
+  // otherwise hide the signal that e.g. an annotation also matched.
+  // Capped at 3 labels to keep the row short on narrow screens.
   private matchLabel(fields: string[]): string {
-    // Defensive: past mismatches between Rust serde tags and the ArkTS
-    // interface produced `undefined` fields which then crashed `.includes`.
-    if (!fields) return '';
-    if (fields.includes('body')) return '正文匹配';
-    if (fields.includes('highlights')) return '标注匹配';
-    if (fields.includes('comments')) return '评论匹配';
-    if (fields.includes('title')) return '标题匹配';
-    if (fields.includes('description')) return '摘要匹配';
-    if (fields.includes('url')) return 'URL 匹配';
-    return '';
+    if (!fields || fields.length === 0) return '';
+    const order: string[][] = [
+      ['highlights', '标注'],
+      ['comments', '评论'],
+      ['title', '标题'],
+      ['description', '摘要'],
+      ['url', 'URL'],
+      ['body', '正文'],
+    ];
+    const hits: string[] = [];
+    for (const pair of order) {
+      if (fields.includes(pair[0])) hits.push(pair[1]);
+    }
+    if (hits.length === 0) return '';
+    const shown = hits.length > 3 ? hits.slice(0, 3) : hits;
+    return `${shown.join(' · ')} 匹配`;
   }
 
   build() {
