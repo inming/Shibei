@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "src-tauri",
     "src-harmony-napi",
+    "crates/*",
 ]
 
 # Size-optimized release for the HarmonyOS cross-compiled cdylib only.
