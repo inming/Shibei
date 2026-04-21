@@ -15,12 +15,12 @@ export CC_aarch64_unknown_linux_ohos="aarch64-unknown-linux-ohos-clang"
 export CXX_aarch64_unknown_linux_ohos="aarch64-unknown-linux-ohos-clang++"
 export AR_aarch64_unknown_linux_ohos="llvm-ar"
 
-cd "$REPO_ROOT/src-harmony-napi"
+cd "$REPO_ROOT"
 if [ "$PROFILE" = "release" ]; then
-  cargo build --target "$TARGET" --release
+  cargo build -p shibei-core --target "$TARGET" --release
   SO="target/$TARGET/release/libshibei_core.so"
 else
-  cargo build --target "$TARGET"
+  cargo build -p shibei-core --target "$TARGET"
   SO="target/$TARGET/debug/libshibei_core.so"
 fi
 
