@@ -3,7 +3,18 @@
 // directly so error translation, debug logging, and any future in-flight
 // deduplication live in one place.
 
-import * as napi from 'libshibei_core.so';
+// HarmonyOS native modules don't support `import * as napi` — ArkTS resolves
+// that to `undefined`, which is why every `napi.foo()` below would throw
+// "TypeError: undefined is not callable". Use named imports instead.
+import {
+  init as napiInit,
+  isInitialized as napiIsInitialized,
+  hasSavedConfig as napiHasSavedConfig,
+  isUnlocked as napiIsUnlocked,
+  lockVault as napiLockVault,
+  hello as napiHello,
+  echoAsync as napiEchoAsync,
+} from 'libshibei_core.so';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /// Thrown by ShibeiService when NAPI returns an error.* code. The raw code
@@ -30,7 +41,7 @@ export class ShibeiService {
   // ── Lifecycle ─────────────────────────────────────────────
 
   async init(dataDir: string): Promise<void> {
-    const result: string = napi.init(dataDir);
+    const result: string = napiInit(dataDir);
     if (result !== 'ok') {
       hilog.error(0x0000, 'shibei', 'NAPI init failed: %{public}s', result);
       throw new ShibeiError(result);
@@ -39,28 +50,28 @@ export class ShibeiService {
   }
 
   isInitialized(): boolean {
-    return napi.isInitialized();
+    return napiIsInitialized();
   }
 
   hasSavedConfig(): boolean {
-    return napi.hasSavedConfig();
+    return napiHasSavedConfig();
   }
 
   isUnlocked(): boolean {
-    return napi.isUnlocked();
+    return napiIsUnlocked();
   }
 
   lockVault(): void {
-    napi.lockVault();
+    napiLockVault();
   }
 
   // ── Smoke tests (kept for Demo pages; remove when confidence earned) ─
 
   hello(): string {
-    return napi.hello();
+    return napiHello();
   }
 
   async echoAsync(text: string): Promise<string> {
-    return napi.echoAsync(text);
+    return napiEchoAsync(text);
   }
 }
