@@ -104,7 +104,7 @@ export class ShibeiService {
 
   getResource(id: string): Resource | null {
     const raw: string = napiGetResource(id);
-    const parsed = JSON.parse(raw) as { resource?: Resource | null, error?: string };
+    const parsed = JSON.parse(raw) as GetResourceEnvelope;
     if (parsed.error) {
       throw new ShibeiError(parsed.error);
     }
@@ -167,14 +167,31 @@ export interface SortInput {
   order?: 'asc' | 'desc';
 }
 
+// NAPI error-envelope shape. `error` is present iff the Rust side folded a
+// failure into the JSON response. Declared as a named interface (ArkTS
+// forbids object-literal types with arkts-no-obj-literals-as-types).
+interface ErrorEnvelope {
+  error?: string;
+}
+
+interface GetResourceEnvelope {
+  resource?: Resource | null;
+  error?: string;
+}
+
 // NAPI returns either a JSON array (happy path) or `{"error": "..."}`.
+// ArkTS strict mode forbids:
+//   - `any`/`unknown` typing for JSON.parse output (arkts-no-any-unknown)
+//   - the `in` operator (arkts-no-in)
+// Work around both by casting to a narrow ErrorEnvelope shape and probing
+// the field directly.
 function parseListOrThrow<T>(raw: string, label: string): T[] {
-  const parsed = JSON.parse(raw);
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      && 'error' in parsed && typeof parsed.error === 'string') {
-    throw new ShibeiError(parsed.error);
-  }
+  const parsed = JSON.parse(raw) as Object;
   if (!Array.isArray(parsed)) {
+    const envelope = parsed as ErrorEnvelope;
+    if (envelope.error) {
+      throw new ShibeiError(envelope.error);
+    }
     throw new ShibeiError(`${label}: unexpected response shape`);
   }
   return parsed as T[];
