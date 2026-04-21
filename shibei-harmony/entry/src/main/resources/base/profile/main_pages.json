@@ -11,6 +11,7 @@
     "pages/Demo7NetworkSwitch",
     "pages/Demo8NapiCodegen",
     "pages/Demo9Lifecycle",
-    "pages/Demo10Queries"
+    "pages/Demo10Queries",
+    "pages/Demo11Library"
   ]
 }
