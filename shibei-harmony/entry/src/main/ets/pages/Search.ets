@@ -9,9 +9,12 @@ import { ShibeiService, ShibeiError, SearchResult } from '../services/ShibeiServ
 // Phase 2 skips tag filters + sort controls (desktop has both); mobile
 // gets the bare list.
 
+// `Search` is a built-in ArkTS component name — using it for the struct
+// trips the compiler (`reserved tag name`). The file path / route can
+// still be `pages/Search`; only the @Entry identifier needs to differ.
 @Entry
 @Component
-struct Search {
+struct SearchPage {
   @State query: string = '';
   @State results: SearchResult[] = [];
   @State searching: boolean = false;
