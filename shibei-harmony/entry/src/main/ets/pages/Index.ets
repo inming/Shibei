@@ -21,7 +21,8 @@ struct Index {
     { title: '9. Lifecycle commands (A3)', url: 'pages/Demo9Lifecycle' },
     { title: '10. Queries on empty DB (A4 batch 2)', url: 'pages/Demo10Queries' },
     { title: '11. Library skeleton (Track E)', url: 'pages/Demo11Library' },
-    { title: '12. Config + Sync (A4 batch 1+3)', url: 'pages/Demo12Sync' }
+    { title: '12. Config + Sync (A4 batch 1+3)', url: 'pages/Demo12Sync' },
+    { title: '13. Onboard wizard (Track C)', url: 'pages/Onboard' }
   ];
 
   build() {

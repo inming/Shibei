@@ -14,6 +14,7 @@
     "pages/Demo10Queries",
     "pages/Demo11Library",
     "pages/Demo11ReaderStub",
-    "pages/Demo12Sync"
+    "pages/Demo12Sync",
+    "pages/Onboard"
   ]
 }
