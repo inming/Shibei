@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "src-harmony-napi",
+]
+
+# Size-optimized release for the HarmonyOS cross-compiled cdylib only.
+# Desktop shibei keeps cargo's default release profile.
+[profile.release.package.shibei-core]
+opt-level = "s"
+codegen-units = 1
+strip = true
