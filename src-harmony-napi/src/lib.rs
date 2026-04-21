@@ -13,6 +13,7 @@
 
 pub mod commands;
 pub mod runtime;
+pub mod state;
 mod s3_smoke;
 
 include!("../generated/bindings.rs");

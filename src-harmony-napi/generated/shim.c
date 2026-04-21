@@ -11,6 +11,11 @@
 extern void shibei_ffi_free_cstring(char* p);
 
 // ── Rust FFI entry points (see generated/bindings.rs) ─────────────
+extern char* shibei_ffi_init(const char* data_dir);
+extern bool shibei_ffi_is_initialized(void);
+extern bool shibei_ffi_has_saved_config(void);
+extern bool shibei_ffi_is_unlocked(void);
+extern void shibei_ffi_lock_vault(void);
 extern char* shibei_ffi_hello(void);
 extern int32_t shibei_ffi_add(int32_t a, int32_t b);
 extern char* shibei_ffi_s3_smoke_test(const char* endpoint, const char* region, const char* bucket, const char* access_key, const char* secret_key);
@@ -79,6 +84,51 @@ static void event_i64_cb(napi_env env, napi_value js_cb, void* ctx_ptr, void* da
 
 // ── Per-command NAPI wrappers ─────────────────────────────────────
 static napi_value on_tick_unsubscribe_wrap(napi_env env, napi_callback_info info);
+
+static napi_value init_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_data_dir[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_data_dir, sizeof(buf_data_dir), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_init(buf_data_dir);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value is_initialized_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    bool ret = shibei_ffi_is_initialized();
+    napi_get_boolean(env, ret, &result);
+    return result;
+}
+
+static napi_value has_saved_config_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    bool ret = shibei_ffi_has_saved_config();
+    napi_get_boolean(env, ret, &result);
+    return result;
+}
+
+static napi_value is_unlocked_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    bool ret = shibei_ffi_is_unlocked();
+    napi_get_boolean(env, ret, &result);
+    return result;
+}
+
+static napi_value lock_vault_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    shibei_ffi_lock_vault();
+    napi_get_undefined(env, &result);
+    return result;
+}
 
 static napi_value hello_wrap(napi_env env, napi_callback_info info) {
     (void)info;
@@ -169,6 +219,11 @@ static napi_value on_tick_unsubscribe_wrap(napi_env env, napi_callback_info info
 // ── Module registration ───────────────────────────────────────────
 static napi_value init(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
+        {"init", NULL, init_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"isInitialized", NULL, is_initialized_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"hasSavedConfig", NULL, has_saved_config_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"isUnlocked", NULL, is_unlocked_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockVault", NULL, lock_vault_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"hello", NULL, hello_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"add", NULL, add_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3SmokeTest", NULL, s3_smoke_test_wrap, NULL, NULL, NULL, napi_default, NULL},

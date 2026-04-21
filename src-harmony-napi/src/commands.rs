@@ -18,6 +18,60 @@
 use shibei_napi_macros::shibei_napi;
 
 use crate::runtime::{Subscription, ThreadsafeCallback};
+use crate::state;
+
+// ────────────────────────────────────────────────────────────
+// Lifecycle (Track A3)
+// ────────────────────────────────────────────────────────────
+
+/// Must be the very first command ArkTS calls, with the per-app sandbox path
+/// (e.g. `/data/storage/el2/base/haps/entry/files`). Idempotent across
+/// redundant dev-reload calls.
+///
+/// Returns `ok` on success, or `error.*` on failure. We return `String` (not
+/// `Result<String, String>`) to keep this command sync — async-codegen's
+/// error branch would require Promise plumbing, overkill for a fn that runs
+/// exactly once per process lifetime.
+#[shibei_napi]
+pub fn init(data_dir: String) -> String {
+    match state::init(std::path::PathBuf::from(data_dir)) {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}
+
+/// True once `init` has produced a usable `AppState`. ArkTS can gate its
+/// first query on this, or simply assume init completed (since Onboard/Lock
+/// won't render otherwise).
+#[shibei_napi]
+pub fn is_initialized() -> bool {
+    state::get().is_ok()
+}
+
+/// True if S3 config has been persisted (Onboard completed once). ArkTS
+/// uses this on cold start to decide Onboard vs Lock/Library.
+#[shibei_napi]
+pub fn has_saved_config() -> bool {
+    state::has_saved_config()
+}
+
+/// True if the Master Key is cached in memory (user completed setE2EEPassword
+/// at least once this session).
+#[shibei_napi]
+pub fn is_unlocked() -> bool {
+    state::is_unlocked()
+}
+
+/// Forget the Master Key. Next operation requiring MK (sync / snapshot
+/// download) will need the user to unlock again.
+#[shibei_napi]
+pub fn lock_vault() {
+    state::lock_vault();
+}
+
+// ────────────────────────────────────────────────────────────
+// Sync examples (migrated from Phase 0 hand-rolled shim)
+// ────────────────────────────────────────────────────────────
 
 // ────────────────────────────────────────────────────────────
 // Sync examples (migrated from Phase 0 hand-rolled shim)

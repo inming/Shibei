@@ -48,6 +48,32 @@ fn leak_cstring(s: String) -> *mut c_char {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_init(data_dir: *const c_char) -> *mut c_char {
+    let s = crate::commands::init(cstr_to_string(data_dir));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_is_initialized() -> bool {
+    crate::commands::is_initialized()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_has_saved_config() -> bool {
+    crate::commands::has_saved_config()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_is_unlocked() -> bool {
+    crate::commands::is_unlocked()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_vault() -> () {
+    crate::commands::lock_vault();
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_hello() -> *mut c_char {
     let s = crate::commands::hello();
     leak_cstring(s)

@@ -4511,8 +4511,12 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "rust-s3",
+ "shibei-db",
+ "shibei-events",
  "shibei-napi-macros",
+ "shibei-sync",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
