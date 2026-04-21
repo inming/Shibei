@@ -74,6 +74,33 @@ pub fn lock_vault() {
 }
 
 // ────────────────────────────────────────────────────────────
+// Pairing QR decrypt (shared with Onboard Step 3)
+// ────────────────────────────────────────────────────────────
+
+/// Decrypt a Phase 1 pairing envelope (scanned from desktop QR) using the
+/// 6-digit PIN the user types. Returns a JSON string shaped like
+/// `{"version":1, "endpoint":"...", "region":"...", "bucket":"...",
+///   "access_key":"...", "secret_key":"..."}` on success — callers can
+/// feed it straight into setS3Config after camelCase remapping.
+///
+/// Errors:
+///   error.pairingBadPin      — PIN wrong (XChaCha20-Poly1305 AEAD fail)
+///   error.pairingBadEnvelope — envelope JSON malformed / version mismatch
+#[shibei_napi]
+pub fn decrypt_pairing_payload(pin: String, envelope_json: String) -> String {
+    match shibei_pairing::decrypt_payload(&pin, &envelope_json) {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(s) => s,
+            Err(e) => format!(r#"{{"error":"error.pairingBadEnvelope: {e}"}}"#),
+        },
+        Err(shibei_pairing::PairingError::DecryptFailed) => {
+            r#"{"error":"error.pairingBadPin"}"#.to_string()
+        }
+        Err(e) => format!(r#"{{"error":"error.pairingBadEnvelope: {e}"}}"#),
+    }
+}
+
+// ────────────────────────────────────────────────────────────
 // S3 config + E2EE unlock + sync (Track A4 batch 1 + 3)
 // ────────────────────────────────────────────────────────────
 

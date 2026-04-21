@@ -16,6 +16,7 @@ extern bool shibei_ffi_is_initialized(void);
 extern bool shibei_ffi_has_saved_config(void);
 extern bool shibei_ffi_is_unlocked(void);
 extern void shibei_ffi_lock_vault(void);
+extern char* shibei_ffi_decrypt_pairing_payload(const char* pin, const char* envelope_json);
 extern char* shibei_ffi_set_s3_config(const char* config_json);
 extern void shibei_ffi_set_e2ee_password(const char* password, void* ctx);
 extern void shibei_ffi_sync_metadata(void* ctx);
@@ -136,6 +137,21 @@ static napi_value lock_vault_wrap(napi_env env, napi_callback_info info) {
     napi_value result = NULL;
     shibei_ffi_lock_vault();
     napi_get_undefined(env, &result);
+    return result;
+}
+
+static napi_value decrypt_pairing_payload_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_pin[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
+    char buf_envelope_json[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_envelope_json, sizeof(buf_envelope_json), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_decrypt_pairing_payload(buf_pin, buf_envelope_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
     return result;
 }
 
@@ -353,6 +369,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"hasSavedConfig", NULL, has_saved_config_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"isUnlocked", NULL, is_unlocked_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockVault", NULL, lock_vault_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"decryptPairingPayload", NULL, decrypt_pairing_payload_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"setS3Config", NULL, set_s3_config_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"setE2eePassword", NULL, set_e2ee_password_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"syncMetadata", NULL, sync_metadata_wrap, NULL, NULL, NULL, napi_default, NULL},

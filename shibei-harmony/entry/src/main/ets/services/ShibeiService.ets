@@ -15,6 +15,7 @@ import {
   setS3Config as napiSetS3Config,
   setE2eePassword as napiSetE2eePassword,
   syncMetadata as napiSyncMetadata,
+  decryptPairingPayload as napiDecryptPairingPayload,
   listFolders as napiListFolders,
   listResources as napiListResources,
   searchResources as napiSearchResources,
@@ -72,6 +73,26 @@ export class ShibeiService {
 
   lockVault(): void {
     napiLockVault();
+  }
+
+  // ── Pairing QR decrypt ────────────────────────────────────
+
+  /// Decrypt a pairing envelope (scanned from the desktop QR) with the
+  /// 6-digit PIN. Returns an S3ConfigInput ready to feed setS3Config.
+  decryptPairingPayload(pin: string, envelopeJson: string): S3ConfigInput {
+    const raw: string = napiDecryptPairingPayload(pin, envelopeJson);
+    const parsed = JSON.parse(raw) as PairingPlain;
+    if (parsed.error) {
+      throw new ShibeiError(parsed.error);
+    }
+    // Plain payload uses snake_case; remap to the camelCase facade shape.
+    return {
+      endpoint: parsed.endpoint || undefined,
+      region: parsed.region ?? '',
+      bucket: parsed.bucket ?? '',
+      accessKey: parsed.access_key ?? '',
+      secretKey: parsed.secret_key ?? '',
+    };
   }
 
   // ── Config + sync (Track A4 batch 1 + 3) ──────────────────
@@ -228,6 +249,16 @@ interface ErrorEnvelope {
 
 interface GetResourceEnvelope {
   resource?: Resource | null;
+  error?: string;
+}
+
+interface PairingPlain {
+  version?: number;
+  endpoint?: string;
+  region?: string;
+  bucket?: string;
+  access_key?: string;
+  secret_key?: string;
   error?: string;
 }
 

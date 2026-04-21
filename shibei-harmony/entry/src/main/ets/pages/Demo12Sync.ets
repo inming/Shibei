@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
+import { scanBarcode, scanCore } from '@kit.ScanKit';
 import {
   ShibeiService,
   ShibeiError,
@@ -7,7 +8,7 @@ import {
   SyncResult,
   SyncResultSuccess,
 } from '../services/ShibeiService';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 
 // Phase 2 Track A4 batch 1 + 3 — end-to-end S3 config → E2EE unlock →
 // first metadata sync, bypassing the Onboard QR flow (Track C). The
@@ -25,6 +26,9 @@ struct Demo12Sync {
   @State accessKey: string = '';
   @State secretKey: string = '';
   @State password: string = '';
+  @State scannedEnvelope: string = '';
+  @State pinInput: string = '';
+  @State scanLine: string = '';
   @State configLine: string = '';
   @State unlockLine: string = '';
   @State syncLine: string = '';
@@ -41,6 +45,58 @@ struct Demo12Sync {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.initLine = `ERR: ${code}`;
+    }
+  }
+
+  private async runScan(): Promise<void> {
+    this.scanLine = 'opening scanner…';
+    try {
+      // QR_CODE is the canonical ScanType in API 12+. If DevEco's typecheck
+      // complains "Property QR_CODE does not exist on type ScanType", the
+      // older alias is QRCODE_SCAN_TYPE — swap there.
+      const options: scanBarcode.ScanOptions = {
+        scanTypes: [scanCore.ScanType.QR_CODE],
+        enableMultiMode: false,
+        enableAlbum: true,
+      };
+      const result: scanBarcode.ScanResult = await scanBarcode.startScanForResult(
+        getContext(this), options);
+      if (!result.originalValue) {
+        this.scanLine = 'scan cancelled';
+        return;
+      }
+      this.scannedEnvelope = result.originalValue;
+      this.scanLine = `scanned envelope (${result.originalValue.length} bytes); now enter the 6-digit PIN below.`;
+    } catch (err) {
+      this.scanLine = `scan ERR: ${err.message}`;
+      hilog.error(0x0000, 'shibei', 'scan fail: %{public}s', err.message);
+    }
+  }
+
+  private applyPin(): void {
+    if (!this.scannedEnvelope) {
+      this.scanLine = 'nothing scanned yet';
+      return;
+    }
+    if (!/^\d{6}$/.test(this.pinInput)) {
+      this.scanLine = 'PIN must be exactly 6 digits';
+      return;
+    }
+    try {
+      const cfg: S3ConfigInput = ShibeiService.instance.decryptPairingPayload(
+        this.pinInput, this.scannedEnvelope);
+      this.endpoint = cfg.endpoint ?? '';
+      this.region = cfg.region;
+      this.bucket = cfg.bucket;
+      this.accessKey = cfg.accessKey;
+      this.secretKey = cfg.secretKey;
+      this.scanLine = `decrypt ok — 5 fields filled; press save below.`;
+      this.pinInput = '';
+      this.scannedEnvelope = '';
+      promptAction.showToast({ message: '扫码成功,配置已填入', duration: 1500 });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : err.message;
+      this.scanLine = `decrypt ERR: ${code}`;
     }
   }
 
@@ -126,7 +182,21 @@ struct Demo12Sync {
         Text('Demo 12: Config + Sync (A4 batch 1+3)').fontSize(18).margin({ top: 20, bottom: 8 });
         Text(this.initLine).fontSize(12).fontColor('#888').margin({ bottom: 16 });
 
-        Text('1) S3 config').fontSize(15).fontWeight(FontWeight.Medium);
+        Text('1a) Scan desktop pairing QR (shortcut)').fontSize(15).fontWeight(FontWeight.Medium);
+        Text('桌面 Settings → 同步 → 「添加移动设备」,显示 QR + 6 位 PIN')
+          .fontSize(11).fontColor('#888').margin({ top: 2 });
+        Row() {
+          Button('📷 scan').layoutWeight(1).margin({ right: 8 })
+            .onClick(() => this.runScan());
+          TextInput({ placeholder: '6-digit PIN', text: this.pinInput })
+            .type(InputType.Number).maxLength(6).layoutWeight(1)
+            .onChange(v => this.pinInput = v);
+          Button('apply').layoutWeight(1).margin({ left: 8 })
+            .onClick(() => this.applyPin());
+        }.margin({ top: 8 });
+        Text(this.scanLine).fontSize(11).fontColor('#666').margin({ top: 4 });
+
+        Text('1b) or type S3 config manually').fontSize(15).fontWeight(FontWeight.Medium).margin({ top: 20 });
         TextInput({ placeholder: 'endpoint (https://… or empty for AWS)', text: this.endpoint })
           .onChange(v => this.endpoint = v).margin({ top: 4 });
         TextInput({ placeholder: 'region (e.g. us-east-1)', text: this.region })

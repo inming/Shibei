@@ -19,6 +19,7 @@ shibei-napi-macros = { path = "../crates/shibei-napi-macros" }
 shibei-db = { path = "../crates/shibei-db" }
 shibei-sync = { path = "../crates/shibei-sync" }
 shibei-events = { path = "../crates/shibei-events" }
+shibei-pairing = { path = "../crates/shibei-pairing" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.34", features = ["bundled"] }
