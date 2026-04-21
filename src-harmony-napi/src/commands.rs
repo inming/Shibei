@@ -32,8 +32,12 @@ use crate::state;
 /// `Result<String, String>`) to keep this command sync — async-codegen's
 /// error branch would require Promise plumbing, overkill for a fn that runs
 /// exactly once per process lifetime.
+///
+/// JS name: `initApp`. The shorter form `init` is rejected by the ArkTS
+/// module linker on HarmonyOS NEXT (2026-04-21 Mate X5, Demo 9 regression);
+/// empirically the ES-module bootstrap reserves that identifier.
 #[shibei_napi]
-pub fn init(data_dir: String) -> String {
+pub fn init_app(data_dir: String) -> String {
     match state::init(std::path::PathBuf::from(data_dir)) {
         Ok(()) => "ok".to_string(),
         Err(e) => e,

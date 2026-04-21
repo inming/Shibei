@@ -7,7 +7,7 @@
 // that to `undefined`, which is why every `napi.foo()` below would throw
 // "TypeError: undefined is not callable". Use named imports instead.
 import {
-  init as napiInit,
+  initApp as napiInitApp,
   isInitialized as napiIsInitialized,
   hasSavedConfig as napiHasSavedConfig,
   isUnlocked as napiIsUnlocked,
@@ -41,12 +41,12 @@ export class ShibeiService {
   // ── Lifecycle ─────────────────────────────────────────────
 
   async init(dataDir: string): Promise<void> {
-    const result: string = napiInit(dataDir);
+    const result: string = napiInitApp(dataDir);
     if (result !== 'ok') {
-      hilog.error(0x0000, 'shibei', 'NAPI init failed: %{public}s', result);
+      hilog.error(0x0000, 'shibei', 'NAPI initApp failed: %{public}s', result);
       throw new ShibeiError(result);
     }
-    hilog.info(0x0000, 'shibei', 'NAPI init ok dataDir=%{public}s', dataDir);
+    hilog.info(0x0000, 'shibei', 'NAPI initApp ok dataDir=%{public}s', dataDir);
   }
 
   isInitialized(): boolean {

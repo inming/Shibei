@@ -1,7 +1,7 @@
 // GENERATED — do not edit by hand.
 // Run `cargo run -p shibei-napi-codegen` after editing commands.rs.
 
-export const init: (dataDir: string) => string;
+export const initApp: (dataDir: string) => string;
 export const isInitialized: () => boolean;
 export const hasSavedConfig: () => boolean;
 export const isUnlocked: () => boolean;
