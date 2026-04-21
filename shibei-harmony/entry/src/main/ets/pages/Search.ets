@@ -71,6 +71,9 @@ struct SearchPage {
   }
 
   private matchLabel(fields: string[]): string {
+    // Defensive: past mismatches between Rust serde tags and the ArkTS
+    // interface produced `undefined` fields which then crashed `.includes`.
+    if (!fields) return '';
     if (fields.includes('body')) return '正文匹配';
     if (fields.includes('highlights')) return '标注匹配';
     if (fields.includes('comments')) return '评论匹配';
@@ -140,7 +143,7 @@ struct SearchPage {
                     .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                     .margin({ top: 4 });
                 }
-                Text(this.matchLabel(r.match_fields)).fontSize(10)
+                Text(this.matchLabel(r.matchFields)).fontSize(10)
                   .fontColor($r('sys.color.ohos_id_color_emphasize'))
                   .margin({ top: 4 });
               }

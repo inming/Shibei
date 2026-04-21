@@ -245,10 +245,14 @@ export interface Resource {
   // ... other fields exist; extend here when UI needs them.
 }
 
+// shibei-db serializes SearchResult with `#[serde(rename_all = "camelCase")]`
+// so the wire shape is matchFields / matchedBody, not snake_case. Getting
+// these names wrong crashes the page — `matchFields.includes(...)` throws
+// "Cannot read property includes of undefined" when the field is absent.
 export interface SearchResult extends Resource {
-  match_fields: string[];
+  matchFields: string[];
   snippet?: string | null;
-  matched_body?: boolean;
+  matchedBody?: boolean;
 }
 
 export interface Tag {
