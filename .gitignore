@@ -43,8 +43,7 @@ WixTools/
 **/oh_modules/
 **/local.properties
 shibei-harmony/**/build/
-# Phase 2: libshibei_core.so is committed so collaborators without the
-# HarmonyOS cross-compile toolchain (OHOS_NDK_HOME + rustup ohos target)
-# can run the app via DevEco Studio directly. Rebuild via
-# `scripts/build-harmony-napi.sh release` after editing any Rust source
-# under src-harmony-napi/ or crates/shibei-{db,sync,storage,...}/.
+# libshibei_core.so is a build artifact — each dev machine generates its
+# own via `scripts/build-harmony-napi.sh release`. New contributors set up
+# the HarmonyOS cross-compile toolchain per `docs/harmony-dev-setup.md`.
+shibei-harmony/entry/libs/*/libshibei_core.so
