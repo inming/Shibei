@@ -40,7 +40,9 @@ struct LockScreen {
 
   build() {
     Column() {
-      Text('已锁定').fontSize(28).fontWeight(FontWeight.Bold).margin({ top: 120, bottom: 8 })
+      Text('已锁定').fontSize(28).fontWeight(FontWeight.Bold)
+        .fontColor($r('sys.color.ohos_id_color_text_primary'))
+        .margin({ top: 120, bottom: 8 })
         .gesture(
           LongPressGesture({ duration: 2000 }).onAction(() => {
             router.pushUrl({ url: 'pages/Index' }).catch((err: Error) => {
@@ -48,7 +50,9 @@ struct LockScreen {
             });
           })
         );
-      Text('输入加密密码以继续').fontSize(13).fontColor('#888').margin({ bottom: 48 });
+      Text('输入加密密码以继续').fontSize(13)
+        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .margin({ bottom: 48 });
 
       TextInput({ placeholder: '密码', text: this.password })
         .type(InputType.Password)
@@ -57,7 +61,9 @@ struct LockScreen {
         .onSubmit(() => this.tryUnlock());
 
       if (this.error) {
-        Text(this.error).fontSize(12).fontColor('#d33').margin({ top: 12 });
+        Text(this.error).fontSize(12)
+          .fontColor($r('sys.color.ohos_id_color_warning'))
+          .margin({ top: 12 });
       }
 
       Button(this.unlocking ? '解锁中…' : '解锁')
@@ -66,6 +72,7 @@ struct LockScreen {
         .onClick(() => this.tryUnlock());
     }
     .width('100%').height('100%')
+    .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
     .alignItems(HorizontalAlign.Center);
   }
 }

@@ -55,10 +55,12 @@ export struct FolderDrawer {
 
   build() {
     Column() {
-      Text('文件夹').fontSize(14).fontColor('#888').margin({ top: 16, bottom: 8, left: 16 });
+      Text('文件夹').fontSize(14).fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .margin({ top: 16, bottom: 8, left: 16 });
 
       if (this.error) {
-        Text(`err: ${this.error}`).fontSize(12).fontColor('#c00').margin({ left: 16, right: 16 });
+        Text(`err: ${this.error}`).fontSize(12).fontColor($r('sys.color.ohos_id_color_warning'))
+          .margin({ left: 16, right: 16 });
         Button('retry').width('90%').margin({ top: 8 }).onClick(() => this.reload());
       }
 
@@ -67,11 +69,17 @@ export struct FolderDrawer {
           ListItem() {
             Row() {
               Text(item.icon).fontSize(16).margin({ right: 8 });
-              Text(item.label).fontSize(15).fontWeight(this.selectedFolderId === item.id ? FontWeight.Bold : FontWeight.Normal);
+              Text(item.label).fontSize(15)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                .fontWeight(this.selectedFolderId === item.id ? FontWeight.Bold : FontWeight.Normal);
             }
             .width('100%')
             .padding({ left: 16, right: 16, top: 10, bottom: 10 })
-            .backgroundColor(this.selectedFolderId === item.id ? '#E3F2FD' : Color.Transparent)
+            .backgroundColor(
+              this.selectedFolderId === item.id
+                ? $r('sys.color.ohos_id_color_component_normal')
+                : Color.Transparent
+            )
             .onClick(() => this.pick(item.id));
           }
         }, (item: DrawerItem) => item.id);
@@ -81,6 +89,6 @@ export struct FolderDrawer {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#FAFAFA');
+    .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
   }
 }

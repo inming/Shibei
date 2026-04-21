@@ -87,12 +87,12 @@ struct Demo11Library {
             // .showControlButton(false) below so the drawer doesn't end up
             // overlapping a fixed-position toggle when it slides in.
             Row() {
-              Button(this.drawerOpen ? '✕' : '☰')
-                .fontSize(20).fontColor('#333')
-                .backgroundColor(Color.Transparent)
-                .width(40).height(40)
+              Text(this.drawerOpen ? '✕' : '☰')
+                .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
+                .width(44).height(44).textAlign(TextAlign.Center)
                 .onClick(() => { this.drawerOpen = !this.drawerOpen; });
               Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 .textAlign(TextAlign.Center)
                 // Long-press (2s) the title to escape to the dev demo menu.
                 // Auto-routing in EntryAbility normally makes pages/Index
@@ -104,10 +104,12 @@ struct Demo11Library {
                     });
                   })
                 );
-              Button('⚙')
-                .fontSize(18).fontColor('#333')
-                .backgroundColor(Color.Transparent)
-                .width(40).height(40)
+              // Plain Text + onClick (rather than Button) so the glyph isn't
+              // squeezed by Button's default inner padding — ⚙ was clipping
+              // inside a 40×40 Button on Mate X5.
+              Text('⚙')
+                .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
+                .width(44).height(44).textAlign(TextAlign.Center)
                 .onClick(() => {
                   router.pushUrl({ url: 'pages/Settings' }).catch((err: Error) => {
                     hilog.warn(0x0000, 'shibei', 'Settings pushUrl fail: %{public}s', err.message);
@@ -115,14 +117,16 @@ struct Demo11Library {
                 });
             }
             .width('100%')
-            .padding({ left: 8, right: 8, top: 6, bottom: 6 });
+            .padding({ left: 4, right: 4, top: 4, bottom: 4 })
+            .backgroundColor($r('sys.color.ohos_id_color_background'));
 
             ResourceList({
               folderId: this.selectedFolderId,
               onOpenResource: (id: string) => this.onOpenResource(id),
             });
 
-          }.width('100%').height('100%');
+          }.width('100%').height('100%')
+          .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
         }
         .showSideBar(this.drawerOpen)
         .sideBarWidth(260)

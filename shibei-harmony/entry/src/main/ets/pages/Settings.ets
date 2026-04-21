@@ -76,11 +76,13 @@ struct Settings {
   @Builder
   ThemeOption(label: string, mode: ThemeMode) {
     Row() {
-      Text(label).fontSize(15).layoutWeight(1);
-      Text(this.theme === mode ? '✓' : '').fontSize(16).fontColor('#2a7').width(20);
+      Text(label).fontSize(15).layoutWeight(1)
+        .fontColor($r('sys.color.ohos_id_color_text_primary'));
+      Text(this.theme === mode ? '✓' : '').fontSize(16)
+        .fontColor($r('sys.color.ohos_id_color_emphasize')).width(20);
     }
     .width('100%')
-    .padding({ top: 12, bottom: 12, left: 8, right: 8 })
+    .padding({ top: 12, bottom: 12, left: 12, right: 12 })
     .onClick(() => this.setTheme(mode));
   }
 
@@ -88,59 +90,76 @@ struct Settings {
     Column() {
       // Top bar
       Row() {
-        Button('‹').fontSize(22).fontColor('#333').backgroundColor(Color.Transparent)
-          .width(40).height(40)
+        Text('‹').fontSize(26).fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .width(44).height(44).textAlign(TextAlign.Center)
           .onClick(() => router.back());
-        Text('设置').fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1).textAlign(TextAlign.Center);
-        Text('').width(40);
-      }.width('100%').padding({ left: 8, right: 8, top: 6, bottom: 6 });
+        Text('设置').fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .textAlign(TextAlign.Center);
+        Text('').width(44);
+      }
+      .width('100%').padding({ left: 4, right: 4, top: 4, bottom: 4 })
+      .backgroundColor($r('sys.color.ohos_id_color_background'));
 
       Scroll() {
         Column() {
           // ── 外观 ─────────────────────────────────────────
-          Text('外观').fontSize(13).fontColor('#888').margin({ top: 16, left: 16, bottom: 4 });
+          Text('外观').fontSize(13)
+            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+            .margin({ top: 16, left: 16, bottom: 4 });
           Column() {
             this.ThemeOption('跟随系统', 'system');
-            Divider().color('#eee');
+            Divider().color($r('sys.color.ohos_id_color_list_separator'));
             this.ThemeOption('浅色', 'light');
-            Divider().color('#eee');
+            Divider().color($r('sys.color.ohos_id_color_list_separator'));
             this.ThemeOption('深色', 'dark');
           }
-          .backgroundColor('#fff').borderRadius(8)
+          .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
           .margin({ left: 12, right: 12 });
 
           // ── 安全 ─────────────────────────────────────────
-          Text('安全').fontSize(13).fontColor('#888').margin({ top: 24, left: 16, bottom: 4 });
+          Text('安全').fontSize(13)
+            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+            .margin({ top: 24, left: 16, bottom: 4 });
           Column() {
             Row() {
-              Text('立即锁定').fontSize(15).layoutWeight(1);
-              Text('›').fontSize(18).fontColor('#aaa');
+              Text('立即锁定').fontSize(15).layoutWeight(1)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'));
+              Text('›').fontSize(18)
+                .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
             }
-            .width('100%').padding({ top: 12, bottom: 12, left: 8, right: 8 })
+            .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
             .onClick(() => this.lockNow());
           }
-          .backgroundColor('#fff').borderRadius(8)
+          .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
           .margin({ left: 12, right: 12 });
 
           // ── 数据 ─────────────────────────────────────────
-          Text('数据').fontSize(13).fontColor('#888').margin({ top: 24, left: 16, bottom: 4 });
+          Text('数据').fontSize(13)
+            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+            .margin({ top: 24, left: 16, bottom: 4 });
           Column() {
             Row() {
-              Text(this.resetting ? '重置中…' : '重置设备').fontSize(15).fontColor('#d33').layoutWeight(1);
-              Text('›').fontSize(18).fontColor('#aaa');
+              Text(this.resetting ? '重置中…' : '重置设备').fontSize(15)
+                .fontColor($r('sys.color.ohos_id_color_warning'))
+                .layoutWeight(1);
+              Text('›').fontSize(18)
+                .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
             }
-            .width('100%').padding({ top: 12, bottom: 12, left: 8, right: 8 })
+            .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
             .onClick(() => { if (!this.resetting) this.resetDevice(); });
           }
-          .backgroundColor('#fff').borderRadius(8)
+          .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
           .margin({ left: 12, right: 12 });
 
           if (this.resetError) {
-            Text(this.resetError).fontSize(12).fontColor('#d33')
+            Text(this.resetError).fontSize(12)
+              .fontColor($r('sys.color.ohos_id_color_warning'))
               .margin({ top: 8, left: 16, right: 16 });
           }
 
-          Text('云端数据永不会被这些操作删除。').fontSize(11).fontColor('#aaa')
+          Text('云端数据永不会被这些操作删除。').fontSize(11)
+            .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
             .margin({ top: 24, left: 16, right: 16, bottom: 32 });
         }
         .alignItems(HorizontalAlign.Start)
@@ -150,6 +169,6 @@ struct Settings {
       .width('100%');
     }
     .width('100%').height('100%')
-    .backgroundColor('#f5f5f7');
+    .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
   }
 }
