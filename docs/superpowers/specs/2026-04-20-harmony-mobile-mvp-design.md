@@ -2,8 +2,9 @@
 
 - 日期：2026-04-20（Phase 0 验证后修订）
 - 范围：HarmonyOS NEXT（Mate X5 折叠屏优先）
-- 状态：Phase 0 已完成真机验证；设计在 5 处按验证发现修订
+- 状态：Phase 0 已完成真机验证；Phase 1（桌面端配对 QR）已合入主干
 - 验证报告：`docs/superpowers/reports/2026-04-20-harmony-phase0-verification-report.md`
+- Phase 1 计划：`docs/superpowers/plans/2026-04-21-phase1-pairing-qr.md`
 
 ## Phase 0 修订摘要（2026-04-20）
 
@@ -621,20 +622,34 @@ onBackground() {
 
 ### 6.6 桌面端前置改动
 
-**必须在鸿蒙 Phase 2 之前合入桌面主干**：
+**✅ 已完成（2026-04-21，Phase 1）**。合入记录：
 
 ```
-src-tauri/src/commands/
-  + cmd_generate_pairing_qr.rs   # 生成 PIN 加密的配对 payload
+/Cargo.toml                      # 新增顶层 workspace
+crates/shibei-pairing/           # 独立密码学 crate（HKDF-SHA256 + XChaCha20-Poly1305）
+crates/shibei-pair-decrypt/      # 开发者 CLI（round-trip 验证 + 鸿蒙 NAPI 参考实现）
+scripts/test-pairing-roundtrip.sh
 
-src/
-  + components/Settings/PairingDialog.tsx
-  + lib/pairing.ts               # PIN → AES-GCM 工具
+src-tauri/src/sync/pairing.rs    # 组装 S3 配置 → shibei-pairing::encrypt_payload
+src-tauri/src/commands/mod.rs    # 新增 cmd_generate_pairing_payload
 
-src/locales/{zh,en}/sync.json    # 新增"添加移动设备" i18n keys
+src/components/Settings/PairingDialog.{tsx,module.css,test.tsx}
+src/components/Settings/SyncPage.tsx    # 新增"添加移动设备"入口
+src/lib/commands.ts              # generatePairingPayload wrapper
+src/locales/{zh,en}/sync.json    # addMobileDevice + pairing.* 11 keys
+src/locales/{zh,en}/common.json  # error.pairing* 5 keys
 
-npm: + qrcode
+npm: + qrcode + @types/qrcode
 ```
+
+实施细节：
+- KDF 是 **HKDF-SHA256**（不是原本写的 AES-GCM），6 位 PIN 的 20 bits 熵挡不住任何 KDF，防御来自一次性使用 + 30s 时效 + PIN 不落到 QR
+- Cipher 用 **XChaCha20-Poly1305**，和桌面 E2EE 栈一致
+- Payload 原始二进制上限 512 字节，超限返回 `error.pairingPayloadTooLarge`
+- 过期策略前端静默：30s 到 UI 切「已过期」，envelope 无 `exp` 字段
+- 密码学实现细节见 `crates/shibei-pairing/src/lib.rs` 文件头注释
+
+详细计划：`docs/superpowers/plans/2026-04-21-phase1-pairing-qr.md`。
 
 **不改**：同步协议、数据库 schema、加密机制。
 
