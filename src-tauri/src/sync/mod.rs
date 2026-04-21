@@ -8,6 +8,7 @@ pub mod device;
 pub mod engine;
 pub mod export;
 pub mod hlc;
+pub mod pairing;
 pub mod sync_log;
 pub mod sync_state;
 

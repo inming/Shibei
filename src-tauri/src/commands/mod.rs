@@ -1112,6 +1112,28 @@ pub async fn cmd_test_s3_connection(
 }
 
 #[tauri::command]
+pub async fn cmd_generate_pairing_payload(
+    state: tauri::State<'_, Arc<AppState>>,
+    pin: String,
+) -> Result<String, CommandError> {
+    let conn = state.conn()?;
+    let envelope = crate::sync::pairing::build_pairing_envelope(&conn, &pin)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    // Best-effort log: length only; never the PIN or envelope body.
+    let log_path = state.base_dir.join("debug.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        use std::io::Write as _;
+        let now = chrono::Local::now().format("%H:%M:%S%.3f");
+        let _ = writeln!(file, "[{now}] pair_payload_generated len={}", envelope.len());
+    }
+    Ok(envelope)
+}
+
+#[tauri::command]
 pub async fn cmd_download_snapshot(
     state: tauri::State<'_, Arc<AppState>>,
     encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,

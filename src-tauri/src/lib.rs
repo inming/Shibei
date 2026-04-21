@@ -282,6 +282,7 @@ pub fn run() {
             commands::cmd_save_sync_config,
             commands::cmd_get_sync_config,
             commands::cmd_test_s3_connection,
+            commands::cmd_generate_pairing_payload,
             commands::cmd_download_snapshot,
             commands::cmd_get_snapshot_status,
             commands::cmd_set_sync_interval,

@@ -4370,6 +4370,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shibei-pairing",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
