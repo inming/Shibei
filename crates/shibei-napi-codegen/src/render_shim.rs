@@ -296,8 +296,10 @@ fn emit_event_wrapper(out: &mut String, cmd: &Command) {
 
 fn emit_module_init(out: &mut String, commands: &[Command]) {
     out.push_str("// ── Module registration ───────────────────────────────────────────\n");
-    // forward-decls for event unsubscribe wrappers (static so no externs needed)
-    out.push_str("static napi_value init(napi_env env, napi_value exports) {\n");
+    // The module-init callback is named `shibei_register_exports`, not `init`,
+    // so it can't possibly collide with a `#[shibei_napi] fn init()` command
+    // that we also want to export under the JS name "init".
+    out.push_str("static napi_value shibei_register_exports(napi_env env, napi_value exports) {\n");
     out.push_str("    napi_property_descriptor props[] = {\n");
     for cmd in commands {
         let _ = writeln!(
@@ -314,7 +316,7 @@ fn emit_module_init(out: &mut String, commands: &[Command]) {
     .nm_version = 1,
     .nm_flags = 0,
     .nm_filename = NULL,
-    .nm_register_func = init,
+    .nm_register_func = shibei_register_exports,
     .nm_modname = "shibei_core",
     .nm_priv = NULL,
     .reserved = {NULL, NULL, NULL, NULL},

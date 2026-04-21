@@ -217,7 +217,7 @@ static napi_value on_tick_unsubscribe_wrap(napi_env env, napi_callback_info info
 }
 
 // ── Module registration ───────────────────────────────────────────
-static napi_value init(napi_env env, napi_value exports) {
+static napi_value shibei_register_exports(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
         {"init", NULL, init_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"isInitialized", NULL, is_initialized_wrap, NULL, NULL, NULL, napi_default, NULL},
@@ -238,7 +238,7 @@ static napi_module shibei_module = {
     .nm_version = 1,
     .nm_flags = 0,
     .nm_filename = NULL,
-    .nm_register_func = init,
+    .nm_register_func = shibei_register_exports,
     .nm_modname = "shibei_core",
     .nm_priv = NULL,
     .reserved = {NULL, NULL, NULL, NULL},
