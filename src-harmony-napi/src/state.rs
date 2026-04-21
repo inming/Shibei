@@ -48,6 +48,7 @@ pub fn init(data_dir: PathBuf) -> Result<(), String> {
 
     let device_id = load_or_init_device_id(&shared_pool)?;
     ensure_inbox(&shared_pool)?;
+    ensure_ca_bundle(&data_dir)?;
 
     let state = AppState {
         data_dir,
@@ -77,6 +78,32 @@ fn ensure_inbox(pool: &SharedPool) -> Result<(), String> {
     let conn = pool_read.get().map_err(|e| format!("error.dbConn: {e}"))?;
     shibei_db::folders::ensure_inbox_folder(&conn, None)
         .map_err(|e| format!("error.seedInbox: {e}"))?;
+    Ok(())
+}
+
+/// HarmonyOS sandbox does not expose a system trust store where
+/// `rustls-native-certs` can find PEM roots — rust-s3's hyper-rustls
+/// stack otherwise rejects every S3 endpoint with `invalid peer
+/// certificate: UnknownIssuer`.
+///
+/// Ship the Mozilla root CA bundle (curl's `cacert.pem`, ~226 KB) as a
+/// compile-time embedded asset, write it to `$data_dir/ca-bundle.pem`
+/// on first launch, and point `SSL_CERT_FILE` at it. `rustls-native-certs`
+/// reads that env var on every platform — see its lib.rs header.
+///
+/// Refresh the bundle periodically by re-downloading
+/// https://curl.se/ca/cacert.pem into `src-harmony-napi/ca-bundle.pem`.
+static CA_BUNDLE_PEM: &[u8] = include_bytes!("../ca-bundle.pem");
+
+fn ensure_ca_bundle(data_dir: &std::path::Path) -> Result<(), String> {
+    let bundle_path = data_dir.join("ca-bundle.pem");
+    // Always (re)write — the embedded bundle may have been updated in a
+    // new release; the file is ~226 KB and the write is I/O-cheap on el2.
+    if bundle_path.metadata().map(|m| m.len()).ok() != Some(CA_BUNDLE_PEM.len() as u64) {
+        std::fs::write(&bundle_path, CA_BUNDLE_PEM)
+            .map_err(|e| format!("error.writeCaBundle: {e}"))?;
+    }
+    std::env::set_var("SSL_CERT_FILE", &bundle_path);
     Ok(())
 }
 
