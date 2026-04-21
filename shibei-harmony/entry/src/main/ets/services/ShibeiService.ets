@@ -110,7 +110,14 @@ export class ShibeiService {
   /// from `password`, unwrap the Master Key and cache it. Async because
   /// the S3 round-trip dominates (~200ms).
   async setE2eePassword(password: string): Promise<void> {
-    const result: string = await napiSetE2eePassword(password);
+    let result: string;
+    try {
+      result = await napiSetE2eePassword(password);
+    } catch (rejected) {
+      // NAPI async reject delivers a raw string, not an Error — convert it
+      // into our ShibeiError shape so catch sites can rely on `err.code`.
+      throw new ShibeiError(asErrorCode(rejected));
+    }
     if (result !== 'ok') {
       throw new ShibeiError(result);
     }
@@ -119,7 +126,12 @@ export class ShibeiService {
   /// Run one full sync pass. Returns the parsed SyncResult JSON envelope:
   ///   { kind: "success", uploaded, downloaded, applied } | { kind: "skipped" }
   async syncMetadata(): Promise<SyncResult> {
-    const raw: string = await napiSyncMetadata();
+    let raw: string;
+    try {
+      raw = await napiSyncMetadata();
+    } catch (rejected) {
+      throw new ShibeiError(asErrorCode(rejected));
+    }
     return JSON.parse(raw) as SyncResult;
   }
 
@@ -260,6 +272,17 @@ interface PairingPlain {
   access_key?: string;
   secret_key?: string;
   error?: string;
+}
+
+// NAPI async commands reject with a raw string (napi_reject_deferred of a
+// utf8 value). ArkTS surfaces that string as the caught value directly, so
+// `err.message` / `err.code` are undefined. Normalise it to an error code
+// string our ShibeiError can carry.
+function asErrorCode(rejected: Object): string {
+  if (typeof rejected === 'string') return rejected as string;
+  const asError = rejected as Error;
+  if (asError && typeof asError.message === 'string') return asError.message;
+  return 'error.unknown';
 }
 
 // NAPI returns either a JSON array (happy path) or `{"error": "..."}`.
