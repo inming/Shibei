@@ -4510,7 +4510,10 @@ name = "shibei-core"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "rusqlite",
  "rust-s3",
+ "serde",
+ "serde_json",
  "shibei-db",
  "shibei-events",
  "shibei-napi-macros",

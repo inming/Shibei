@@ -47,6 +47,7 @@ pub fn init(data_dir: PathBuf) -> Result<(), String> {
     let shared_pool: SharedPool = Arc::new(std::sync::RwLock::new(pool));
 
     let device_id = load_or_init_device_id(&shared_pool)?;
+    ensure_inbox(&shared_pool)?;
 
     let state = AppState {
         data_dir,
@@ -65,6 +66,18 @@ pub fn init(data_dir: PathBuf) -> Result<(), String> {
 
 pub fn get() -> Result<&'static AppState, String> {
     APP_STATE.get().ok_or_else(|| "error.notInitialized".to_string())
+}
+
+/// System-preset "收件箱" folder — mirrors desktop's `ensure_inbox_folder()`
+/// called at Tauri setup time. Without this, the very first listFolders() on
+/// a fresh mobile install returns `[]`, which breaks the Library page's
+/// default selection. Idempotent.
+fn ensure_inbox(pool: &SharedPool) -> Result<(), String> {
+    let pool_read = pool.read().map_err(|e| format!("error.poolPoisoned: {e}"))?;
+    let conn = pool_read.get().map_err(|e| format!("error.dbConn: {e}"))?;
+    shibei_db::folders::ensure_inbox_folder(&conn, None)
+        .map_err(|e| format!("error.seedInbox: {e}"))?;
+    Ok(())
 }
 
 fn load_or_init_device_id(pool: &SharedPool) -> Result<String, String> {

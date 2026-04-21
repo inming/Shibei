@@ -653,6 +653,31 @@ pub fn move_folder(
     Ok(())
 }
 
+/// Returns every active folder in one flat list, ordered (parent_id, sort_order).
+/// Callers that want a tree (e.g. HarmonyOS FolderDrawer rendering, desktop
+/// FolderTree seeded without roundtrip-per-level) build it client-side from
+/// the `parent_id` field. Excludes the synthetic `__root__`.
+pub fn list_all(conn: &Connection) -> Result<Vec<Folder>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, parent_id, sort_order, created_at, updated_at
+         FROM folders WHERE id != '__root__' AND deleted_at IS NULL
+         ORDER BY parent_id, sort_order",
+    )?;
+    let folders = stmt
+        .query_map([], |row| {
+            Ok(Folder {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                parent_id: row.get(2)?,
+                sort_order: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(folders)
+}
+
 pub fn list_children(conn: &Connection, parent_id: &str) -> Result<Vec<Folder>, DbError> {
     let mut stmt = conn.prepare(
         "SELECT id, name, parent_id, sort_order, created_at, updated_at
