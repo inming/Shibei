@@ -1,0 +1,17 @@
+[package]
+name = "shibei-storage"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Shibei filesystem storage for HTML/PDF snapshots and plain-text extraction."
+
+[lib]
+name = "shibei_storage"
+
+[dependencies]
+thiserror = "2"
+scraper = "0.22"
+pdf-extract = "0.7"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,17 +1,18 @@
 mod backup;
 mod commands;
 mod server;
-mod pdf_text;
-mod plain_text;
-mod storage;
 pub mod sync;
 
 // Phase 2 crate refactor: facade re-exports keep the `crate::db::…`,
-// `crate::events::…`, and `crate::sync::{hlc,sync_log,SyncContext}` call
-// sites in commands/server unchanged while the implementations live in
-// their own crates.
+// `crate::events::…`, `crate::storage::…`, `crate::plain_text::…`,
+// `crate::pdf_text::…`, and `crate::sync::{hlc,sync_log,SyncContext}`
+// call sites in commands/server unchanged while the implementations
+// live in their own crates.
 pub use shibei_db as db;
 pub use shibei_events as events;
+pub use shibei_storage as storage;
+pub use shibei_storage::plain_text;
+pub use shibei_storage::pdf_text;
 
 use std::path::PathBuf;
 use std::sync::Arc;

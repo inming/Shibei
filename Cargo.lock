@@ -4468,19 +4468,18 @@ dependencies = [
  "flate2",
  "hkdf",
  "keyring",
- "pdf-extract",
  "r2d2",
  "r2d2_sqlite",
  "rand 0.8.5",
  "rusqlite",
  "rust-s3",
- "scraper",
  "serde",
  "serde_json",
  "sha2",
  "shibei-db",
  "shibei-events",
  "shibei-pairing",
+ "shibei-storage",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -4548,6 +4547,16 @@ dependencies = [
  "sha2",
  "thiserror 2.0.18",
  "zeroize",
+]
+
+[[package]]
+name = "shibei-storage"
+version = "0.1.0"
+dependencies = [
+ "pdf-extract",
+ "scraper",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
