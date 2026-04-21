@@ -1,8 +1,23 @@
 # 拾贝移动端 MVP — 鸿蒙优先（HarmonyOS NEXT）设计文档
 
-- 日期：2026-04-20
+- 日期：2026-04-20（Phase 0 验证后修订）
 - 范围：HarmonyOS NEXT（Mate X5 折叠屏优先）
-- 状态：设计定稿，等待落实施计划
+- 状态：Phase 0 已完成真机验证；设计在 5 处按验证发现修订
+- 验证报告：`docs/superpowers/reports/2026-04-20-harmony-phase0-verification-report.md`
+
+## Phase 0 修订摘要（2026-04-20）
+
+基于真机验证（Mate X5 / HarmonyOS 6.1.0）发现，对本 spec 做以下修订：
+
+1. **§4.4 折叠状态**：Mate X5 **会**发 `HALF_FOLDED`（原假设错），最小 delta 86ms；debounce 降到 100ms 或改"状态静默 N ms 后才应用"
+2. **§5.1 / §7.1 file://**：el2 sandbox `file://` 直接可用，无需 in-app HTTP server fallback（按原设计推进）
+3. **§5.7 PDF 管线**：ArkWeb 拒绝 ES module 跨文件 import + `window.fetch`，pdfjs 必须走 4 重 workaround（legacy build / IIFE bundle 双 classic script / 桥传 PDF 字节 / polyfill Uint8Array.toHex）——已固化到 commit 历史和报告
+4. **§6.1 / §6.2 Biometric**：Mate X5 对 `ATL3 + [FACE, FINGERPRINT]` 返回 401，生产实现必须做运行时能力探测（默认 ATL2 + FINGERPRINT，回退密码）
+5. **§10.2 后台同步**：短任务在后台可续行 30s+ 无 expire，"只前台同步"可放宽——短同步完结允许走 `requestSuspendDelay`
+
+### NAPI 路线锁定
+
+**napi-rs 2.x 在 HarmonyOS NEXT 不可用**（`napi_register_module_v1` 执行但 exports 回 undefined）。Phase 0 采用 fallback：**手写 C NAPI shim + 纯 `extern "C"` Rust 函数**。Plan 3 需准备 codegen 工具自动生成 shim，避免 40+ 命令手写。
 
 ## 一、背景与目标
 
