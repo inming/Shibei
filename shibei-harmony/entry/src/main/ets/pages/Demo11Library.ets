@@ -93,7 +93,17 @@ struct Demo11Library {
                 .width(40).height(40)
                 .onClick(() => { this.drawerOpen = !this.drawerOpen; });
               Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
-                .textAlign(TextAlign.Center);
+                .textAlign(TextAlign.Center)
+                // Long-press (2s) the title to escape to the dev demo menu.
+                // Auto-routing in EntryAbility normally makes pages/Index
+                // unreachable; this backdoor is the Phase 2 dev escape.
+                .gesture(
+                  LongPressGesture({ duration: 2000 }).onAction(() => {
+                    router.pushUrl({ url: 'pages/Index' }).catch((err: Error) => {
+                      hilog.warn(0x0000, 'shibei', 'dev-menu pushUrl fail: %{public}s', err.message);
+                    });
+                  })
+                );
               Text('').width(40);  // spacer to keep title centered
             }
             .width('100%')
