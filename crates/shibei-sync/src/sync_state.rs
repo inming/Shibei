@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection};
 
-use crate::db::DbError;
+use shibei_db::DbError;
 
 pub fn get(conn: &Connection, key: &str) -> Result<Option<String>, DbError> {
     let mut stmt = conn.prepare("SELECT value FROM sync_state WHERE key = ?1")?;
@@ -57,7 +57,7 @@ pub fn get_pending_snapshot_ids(conn: &Connection) -> Result<Vec<String>, DbErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::test_db;
+    use shibei_db::test_db;
 
     #[test]
     fn test_get_set_roundtrip() {

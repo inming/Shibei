@@ -4459,26 +4459,23 @@ name = "shibei"
 version = "0.1.0"
 dependencies = [
  "argon2",
- "async-trait",
  "axum",
  "base64 0.22.1",
- "chacha20poly1305",
  "chrono",
  "dirs 6.0.0",
- "flate2",
- "hkdf",
  "keyring",
- "pdf-extract",
  "r2d2",
  "r2d2_sqlite",
  "rand 0.8.5",
  "rusqlite",
- "rust-s3",
- "scraper",
  "serde",
  "serde_json",
- "sha2",
+ "shibei-backup",
+ "shibei-db",
+ "shibei-events",
  "shibei-pairing",
+ "shibei-storage",
+ "shibei-sync",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -4492,7 +4489,19 @@ dependencies = [
  "tower-http",
  "urlencoding",
  "uuid",
- "zeroize",
+]
+
+[[package]]
+name = "shibei-backup"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "shibei-db",
+ "shibei-storage",
+ "tempfile",
  "zip",
 ]
 
@@ -4504,6 +4513,25 @@ dependencies = [
  "rust-s3",
  "tokio",
 ]
+
+[[package]]
+name = "shibei-db"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "shibei-events"
+version = "0.1.0"
 
 [[package]]
 name = "shibei-pair-decrypt"
@@ -4526,6 +4554,46 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
+name = "shibei-storage"
+version = "0.1.0"
+dependencies = [
+ "pdf-extract",
+ "scraper",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "shibei-sync"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "async-trait",
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "chrono",
+ "flate2",
+ "hkdf",
+ "keyring",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand 0.8.5",
+ "rusqlite",
+ "rust-s3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "shibei-db",
+ "shibei-pairing",
+ "shibei-storage",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
  "zeroize",
 ]
 

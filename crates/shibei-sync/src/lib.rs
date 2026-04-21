@@ -7,17 +7,14 @@ pub mod os_keystore;
 pub mod device;
 pub mod engine;
 pub mod export;
-pub mod hlc;
 pub mod pairing;
-pub mod sync_log;
 pub mod sync_state;
 
-/// Context passed to CRUD functions for sync log tracking.
-/// When None is passed, sync logging is skipped (e.g., tests, remote apply).
-pub struct SyncContext<'a> {
-    pub clock: &'a hlc::HlcClock,
-    pub device_id: &'a str,
-}
+// Phase 2 crate refactor: hlc / sync_log / SyncContext live in shibei-db so the
+// data layer can write sync_log rows without a reverse dependency. Re-exported
+// here to keep `crate::hlc::…` / `crate::SyncContext` call sites
+// in commands/server/engine unchanged.
+pub use shibei_db::{hlc, sync_log, SyncContext};
 
 use std::sync::Mutex;
 use zeroize::Zeroizing;

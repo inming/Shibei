@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
-use crate::db::DbError;
+use crate::DbError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncLogEntry {
@@ -68,7 +68,7 @@ pub fn delete_uploaded(conn: &Connection) -> Result<usize, DbError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::test_db;
+    use crate::test_db;
 
     #[test]
     fn test_append_and_get_pending() {

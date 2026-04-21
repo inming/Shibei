@@ -79,7 +79,7 @@ fn derive_pdk(
 }
 
 /// Compute verification hash: HKDF-SHA256(ikm=MK, info="shibei-verify", length=16)
-pub(crate) fn compute_verification_hash(mk: &[u8; KEY_LEN]) -> [u8; VERIFICATION_HASH_LEN] {
+pub fn compute_verification_hash(mk: &[u8; KEY_LEN]) -> [u8; VERIFICATION_HASH_LEN] {
     let hk = Hkdf::<Sha256>::new(None, mk);
     let mut hash = [0u8; VERIFICATION_HASH_LEN];
     hk.expand(b"shibei-verify", &mut hash)

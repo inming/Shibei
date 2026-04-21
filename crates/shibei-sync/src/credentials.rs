@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use crate::db::DbError;
+use shibei_db::DbError;
 use super::sync_state;
 
 /// Store S3 credentials in sync_state table.

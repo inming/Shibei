@@ -1,12 +1,19 @@
-mod backup;
 mod commands;
-mod db;
-mod events;
 mod server;
-mod pdf_text;
-mod plain_text;
-mod storage;
-pub mod sync;
+
+// Phase 2 crate refactor: facade re-exports keep the `crate::db::…`,
+// `crate::events::…`, `crate::storage::…`, `crate::plain_text::…`,
+// `crate::pdf_text::…`, `crate::sync::…`, `crate::sync::hlc::…`,
+// `crate::sync::sync_log::…`, `crate::sync::SyncContext`, and
+// `crate::backup::…` call sites in commands/server unchanged while the
+// implementations live in their own crates.
+pub use shibei_backup as backup;
+pub use shibei_db as db;
+pub use shibei_events as events;
+pub use shibei_storage as storage;
+pub use shibei_storage::plain_text;
+pub use shibei_storage::pdf_text;
+pub use shibei_sync as sync;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -392,7 +399,11 @@ pub fn run() {
                         match db::search::is_fts_initialized(&conn) {
                             Ok(false) => {
                                 // Backfill plain_text for resources missing it
-                                match db::search::backfill_plain_text(&conn, &fts_base_dir) {
+                                match db::search::backfill_plain_text(
+                                    &conn,
+                                    &fts_base_dir,
+                                    plain_text::extract_plain_text,
+                                ) {
                                     Ok(n) if n > 0 => {
                                         eprintln!("[shibei] Backfilled plain_text for {} resources", n);
                                     }

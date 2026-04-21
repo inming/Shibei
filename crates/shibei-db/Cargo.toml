@@ -1,0 +1,27 @@
+[package]
+name = "shibei-db"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Shibei data layer: SQLite schema, CRUD, FTS, sync_log, HLC."
+
+[lib]
+name = "shibei_db"
+
+[dependencies]
+rusqlite = { version = "0.34", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = { version = "0.27", features = ["bundled"] }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+[features]
+# Exposes test helpers (`test_db`, `init_db`) to downstream crates for their
+# own unit tests. Not enabled in production builds.
+test-support = []
+
+[dev-dependencies]
+tempfile = "3"

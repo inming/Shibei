@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 use super::{now_iso8601, DbError};
-use crate::sync::{self, SyncContext};
+use super::{sync_log, SyncContext};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Folder {
@@ -51,7 +51,7 @@ pub fn create_folder(
     if let Some(ctx) = sync_ctx {
         let payload = serde_json::to_string(&folder)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "folder",
             &folder.id,
@@ -90,7 +90,7 @@ pub fn rename_folder(
         let folder = get_folder(conn, id)?;
         let payload = serde_json::to_string(&folder)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "folder",
             id,
@@ -136,7 +136,7 @@ pub fn delete_folder(
         if let Some(folder) = folder_before {
             let payload = serde_json::to_string(&folder)
                 .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-            sync::sync_log::append(
+            sync_log::append(
                 conn, "folder", id, "DELETE", &payload, hlc_ref, ctx.device_id,
             )?;
         }
@@ -296,7 +296,7 @@ fn restore_folder_tree(
             if let Ok(folder) = get_folder(conn, child_id) {
                 let payload = serde_json::to_string(&folder)
                     .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-                sync::sync_log::append(
+                sync_log::append(
                     conn, "folder", child_id, "UPDATE", &payload,
                     hlc.unwrap_or(""), ctx.device_id,
                 )?;
@@ -342,14 +342,14 @@ fn restore_folder_tree(
             if let Ok(resource) = super::resources::get_resource(conn, rid) {
                 let payload = serde_json::to_string(&resource)
                     .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-                sync::sync_log::append(conn, "resource", rid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+                sync_log::append(conn, "resource", rid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
             }
 
             for hid in &deleted_highlight_ids {
                 if let Ok(h) = super::highlights::get_highlight_by_id(conn, hid) {
                     let payload = serde_json::to_string(&h)
                         .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-                    sync::sync_log::append(conn, "highlight", hid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+                    sync_log::append(conn, "highlight", hid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
                 }
             }
 
@@ -357,7 +357,7 @@ fn restore_folder_tree(
                 if let Ok(c) = super::comments::get_comment_by_id(conn, cid) {
                     let payload = serde_json::to_string(&c)
                         .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-                    sync::sync_log::append(conn, "comment", cid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+                    sync_log::append(conn, "comment", cid, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
                 }
             }
         }
@@ -401,7 +401,7 @@ pub fn ensure_inbox_folder(
         let folder = get_folder(conn, INBOX_FOLDER_ID)?;
         let payload = serde_json::to_string(&folder)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "folder",
             INBOX_FOLDER_ID,
@@ -483,7 +483,7 @@ pub fn restore_folder(
     if let Some(ctx) = sync_ctx {
         let payload = serde_json::to_string(&folder)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "folder",
             id,
@@ -639,7 +639,7 @@ pub fn move_folder(
         let folder = get_folder(conn, id)?;
         let payload = serde_json::to_string(&folder)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "folder",
             id,
@@ -706,7 +706,7 @@ pub fn reorder_folder(
         let folder = get_folder(conn, id)?;
         let payload = serde_json::to_string(&folder)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "folder",
             id,
@@ -723,7 +723,7 @@ pub fn reorder_folder(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::test_db;
+    use crate::test_db;
 
     #[test]
     fn test_create_folder() {
@@ -888,8 +888,8 @@ mod tests {
     #[test]
     fn test_restore_folder_cascades_to_children() {
         let conn = test_db();
-        let clock = crate::sync::hlc::HlcClock::new("test-device".to_string());
-        let ctx = crate::sync::SyncContext { clock: &clock, device_id: "test-device" };
+        let clock = crate::hlc::HlcClock::new("test-device".to_string());
+        let ctx = crate::SyncContext { clock: &clock, device_id: "test-device" };
 
         let parent = create_folder(&conn, "parent", "__root__", Some(&ctx)).unwrap();
         let child = create_folder(&conn, "child", &parent.id, Some(&ctx)).unwrap();

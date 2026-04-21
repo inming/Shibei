@@ -17,31 +17,31 @@ struct Migration {
 const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
-        sql: include_str!("../../migrations/001_init.sql"),
+        sql: include_str!("../migrations/001_init.sql"),
     },
     Migration {
         version: 2,
-        sql: include_str!("../../migrations/002_add_selection_meta.sql"),
+        sql: include_str!("../migrations/002_add_selection_meta.sql"),
     },
     Migration {
         version: 3,
-        sql: include_str!("../../migrations/003_sync.sql"),
+        sql: include_str!("../migrations/003_sync.sql"),
     },
     Migration {
         version: 4,
-        sql: include_str!("../../migrations/004_fix_tag_unique.sql"),
+        sql: include_str!("../migrations/004_fix_tag_unique.sql"),
     },
     Migration {
         version: 5,
-        sql: include_str!("../../migrations/005_search_index.sql"),
+        sql: include_str!("../migrations/005_search_index.sql"),
     },
     Migration {
         version: 6,
-        sql: include_str!("../../migrations/006_plain_text.sql"),
+        sql: include_str!("../migrations/006_plain_text.sql"),
     },
     Migration {
         version: 7,
-        sql: include_str!("../../migrations/007_search_index_body.sql"),
+        sql: include_str!("../migrations/007_search_index_body.sql"),
     },
 ];
 

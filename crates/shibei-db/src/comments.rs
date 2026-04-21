@@ -1,8 +1,7 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
-use super::{now_iso8601, DbError};
-use crate::sync::{self, SyncContext};
+use super::{now_iso8601, sync_log, DbError, SyncContext};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Comment {
@@ -43,7 +42,7 @@ pub fn create_comment(
     if let Some(ctx) = sync_ctx {
         let payload = serde_json::to_string(&comment)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "comment",
             &comment.id,
@@ -86,7 +85,7 @@ pub fn update_comment(
         let comment = get_comment_by_id(conn, id)?;
         let payload = serde_json::to_string(&comment)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "comment",
             id,
@@ -138,7 +137,7 @@ pub fn delete_comment(
         if let Some(comment) = comment_before {
             let payload = serde_json::to_string(&comment)
                 .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-            sync::sync_log::append(
+            sync_log::append(
                 conn,
                 "comment",
                 id,
@@ -245,7 +244,7 @@ pub fn get_comments_for_highlight(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{folders, highlights, resources, test_db};
+    use crate::{folders, highlights, resources, test_db};
 
     fn setup_resource(conn: &Connection) -> resources::Resource {
         let folder = folders::create_folder(conn, "docs", "__root__", None).unwrap();

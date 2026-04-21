@@ -1,3 +1,6 @@
+pub mod plain_text;
+pub mod pdf_text;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

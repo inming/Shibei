@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 use super::{now_iso8601, DbError};
-use crate::sync::{self, SyncContext};
+use super::{sync_log, SyncContext};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Resource {
@@ -81,7 +81,7 @@ pub fn create_resource(
     if let Some(ctx) = sync_ctx {
         // Include tag_ids (empty for create)
         let payload = build_resource_payload(&resource, &[]);
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "resource",
             &resource.id,
@@ -339,7 +339,7 @@ pub fn move_resource(
         let resource = get_resource(conn, id)?;
         let tag_ids = get_tag_ids_for_resource(conn, id)?;
         let payload = build_resource_payload(&resource, &tag_ids);
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "resource",
             id,
@@ -373,7 +373,7 @@ pub fn update_resource(
         let resource = get_resource(conn, id)?;
         let tag_ids = get_tag_ids_for_resource(conn, id)?;
         let payload = build_resource_payload(&resource, &tag_ids);
-        sync::sync_log::append(
+        sync_log::append(
             conn,
             "resource",
             id,
@@ -428,7 +428,7 @@ pub fn delete_resource(
         if let Some(resource) = resource_before {
             let payload = serde_json::to_string(&resource)
                 .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-            sync::sync_log::append(
+            sync_log::append(
                 conn,
                 "resource",
                 id,
@@ -538,14 +538,14 @@ pub fn restore_resource(
         // Write resource UPDATE
         let payload = serde_json::to_string(&resource)
             .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-        sync::sync_log::append(conn, "resource", id, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
+        sync_log::append(conn, "resource", id, "UPDATE", &payload, hlc_ref, ctx.device_id)?;
 
         // Write highlight UPDATEs for restored children
         for hid in &deleted_highlight_ids {
             if let Ok(h) = super::highlights::get_highlight_by_id(conn, hid) {
                 let h_payload = serde_json::to_string(&h)
                     .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-                sync::sync_log::append(conn, "highlight", hid, "UPDATE", &h_payload, hlc_ref, ctx.device_id)?;
+                sync_log::append(conn, "highlight", hid, "UPDATE", &h_payload, hlc_ref, ctx.device_id)?;
             }
         }
 
@@ -554,7 +554,7 @@ pub fn restore_resource(
             if let Ok(c) = super::comments::get_comment_by_id(conn, cid) {
                 let c_payload = serde_json::to_string(&c)
                     .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
-                sync::sync_log::append(conn, "comment", cid, "UPDATE", &c_payload, hlc_ref, ctx.device_id)?;
+                sync_log::append(conn, "comment", cid, "UPDATE", &c_payload, hlc_ref, ctx.device_id)?;
             }
         }
     }
@@ -734,7 +734,7 @@ pub fn set_plain_text(conn: &Connection, resource_id: &str, text: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{folders, test_db};
+    use crate::{folders, test_db};
 
     fn create_test_resource(conn: &Connection, folder_id: &str) -> Resource {
         create_resource(
@@ -757,7 +757,7 @@ mod tests {
         .unwrap()
     }
 
-    fn create_test_resource_with_ctx(conn: &Connection, folder_id: &str, sync_ctx: Option<&crate::sync::SyncContext>) -> Resource {
+    fn create_test_resource_with_ctx(conn: &Connection, folder_id: &str, sync_ctx: Option<&crate::SyncContext>) -> Resource {
         create_resource(
             conn,
             CreateResourceInput {
@@ -1040,8 +1040,8 @@ mod tests {
     #[test]
     fn test_restore_resource_updates_child_hlc_and_writes_sync_log() {
         let conn = test_db();
-        let clock = crate::sync::hlc::HlcClock::new("test-device".to_string());
-        let ctx = crate::sync::SyncContext { clock: &clock, device_id: "test-device" };
+        let clock = crate::hlc::HlcClock::new("test-device".to_string());
+        let ctx = crate::SyncContext { clock: &clock, device_id: "test-device" };
 
         let folder = folders::create_folder(&conn, "docs", "__root__", Some(&ctx)).unwrap();
         let resource = create_test_resource_with_ctx(&conn, &folder.id, Some(&ctx));
@@ -1055,10 +1055,10 @@ mod tests {
                 "suffix": ""
             }
         });
-        let h = crate::db::highlights::create_highlight(
+        let h = crate::highlights::create_highlight(
             &conn, &resource.id, "hello", &anchor, "#FFEB3B", Some(&ctx),
         ).unwrap();
-        let _c = crate::db::comments::create_comment(&conn, &resource.id, Some(&h.id), "note", Some(&ctx)).unwrap();
+        let _c = crate::comments::create_comment(&conn, &resource.id, Some(&h.id), "note", Some(&ctx)).unwrap();
 
         // Delete resource (cascades to children)
         delete_resource(&conn, &resource.id, Some(&ctx)).unwrap();
@@ -1079,7 +1079,7 @@ mod tests {
         assert_eq!(h_hlc, r_hlc, "child HLC should match resource restore HLC");
 
         // Verify sync_log has entries for children
-        let entries = crate::sync::sync_log::get_pending(&conn).unwrap();
+        let entries = crate::sync_log::get_pending(&conn).unwrap();
         let entity_types: Vec<&str> = entries.iter().map(|e| e.entity_type.as_str()).collect();
         assert!(entity_types.contains(&"resource"), "should have resource UPDATE");
         assert!(entity_types.contains(&"highlight"), "should have highlight UPDATE");

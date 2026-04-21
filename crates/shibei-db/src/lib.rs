@@ -1,10 +1,23 @@
 pub mod comments;
 pub mod folders;
 pub mod highlights;
+pub mod hlc;
 pub mod migration;
 pub mod resources;
 pub mod search;
+pub mod sync_log;
 pub mod tags;
+
+/// Context passed to CRUD functions for sync log tracking.
+/// When None is passed, sync logging is skipped (e.g., tests, remote apply).
+///
+/// Conceptually this belongs to the sync layer, but the CRUD functions in this
+/// crate need to append sync_log rows in the same transaction as domain
+/// writes, so the context is defined alongside them.
+pub struct SyncContext<'a> {
+    pub clock: &'a hlc::HlcClock,
+    pub device_id: &'a str,
+}
 
 use std::path::Path;
 
@@ -41,7 +54,10 @@ impl r2d2::CustomizeConnection<Connection, rusqlite::Error> for ForeignKeyCustom
     }
 }
 
-#[cfg(test)]
+/// Test helper: open a single-connection DB with migrations applied.
+/// Gated by the `test-support` feature so downstream crates can use it from
+/// their own test suites without this symbol bloating production builds.
+#[cfg(any(test, feature = "test-support"))]
 pub fn init_db(db_path: &Path) -> Result<Connection, DbError> {
     let mut conn = Connection::open(db_path)?;
     conn.execute_batch("PRAGMA foreign_keys = ON")?;
@@ -73,7 +89,9 @@ pub fn now_iso8601() -> String {
 }
 
 /// Create an in-memory database with migrations applied, for testing.
-#[cfg(test)]
+/// Gated by the `test-support` feature so downstream crates can use it from
+/// their own test suites.
+#[cfg(any(test, feature = "test-support"))]
 pub fn test_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
     conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();

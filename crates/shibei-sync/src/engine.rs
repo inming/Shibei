@@ -6,11 +6,11 @@ use std::sync::Arc;
 use rusqlite::params;
 use thiserror::Error;
 
-use crate::db::{DbError, SharedPool};
-use crate::sync::backend::{BackendError, SyncBackend};
-use crate::sync::hlc::HlcClock;
-use crate::sync::sync_log::{self, SyncLogEntry};
-use crate::sync::sync_state;
+use shibei_db::hlc::HlcClock;
+use shibei_db::sync_log::{self, SyncLogEntry};
+use shibei_db::{DbError, SharedPool};
+use crate::backend::{BackendError, SyncBackend};
+use crate::sync_state;
 
 #[derive(Error, Debug)]
 pub enum SyncError {
@@ -140,7 +140,7 @@ impl SyncEngine {
         // Update last_sync_at
         {
             let conn = self.conn()?;
-            sync_state::set(&conn, "last_sync_at", &crate::db::now_iso8601())?;
+            sync_state::set(&conn, "last_sync_at", &shibei_db::now_iso8601())?;
         }
 
         // Phase 4: Download pending resource snapshots
@@ -305,7 +305,7 @@ impl SyncEngine {
         // 1. Export full state and upload as snapshot
         let snapshot = super::export::export_full_state(&conn, &self.device_id)?;
         let snapshot_json = serde_json::to_vec_pretty(&snapshot)?;
-        let ts = crate::db::now_iso8601().replace(':', "-");
+        let ts = shibei_db::now_iso8601().replace(':', "-");
         let snapshot_key = format!("state/snapshot-{}.json", ts);
         self.backend.upload(&snapshot_key, &snapshot_json).await?;
 
@@ -443,7 +443,7 @@ impl SyncEngine {
         };
 
         // Upload snapshot
-        let ts = crate::db::now_iso8601().replace(':', "-");
+        let ts = shibei_db::now_iso8601().replace(':', "-");
         let key = format!("state/snapshot-{}.json", ts);
         self.backend.upload(&key, &snapshot_json).await?;
 
@@ -771,7 +771,7 @@ impl SyncEngine {
         // Pre-collect per-device file lists for progress counting
         struct DeviceFiles {
             last_seq_key: String,
-            files: Vec<crate::sync::backend::ObjectInfo>,
+            files: Vec<crate::backend::ObjectInfo>,
         }
 
         let mut device_file_list: Vec<DeviceFiles> = Vec::new();
@@ -921,7 +921,7 @@ impl SyncEngine {
             }
 
             // Advance local clock with remote HLC
-            if let Ok(remote_hlc) = entry.hlc.parse::<crate::sync::hlc::Hlc>() {
+            if let Ok(remote_hlc) = entry.hlc.parse::<crate::hlc::Hlc>() {
                 self.clock.receive(&remote_hlc);
             }
 
@@ -942,7 +942,7 @@ impl SyncEngine {
                     }
                 }
                 "DELETE" => {
-                    let now = crate::db::now_iso8601();
+                    let now = shibei_db::now_iso8601();
                     let deleted_at = payload["deleted_at"]
                         .as_str()
                         .unwrap_or(&now);
@@ -985,9 +985,9 @@ impl SyncEngine {
                 )
                 .unwrap_or(true);
             if is_deleted {
-                let _ = crate::db::search::delete_search_index(&conn, rid);
+                let _ = shibei_db::search::delete_search_index(&conn, rid);
             } else {
-                let _ = crate::db::search::rebuild_search_index(&conn, rid);
+                let _ = shibei_db::search::rebuild_search_index(&conn, rid);
             }
         }
 
@@ -1361,7 +1361,7 @@ impl SyncEngine {
                 conn.execute("DELETE FROM highlights WHERE resource_id = ?1", params![entity_id])?;
                 conn.execute("DELETE FROM resource_tags WHERE resource_id = ?1", params![entity_id])?;
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![entity_id])?;
-                let _ = crate::db::search::delete_search_index(conn, entity_id);
+                let _ = shibei_db::search::delete_search_index(conn, entity_id);
                 // Clean up snapshot pending marker
                 let snapshot_key = format!("snapshot:{}", entity_id);
                 let _ = sync_state::delete(conn, &snapshot_key);
@@ -1550,9 +1550,9 @@ impl SyncEngine {
         // Extract and store plain text for HTML snapshots (best-effort)
         if resource_type != "pdf" {
             if let Ok(html_str) = std::str::from_utf8(&data) {
-                let text = crate::plain_text::extract_plain_text(html_str);
+                let text = shibei_storage::plain_text::extract_plain_text(html_str);
                 if !text.is_empty() {
-                    let _ = crate::db::resources::set_plain_text(&conn, resource_id, &text);
+                    let _ = shibei_db::resources::set_plain_text(&conn, resource_id, &text);
                 }
             }
         }
@@ -1623,12 +1623,12 @@ fn get_entity_hlc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::backend::mock::MockBackend;
+    use crate::backend::mock::MockBackend;
 
     fn test_pool() -> (tempfile::TempDir, SharedPool) {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        let pool = crate::db::init_pool(&db_path).unwrap();
+        let pool = shibei_db::init_pool(&db_path).unwrap();
         let shared = std::sync::Arc::new(std::sync::RwLock::new(pool));
         (dir, shared)
     }
