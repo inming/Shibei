@@ -1,0 +1,28 @@
+[package]
+name = "shibei-core"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+
+[lib]
+crate-type = ["cdylib"]
+name = "shibei_core"
+
+# Phase 0 verification concluded that napi-rs 2.x on HarmonyOS NEXT is not
+# functional out of the box (napi_register_module_v1 runs but exports come
+# back undefined from ArkTS). Using a hand-written C shim that calls
+# napi_* directly for each exported function. Rust provides plain extern "C"
+# implementations; the shim marshals between JS and Rust.
+
+[dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "time", "macros", "sync"] }
+rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
+
+[build-dependencies]
+cc = "1"
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+strip = true

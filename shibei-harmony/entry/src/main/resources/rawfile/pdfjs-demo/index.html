@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body { font: 14px -apple-system, sans-serif; padding: 8px; }
+  pre { max-height: 50vh; overflow: auto; background: #f0f0f0; padding: 8px; font-size: 11px; }
+  canvas { width: 100%; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h3>pdfjs-dist Demo (dual classic-script load)</h3>
+<div id="status">loading…</div>
+<canvas id="page"></canvas>
+<h4>Extracted text (streamTextContent):</h4>
+<pre id="text">—</pre>
+
+<!--
+  Load order matters:
+    1. pdf-bundle.js       -> window.pdfjsLib
+    2. pdf-worker-bundle.js -> window.pdfjsWorker (via esbuild --global-name)
+
+  pdfjs's fake-worker path checks globalThis.pdfjsWorker.WorkerMessageHandler
+  FIRST; when present, it uses that handler directly on the main thread and
+  never calls import(workerSrc) — which ArkWeb rejects for file:// assets.
+
+  workerSrc must still be a non-empty string (pdfjs throws otherwise), so we
+  set it to a harmless placeholder; it's never actually fetched.
+-->
+<script>
+// ES2024 Uint8Array.prototype.toHex / fromHex are not yet in ArkWeb's
+// Chromium. pdfjs v4 uses them for PDF fingerprints; polyfill before
+// loading the bundles.
+(function() {
+  var P = Uint8Array.prototype;
+  if (typeof P.toHex !== 'function') {
+    P.toHex = function() {
+      var out = '';
+      for (var i = 0; i < this.length; i++) {
+        var h = this[i].toString(16);
+        out += h.length < 2 ? '0' + h : h;
+      }
+      return out;
+    };
+  }
+  if (typeof Uint8Array.fromHex !== 'function') {
+    Uint8Array.fromHex = function(hex) {
+      var len = hex.length >> 1;
+      var arr = new Uint8Array(len);
+      for (var i = 0; i < len; i++) {
+        arr[i] = parseInt(hex.substr(i * 2, 2), 16);
+      }
+      return arr;
+    };
+  }
+})();
+</script>
+<script src="./pdf-bundle.js"></script>
+<script src="./pdf-worker-bundle.js"></script>
+<script>
+(async function() {
+  var host = window.shibeiHost;
+  function log(o) { if (host) host.onEvent(JSON.stringify(o)); console.log(o); }
+  function setStatus(s) { document.getElementById('status').textContent = s; }
+
+  try {
+    var pdfjs = window.pdfjsLib;
+    var wg = window.pdfjsWorker;
+    log({
+      kind: 'probe',
+      step: 'A: globals',
+      pdfjsLib: typeof pdfjs,
+      pdfjsWorker: typeof wg,
+      hasHandler: !!(wg && wg.WorkerMessageHandler)
+    });
+    if (!pdfjs || !pdfjs.getDocument) {
+      setStatus('ERR: pdfjsLib missing'); return;
+    }
+    if (!wg || !wg.WorkerMessageHandler) {
+      setStatus('ERR: pdfjsWorker global missing');
+      log({ kind: 'error', step: 'A', message: 'pdfjsWorker not set by worker bundle' });
+      return;
+    }
+
+    // Satisfy pdfjs's "No workerSrc specified" guard. Value is never fetched
+    // because the mainThreadWorkerMessageHandler path short-circuits import().
+    pdfjs.GlobalWorkerOptions.workerSrc = 'about:blank';
+    setStatus('B: workerSrc placeholder set');
+    log({ kind: 'probe', step: 'B: workerSrc set' });
+
+    // Fetching ./sample.pdf via pdfjs internal fetch() hits ArkWeb's
+    // file:// cross-file restriction. Bring the bytes in through the
+    // bridge instead and hand them to pdfjs as a Uint8Array.
+    const pdfB64 = host.getSamplePdfBase64();
+    if (!pdfB64 || pdfB64.length < 100) {
+      setStatus('ERR: sample pdf base64 empty');
+      log({ kind: 'error', step: 'C', message: 'empty pdf base64' });
+      return;
+    }
+    const binStr = atob(pdfB64);
+    const pdfBytes = new Uint8Array(binStr.length);
+    for (let i = 0; i < binStr.length; i++) pdfBytes[i] = binStr.charCodeAt(i);
+    log({ kind: 'probe', step: 'B+: pdf bytes decoded', bytes: pdfBytes.length });
+
+    const task = pdfjs.getDocument({ data: pdfBytes });
+    setStatus('C: getDocument task created');
+    log({ kind: 'probe', step: 'C: getDocument created' });
+
+    const pdf = await task.promise;
+    setStatus('D: pdf loaded, pages=' + pdf.numPages);
+    log({ kind: 'probe', step: 'D: pdf loaded', pages: pdf.numPages });
+
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 1.0 });
+    const canvas = document.getElementById('page');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    setStatus('E: page rendered');
+    log({ kind: 'probe', step: 'E: page rendered', w: viewport.width, h: viewport.height });
+
+    const textStream = page.streamTextContent({ includeMarkedContent: false });
+    const reader = textStream.getReader();
+    const pieces = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value && value.items) {
+        for (const it of value.items) {
+          if (typeof it.str === 'string') pieces.push(it.str);
+        }
+      }
+    }
+    const full = pieces.join(' ');
+    document.getElementById('text').textContent = full || '(empty)';
+    setStatus('extracted ' + full.length + ' chars');
+    log({ kind: 'done', chars: full.length, sample: full.substring(0, 80) });
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    const stack = err && err.stack ? err.stack.toString().substring(0, 300) : '';
+    setStatus('ERR: ' + msg);
+    log({ kind: 'error', message: msg, stack });
+  }
+})();
+</script>
+</body>
+</html>

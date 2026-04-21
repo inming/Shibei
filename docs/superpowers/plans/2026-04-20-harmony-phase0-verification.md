@@ -12,6 +12,26 @@
 
 ---
 
+## ArkTS Strict-Mode Corrections (2026-04-20)
+
+The original ArkTS code in Tasks 1 and 5–11 was drafted against plain TypeScript and **does not compile under ArkTS strict mode**. When implementing each demo, apply these rules to the plan's code blocks:
+
+| Rule | Bad (plain TS) | Good (ArkTS strict) |
+|---|---|---|
+| `arkts-no-any-unknown` | `err: unknown` | `err: Error` (or a typed union) |
+| `arkts-no-obj-literals-as-types` | `Array<{ a: string }>` | `interface Entry { a: string }` then `Entry[]` |
+| `arkts-no-untyped-obj-literals` | `{ a: 'x' } // no type context` | object literal must assign to a declared interface/class variable |
+| catch: no type annotation allowed | `catch (err: Error) { ... }` | `catch (err) { ... }` — `err` is implicitly typed `Error` by the ArkTS compiler; access `err.name` / `err.message` directly. `arkts-no-types-in-catch` forbids explicit annotations, `arkts-no-any-unknown` forbids `any`/`unknown`, so bare `catch (err)` is the only valid form. |
+| error formatting | `formatErr(err)` helper | inline `` `${err.name}: ${err.message}` `` — avoids the helper's `unknown` typing issue |
+| NAPI module import | `import testNapi from 'libshibei_core.so'` (default) | `import { hello, add } from 'libshibei_core.so'` (named). napi-rs emits named exports (`export const`), not a default export — default import resolves to `undefined`. Same rule for every Demo that calls the NAPI module. |
+| `arkts-no-any-unknown` on state | `@State log: any[] = []` | `@State log: string[] = []` or a typed interface |
+
+Reference fixes already applied in commit `f64c1b4` (Index.ets, formatErr.ets, Demo0Napi.ets). Future demo pages must be written with these rules from the start.
+
+`router.pushUrl` deprecation warning is intentionally ignored at Phase 0; migrating to the `Navigation` component is Plan 3's concern.
+
+---
+
 ## Verification Targets
 
 Seven real-device questions Phase 0 must answer:
@@ -88,9 +108,16 @@ ls "$HOME/Library/Huawei/Sdk" 2>/dev/null || ls "$USERPROFILE/AppData/Local/Huaw
 
 - [ ] **Step 2: Set HarmonyOS NDK environment variable**
 
-Add to `~/.zshrc` (macOS) or equivalent:
+**DevEco Studio 6.x (macOS)** bundles the entire SDK inside the app package. The NDK root is:
+```
+/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native
+```
+
+(DevEco 5.x used `~/Library/Huawei/Sdk/HarmonyOS-NEXT-DB*/openharmony/native` — if you happen to be on the older version, use that path instead.)
+
+Add to `~/.zshrc`:
 ```bash
-export OHOS_NDK_HOME="$HOME/Library/Huawei/Sdk/HarmonyOS-NEXT-DB1/openharmony/native"
+export OHOS_NDK_HOME="/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native"
 export PATH="$OHOS_NDK_HOME/llvm/bin:$PATH"
 ```
 
@@ -98,10 +125,10 @@ Verify:
 ```bash
 source ~/.zshrc
 which aarch64-unknown-linux-ohos-clang
-# Expected: a path under $OHOS_NDK_HOME/llvm/bin
+# Expected: /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang
 ```
 
-If the binary is not found, check actual path — in some SDK versions the binary is named `aarch64-linux-ohos-clang` without `unknown`. Record the correct name for later.
+On DevEco 6.1.0 the binary is exactly `aarch64-unknown-linux-ohos-clang` (confirmed 2026-04-20). If a future SDK renames it, check `ls $OHOS_NDK_HOME/llvm/bin/aarch64-*` and update `.cargo/config.toml` accordingly.
 
 - [ ] **Step 3: Install Rust ohos target**
 
@@ -120,6 +147,8 @@ If rustup reports the target is not available for your channel, ensure you're on
 2. In AGC (AppGallery Connect) create a new HarmonyOS app (you can use placeholder bundle ID like `com.shibei.harmony.phase0`).
 3. Enable developer mode on Mate X5: Settings → 关于手机 → tap 版本号 7 times.
 4. Connect Mate X5 via USB and run `hdc list targets` — should print device serial.
+
+`hdc` binary on DevEco 6.1.0 is at `$OHOS_SDK_HOME/toolchains/hdc` where `OHOS_SDK_HOME=/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony`. Add `$OHOS_SDK_HOME/toolchains` to PATH alongside the NDK llvm bin.
 
 - [ ] **Step 5: Record environment snapshot in the report template**
 
@@ -670,8 +699,12 @@ git commit -m "build(harmony): cross-compile script + cargo config"
 
 ## Task 4: Load NAPI from ArkTS (Demo 0 — Smoke Test)
 
+> **Correction (2026-04-20)**: the original paths below were wrong. HarmonyOS ohpm requires native module declarations to live under `entry/src/main/cpp/types/<libname>/Index.d.ts` (capital `Index`) with a matching `oh-package.json5` declaring it as a package. `entry/oh-package.json5` then points `dependencies.libshibei_core.so` at **that types folder** (not at the `.so` file). The steps below are the corrected version; refer to commit `c023def` for the concrete fix applied.
+
 **Files:**
-- Create: `shibei-harmony/entry/types/libshibei_core/index.d.ts`
+- Create: `shibei-harmony/entry/src/main/cpp/types/libshibei_core/Index.d.ts`
+- Create: `shibei-harmony/entry/src/main/cpp/types/libshibei_core/oh-package.json5` (declares the types folder as a local ohpm package named `libshibei_core.so`)
+- Modify: `shibei-harmony/entry/oh-package.json5` (dependency target → the types folder, no top-level `types` field)
 - Modify: `shibei-harmony/entry/src/main/ets/pages/Demo0Napi.ets`
 
 - [ ] **Step 1: Write type declarations `shibei-harmony/entry/types/libshibei_core/index.d.ts`**

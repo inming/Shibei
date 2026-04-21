@@ -1,0 +1,6 @@
+{
+  "name": "libshibei_core.so",
+  "types": "./Index.d.ts",
+  "version": "1.0.0",
+  "description": "Shibei Rust NAPI native module type declarations"
+}
