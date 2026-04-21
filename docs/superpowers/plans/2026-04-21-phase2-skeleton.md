@@ -6,7 +6,7 @@
 - 后置消费者：Phase 3（阅读与标注）
 - 设计文档：`docs/superpowers/specs/2026-04-20-harmony-mobile-mvp-design.md` §二、§三、§四、§六、§七
 - 预计工期：4~5 周（1 人）
-- 状态：🚧 进行中（Track A1 ✅ + A2 ✅ 合入 main；A3/A4/A5/B/C/D/E/F 待开工）
+- 状态：🚧 进行中（Track A1 ✅ + A2 ✅ + A3 ✅ + B 部分 ✅ 合入 main；A4/A5/剩余 B/C/D/E/F 待开工）
 
 ---
 
@@ -82,9 +82,50 @@
 4. **Event payload 仅 `i64`**：`on_tick` 足以证明 threadsafe_function + AtomicBool cancel 路径；其他 payload 类型等 Track A5 事件转发时泛化。
 5. **`.cargo/config.toml` 升到 workspace 根**：A2 之后 `target/` 移到仓库根，原 `src-harmony-napi/.cargo/config.toml` 的 OHOS linker 设置不再生效；升级后所有方向调用 `cargo build -p shibei-core --target aarch64-unknown-linux-ohos` 都能找到正确 linker。
 
-### Track A3 / A4 / A5 / B / C / D / E / F — 待开工
+### Track A3 — AppState 单例 + 生命周期命令（2026-04-21 完成）
 
-见 §二 依赖图，下一步起手 **Track A3（AppState 单例）** + **Track B（ArkTS 外壳骨架）** —— 两者独立，可并行。
+Commits：`e65aede` (AppState + 5 commands + B scaffolds) → `7dfd2b0`/`16b84db`/`57d79ea`/`0136008` (NAPI import 诊断迭代) → `3de11a0` (回滚 .so binary 提交)。
+
+5 个 sync NAPI 命令上线：
+
+```
+initApp(dataDir: string) -> string        // "ok" | "error.*"
+isInitialized() -> boolean
+hasSavedConfig() -> boolean
+isUnlocked() -> boolean
+lockVault() -> void
+```
+
+`src-harmony-napi/src/state.rs` — `OnceLock<AppState>` 包 `data_dir` + `db_pool`（shibei-db `SharedPool`）+ `encryption`（shibei-sync `EncryptionState`）+ `device_id`（UUID 首次 init 生成并写 sync_state）。`init_app` idempotent。
+
+**验收（Mate X5 Demo 9，2026-04-21）**：
+
+- `initApp(/data/storage/el2/base/haps/entry/files)` → `ok`
+- `isInitialized()` → `true` / `hasSavedConfig()` → `false` / `isUnlocked()` → `false`
+- `lockVault()` 无异常，再 probe `isUnlocked()` 仍 `false`
+
+### Track B — ArkTS 外壳骨架（部分完成）
+
+4 个基础模块合入，页面骨架等后续 Track 消费：
+
+| 文件 | 说明 |
+|---|---|
+| `app/AppStorageKeys.ets` | 9 个 key 常量 |
+| `app/NavPathManager.ets` | 共享 `NavPathStack` + 6 个页名常量 |
+| `app/FoldObserver.ets` | Phase 0 Demo 1 升级 + 100ms settle debounce |
+| `services/ShibeiService.ets` | NAPI facade 单例 |
+
+未完成：Navigation `PageMap` 骨架、EventBus 真正订阅逻辑 —— 等 C/E 页面落地时串起来。
+
+### Debug 记录（Phase 2 A3/B 期间踩的坑）
+
+1. **ArkTS `import * as` 对 `.so` 不工作** —— 返回 `undefined`，每次 `napi.foo()` 抛 `TypeError: undefined is not callable`。必须用命名导入（`import { init as napiInit }`）。16b84db 修复。
+2. **NAPI export 名 `init` 被 ArkTS 保留** —— module linker 抛 `SyntaxError: does not provide an export name 'init'`。重命名 shim register fn 无效（57d79ea 无效），必须把公开导出名也换掉。Rust `init` → `init_app`，JS `initApp`。0136008 修复。
+3. **`.so` 二进制不进 git** —— 另一台机器没 cross-compile 工具链时发现问题，原因是该机器用的是 pull 前缓存的旧 `.so`，不是最新构建。短暂提交二进制（d7b81d9）后回滚（3de11a0），补 `docs/harmony-dev-setup.md` 一次性配置文档。两个 memory 条目固化：[ArkTS NAPI 导入风格](file:///Users/work/.claude/projects/-Users-work-workspace-Shibei/memory/feedback_arkts_napi_import.md) + [Harmony .so workflow](file:///Users/work/.claude/projects/-Users-work-workspace-Shibei/memory/feedback_harmony_so_workflow.md)。
+
+### Track A4 / A5 / 剩余 B / C / D / E / F — 待开工
+
+下一步起手 **Track A4 批 2（`listFolders` / `listResources` / `searchResources` / `listTags` / `getResource` / `getResourceSummary`）** —— 开始真消费 shibei-db CRUD。A4 批 1（setS3Config / setE2EEPassword）推迟到 Track C 之前（需要 S3 网络栈 + Argon2id 解 keyring）。
 
 ---
 
