@@ -1,0 +1,9 @@
+[package]
+name = "shibei-events"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Shibei domain event name constants shared between desktop and mobile."
+
+[lib]
+name = "shibei_events"

@@ -48,6 +48,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 pdf-extract = "0.7"
 shibei-pairing = { path = "../crates/shibei-pairing" }
 shibei-db = { path = "../crates/shibei-db" }
+shibei-events = { path = "../crates/shibei-events" }
 
 [dev-dependencies]
 tempfile = "3"

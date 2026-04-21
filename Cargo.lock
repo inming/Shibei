@@ -4479,6 +4479,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "shibei-db",
+ "shibei-events",
  "shibei-pairing",
  "tauri",
  "tauri-build",
@@ -4520,6 +4521,10 @@ dependencies = [
  "thiserror 2.0.18",
  "uuid",
 ]
+
+[[package]]
+name = "shibei-events"
+version = "0.1.0"
 
 [[package]]
 name = "shibei-pair-decrypt"
