@@ -17,7 +17,8 @@ struct Index {
     { title: '5. HUKS biometric', url: 'pages/Demo5Biometric' },
     { title: '6. Background task', url: 'pages/Demo6BackgroundTask' },
     { title: '7. S3 network switch', url: 'pages/Demo7NetworkSwitch' },
-    { title: '8. NAPI codegen (Phase 2)', url: 'pages/Demo8NapiCodegen' }
+    { title: '8. NAPI codegen (Phase 2)', url: 'pages/Demo8NapiCodegen' },
+    { title: '9. Lifecycle commands (A3)', url: 'pages/Demo9Lifecycle' }
   ];
 
   build() {
