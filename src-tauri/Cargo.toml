@@ -36,12 +36,12 @@ tauri-plugin-deep-link = "2.4.8"
 tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2.4.1"
 urlencoding = "2.1.3"
-zip = { version = "2", default-features = false, features = ["deflate"] }
 shibei-pairing = { path = "../crates/shibei-pairing" }
 shibei-db = { path = "../crates/shibei-db" }
 shibei-events = { path = "../crates/shibei-events" }
 shibei-storage = { path = "../crates/shibei-storage" }
 shibei-sync = { path = "../crates/shibei-sync" }
+shibei-backup = { path = "../crates/shibei-backup" }
 
 [dev-dependencies]
 tempfile = "3"

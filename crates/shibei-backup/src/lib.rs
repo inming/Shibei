@@ -8,7 +8,7 @@ use zip::write::SimpleFileOptions;
 use zip::ZipArchive;
 use zip::ZipWriter;
 
-use crate::db::{self, SharedPool};
+use shibei_db::{self as db, SharedPool};
 
 pub const BACKUP_VERSION: u32 = 1;
 
@@ -212,7 +212,7 @@ pub fn import_backup(
         let pool_read = shared_pool.read().map_err(|e| format!("error.restore_failed: {e}"))?;
         let conn = pool_read.get().map_err(|e| format!("error.restore_failed: {e}"))?;
         let _ = db::search::clear_fts_initialized(&conn);
-        let _ = db::search::backfill_plain_text(&conn, base_dir, crate::plain_text::extract_plain_text);
+        let _ = db::search::backfill_plain_text(&conn, base_dir, shibei_storage::plain_text::extract_plain_text);
         let _ = db::search::rebuild_all_search_index(&conn);
         let _ = db::search::mark_fts_initialized(&conn);
     }
@@ -293,7 +293,7 @@ fn add_directory_to_zip(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db;
+    use shibei_db as db;
     use std::path::PathBuf;
     use tempfile::TempDir;
 

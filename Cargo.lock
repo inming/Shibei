@@ -4470,6 +4470,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "shibei-backup",
  "shibei-db",
  "shibei-events",
  "shibei-pairing",
@@ -4488,6 +4489,19 @@ dependencies = [
  "tower-http",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "shibei-backup"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "shibei-db",
+ "shibei-storage",
+ "tempfile",
  "zip",
 ]
 
