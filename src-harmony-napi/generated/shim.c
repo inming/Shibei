@@ -11,7 +11,7 @@
 extern void shibei_ffi_free_cstring(char* p);
 
 // ── Rust FFI entry points (see generated/bindings.rs) ─────────────
-extern char* shibei_ffi_init_app(const char* data_dir);
+extern char* shibei_ffi_init_app(const char* data_dir, const char* ca_bundle_path);
 extern bool shibei_ffi_is_initialized(void);
 extern bool shibei_ffi_has_saved_config(void);
 extern bool shibei_ffi_is_unlocked(void);
@@ -121,13 +121,15 @@ static napi_value subscribe_sync_progress_unsubscribe_wrap(napi_env env, napi_ca
 static napi_value on_tick_unsubscribe_wrap(napi_env env, napi_callback_info info);
 
 static napi_value init_app_wrap(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1] = {0};
+    size_t argc = 2;
+    napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
     char buf_data_dir[4096] = {0};
     if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_data_dir, sizeof(buf_data_dir), &len); }
+    char buf_ca_bundle_path[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_ca_bundle_path, sizeof(buf_ca_bundle_path), &len); }
     napi_value result = NULL;
-    char* ret = shibei_ffi_init_app(buf_data_dir);
+    char* ret = shibei_ffi_init_app(buf_data_dir, buf_ca_bundle_path);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
     return result;

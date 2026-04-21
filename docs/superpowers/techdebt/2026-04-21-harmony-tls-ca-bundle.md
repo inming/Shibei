@@ -1,4 +1,6 @@
-# 技术债：鸿蒙端 CA bundle 打进 .so（2026-04-21）
+# ~~技术债：鸿蒙端 CA bundle 打进 .so~~（2026-04-21,已解决）
+
+> **已解决 (M4 收尾)**：采用方案 A,cacert.pem 迁到 `shibei-harmony/entry/src/main/resources/rawfile/ca-bundle.pem`,ArkTS 侧 `app/CaBundle.ets` 在 `ShibeiService.init(ctx)` 里拷到沙盒,把路径传给 Rust `initApp(dataDir, caBundlePath)`。`.so` 从 8.19 MB 回落到 7.96 MB。以下内容保留作为当时的决策记录。
 
 ## 现状
 
@@ -38,6 +40,6 @@
 
 ## 留痕
 
-- 修复提交：`5a39da2 fix(harmony-napi): ship Mozilla CA bundle for TLS`
-- 相关代码：`src-harmony-napi/src/state.rs` 的 `ensure_ca_bundle()` + 文件头注释
-- 刷新步骤：`curl -sSL -o src-harmony-napi/ca-bundle.pem https://curl.se/ca/cacert.pem && scripts/build-harmony-napi.sh release && commit`
+- 初始修复提交：`5a39da2 fix(harmony-napi): ship Mozilla CA bundle for TLS`
+- 迁移到 HAP rawfile 的提交：见 M4 commit
+- 当前刷新步骤:`curl -sSL -o shibei-harmony/entry/src/main/resources/rawfile/ca-bundle.pem https://curl.se/ca/cacert.pem`(只需要重打 HAP,不需要 Rust rebuild)

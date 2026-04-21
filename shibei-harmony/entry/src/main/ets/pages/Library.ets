@@ -32,7 +32,7 @@ struct Library {
     // init is idempotent — EntryAbility also calls it on cold start.
     try {
       const ctx = getContext(this) as common.UIAbilityContext;
-      await ShibeiService.instance.init(ctx.filesDir);
+      await ShibeiService.instance.init(ctx);
       this.initReady = true;
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;

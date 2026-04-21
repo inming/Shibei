@@ -28,8 +28,6 @@ export default class EntryAbility extends UIAbility {
   }
 
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
-    const dataDir = this.context.filesDir;
-
     // Apply persisted color mode before first frame so the user's dark/light
     // choice survives restarts. Await'd — tens of ms at most.
     try {
@@ -41,7 +39,7 @@ export default class EntryAbility extends UIAbility {
 
     let route = 'pages/Onboard';
     try {
-      await ShibeiService.instance.init(dataDir);
+      await ShibeiService.instance.init(this.context);
       if (!ShibeiService.instance.hasSavedConfig()) {
         route = 'pages/Onboard';
       } else if (ShibeiService.instance.isUnlocked()) {

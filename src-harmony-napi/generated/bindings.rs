@@ -49,8 +49,8 @@ fn leak_cstring(s: String) -> *mut c_char {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn shibei_ffi_init_app(data_dir: *const c_char) -> *mut c_char {
-    let s = crate::commands::init_app(cstr_to_string(data_dir));
+pub unsafe extern "C" fn shibei_ffi_init_app(data_dir: *const c_char, ca_bundle_path: *const c_char) -> *mut c_char {
+    let s = crate::commands::init_app(cstr_to_string(data_dir), cstr_to_string(ca_bundle_path));
     leak_cstring(s)
 }
 

@@ -59,7 +59,7 @@ struct Onboard {
     const ctx = getContext(this) as common.UIAbilityContext;
     this.dataDir = ctx.filesDir;
     try {
-      await ShibeiService.instance.init(this.dataDir);
+      await ShibeiService.instance.init(ctx);
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.initError = code;

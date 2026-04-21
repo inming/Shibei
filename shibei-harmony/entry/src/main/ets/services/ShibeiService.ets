@@ -27,7 +27,9 @@ import {
   hello as napiHello,
   echoAsync as napiEchoAsync,
 } from 'libshibei_core.so';
+import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { extractCaBundle } from '../app/CaBundle';
 
 /// Thrown by ShibeiService when NAPI returns an error.* code. The raw code
 /// (e.g. "error.notInitialized") is available for i18n lookup upstream.
@@ -52,8 +54,13 @@ export class ShibeiService {
 
   // ── Lifecycle ─────────────────────────────────────────────
 
-  async init(dataDir: string): Promise<void> {
-    const result: string = napiInitApp(dataDir);
+  /// Must be called once per process (idempotent — safe on every page
+  /// that gets mounted cold). Extracts the HAP-packaged CA bundle into
+  /// the sandbox and passes both paths to the Rust-side initApp.
+  async init(ctx: common.UIAbilityContext): Promise<void> {
+    const dataDir = ctx.filesDir;
+    const caBundlePath = await extractCaBundle(ctx);
+    const result: string = napiInitApp(dataDir, caBundlePath);
     if (result !== 'ok') {
       hilog.error(0x0000, 'shibei', 'NAPI initApp failed: %{public}s', result);
       throw new ShibeiError(result);

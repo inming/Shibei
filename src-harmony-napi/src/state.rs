@@ -1,9 +1,10 @@
 //! Global `AppState` singleton — the single source of truth every NAPI
 //! command reaches into.
 //!
-//! Initialised exactly once by ArkTS calling `init(dataDir)` very early in
-//! app startup (before any other command). Subsequent commands read via
-//! `state::get()`; if init hasn't run they receive `error.notInitialized`.
+//! Initialised exactly once by ArkTS calling `initApp(dataDir, caBundlePath)`
+//! very early in app startup (before any other command). Subsequent commands
+//! read via `state::get()`; if init hasn't run they receive
+//! `error.notInitialized`.
 //!
 //! What lives here (all cheaply clonable handles / Arcs):
 //!   - `data_dir`         — the on-device sandbox path under el2/base/haps
@@ -35,7 +36,13 @@ static APP_STATE: OnceLock<AppState> = OnceLock::new();
 /// One-shot initialisation. Safe to call multiple times — subsequent calls
 /// return the first-initialised state unchanged (important because ArkTS may
 /// replay init after a page reload during dev).
-pub fn init(data_dir: PathBuf) -> Result<(), String> {
+///
+/// `ca_bundle_path` must point at a readable cacert.pem copied out of the
+/// HAP's rawfile resources. HarmonyOS's el2 sandbox exposes no system trust
+/// store, so `rustls-native-certs` would otherwise reject every TLS peer as
+/// `UnknownIssuer`. We export `SSL_CERT_FILE` so hyper-rustls (via rust-s3)
+/// picks it up without needing to rebuild a `ClientConfig` ourselves.
+pub fn init(data_dir: PathBuf, ca_bundle_path: PathBuf) -> Result<(), String> {
     if APP_STATE.get().is_some() {
         return Ok(());
     }
@@ -48,7 +55,7 @@ pub fn init(data_dir: PathBuf) -> Result<(), String> {
 
     let device_id = load_or_init_device_id(&shared_pool)?;
     ensure_inbox(&shared_pool)?;
-    ensure_ca_bundle(&data_dir)?;
+    std::env::set_var("SSL_CERT_FILE", &ca_bundle_path);
 
     let state = AppState {
         data_dir,
@@ -78,38 +85,6 @@ fn ensure_inbox(pool: &SharedPool) -> Result<(), String> {
     let conn = pool_read.get().map_err(|e| format!("error.dbConn: {e}"))?;
     shibei_db::folders::ensure_inbox_folder(&conn, None)
         .map_err(|e| format!("error.seedInbox: {e}"))?;
-    Ok(())
-}
-
-/// HarmonyOS sandbox does not expose a system trust store where
-/// `rustls-native-certs` can find PEM roots — rust-s3's hyper-rustls
-/// stack otherwise rejects every S3 endpoint with `invalid peer
-/// certificate: UnknownIssuer`.
-///
-/// Ship the Mozilla root CA bundle (curl's `cacert.pem`, ~226 KB) as a
-/// compile-time embedded asset, write it to `$data_dir/ca-bundle.pem`
-/// on first launch, and point `SSL_CERT_FILE` at it. `rustls-native-certs`
-/// reads that env var on every platform — see its lib.rs header.
-///
-/// Refresh the bundle periodically by re-downloading
-/// https://curl.se/ca/cacert.pem into `src-harmony-napi/ca-bundle.pem`.
-///
-/// FIXME(tech-debt 2026-04-21): include_bytes! adds ~300 KB to every
-/// release .so and couples CA trust updates to Rust rebuilds. Preferred
-/// replacement is to ship cacert.pem as a HAP rawfile resource and
-/// accept its path through initApp(dataDir, caBundlePath). See
-/// docs/superpowers/techdebt/2026-04-21-harmony-tls-ca-bundle.md.
-static CA_BUNDLE_PEM: &[u8] = include_bytes!("../ca-bundle.pem");
-
-fn ensure_ca_bundle(data_dir: &std::path::Path) -> Result<(), String> {
-    let bundle_path = data_dir.join("ca-bundle.pem");
-    // Always (re)write — the embedded bundle may have been updated in a
-    // new release; the file is ~226 KB and the write is I/O-cheap on el2.
-    if bundle_path.metadata().map(|m| m.len()).ok() != Some(CA_BUNDLE_PEM.len() as u64) {
-        std::fs::write(&bundle_path, CA_BUNDLE_PEM)
-            .map_err(|e| format!("error.writeCaBundle: {e}"))?;
-    }
-    std::env::set_var("SSL_CERT_FILE", &bundle_path);
     Ok(())
 }
 

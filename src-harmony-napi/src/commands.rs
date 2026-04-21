@@ -24,9 +24,15 @@ use crate::state;
 // Lifecycle (Track A3)
 // ────────────────────────────────────────────────────────────
 
-/// Must be the very first command ArkTS calls, with the per-app sandbox path
-/// (e.g. `/data/storage/el2/base/haps/entry/files`). Idempotent across
-/// redundant dev-reload calls.
+/// Must be the very first command ArkTS calls, with:
+///   - `data_dir`: the per-app sandbox path, e.g.
+///     `/data/storage/el2/base/haps/entry/files`
+///   - `ca_bundle_path`: absolute path of a cacert.pem that ArkTS has
+///     already copied out of the HAP's `resources/rawfile/ca-bundle.pem`
+///     into the sandbox (see `app/CaBundle.ets`). We export SSL_CERT_FILE
+///     to that path so hyper-rustls finds a trust store.
+///
+/// Idempotent across redundant dev-reload calls.
 ///
 /// Returns `ok` on success, or `error.*` on failure. We return `String` (not
 /// `Result<String, String>`) to keep this command sync — async-codegen's
@@ -37,8 +43,11 @@ use crate::state;
 /// module linker on HarmonyOS NEXT (2026-04-21 Mate X5, Demo 9 regression);
 /// empirically the ES-module bootstrap reserves that identifier.
 #[shibei_napi]
-pub fn init_app(data_dir: String) -> String {
-    match state::init(std::path::PathBuf::from(data_dir)) {
+pub fn init_app(data_dir: String, ca_bundle_path: String) -> String {
+    match state::init(
+        std::path::PathBuf::from(data_dir),
+        std::path::PathBuf::from(ca_bundle_path),
+    ) {
         Ok(()) => "ok".to_string(),
         Err(e) => e,
     }
