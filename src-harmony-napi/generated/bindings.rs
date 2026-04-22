@@ -458,6 +458,12 @@ pub unsafe extern "C" fn shibei_ffi_lock_recover_with_e2ee(password: *const c_ch
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_get_mk_for_bio_enroll() -> *mut c_char {
+    let s = crate::commands::lock_get_mk_for_bio_enroll();
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_s3_creds_write(wrapped_b64: *const c_char) -> *mut c_char {
     let s = crate::commands::s3_creds_write(cstr_to_string(wrapped_b64));
     leak_cstring(s)

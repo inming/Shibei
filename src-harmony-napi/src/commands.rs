@@ -980,6 +980,11 @@ pub async fn lock_recover_with_e2ee(password: String, new_pin: String) -> Result
     crate::lock::recover_with_e2ee(password, new_pin).await
 }
 
+#[shibei_napi]
+pub fn lock_get_mk_for_bio_enroll() -> String {
+    crate::lock::get_mk_for_bio_enroll()
+}
+
 // ────────────────────────────────────────────────────────────
 // S3 credentials secure storage (Phase 4)
 // ────────────────────────────────────────────────────────────

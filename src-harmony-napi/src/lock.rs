@@ -281,3 +281,16 @@ pub async fn recover_with_e2ee(password: String, new_pin: String) -> Result<Stri
 
     setup_pin(new_pin)
 }
+
+/// Phase 4 v1 compromise: during bio enrollment the user has just typed PIN,
+/// MK is in memory. Return it as base64 so ArkTS can HUKS-wrap it with the
+/// bio key. Returns empty string if not unlocked — caller must have just
+/// run a PIN unlock.
+pub fn get_mk_for_bio_enroll() -> String {
+    use base64::Engine;
+    let Ok(app) = state::get() else { return String::new() };
+    match app.encryption.get_key() {
+        Some(mk) => base64::engine::general_purpose::STANDARD.encode(mk.as_ref()),
+        None => String::new(),
+    }
+}

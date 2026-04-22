@@ -47,6 +47,7 @@ import {
   lockGetBioWrappedMk as napiLockGetBioWrappedMk,
   lockPushUnwrappedMk as napiLockPushUnwrappedMk,
   lockRecoverWithE2ee as napiLockRecoverWithE2ee,
+  lockGetMkForBioEnroll as napiLockGetMkForBioEnroll,
   s3CredsWrite as napiS3CredsWrite,
   s3CredsRead as napiS3CredsRead,
   s3CredsClearLegacy as napiS3CredsClearLegacy,
@@ -204,6 +205,13 @@ export class ShibeiService {
     try { result = await napiLockRecoverWithE2ee(password, newPin); }
     catch (rejected) { throw new ShibeiError(asErrorCode(rejected)); }
     if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Returns the in-memory MK as base64, or empty string if not unlocked.
+  /// Bio enrollment calls this immediately after a PIN unlock so ArkTS
+  /// can HUKS-wrap the MK with the bio-gated key.
+  lockGetMkForBioEnroll(): string {
+    return napiLockGetMkForBioEnroll();
   }
 
   // ── S3 creds secure storage (Phase 4, Task 7) ─────────────
