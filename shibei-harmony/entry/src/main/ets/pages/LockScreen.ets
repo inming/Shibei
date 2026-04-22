@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { router, promptAction, focusControl } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
+// `focusControl` is a global ArkTS namespace (not a Kit export) — use it directly.
 import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { LockService } from '../services/LockService';
 
