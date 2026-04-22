@@ -105,8 +105,8 @@
     var exact = cache.text.substring(startCharIndex, endCharIndex);
     if (!exact.trim()) { emit('selection', { collapsed: true }); return; }
 
-    var prefix = cache.text.substring(Math.max(0, startCharIndex - 10), startCharIndex);
-    var suffix = cache.text.substring(endCharIndex, Math.min(cache.text.length, endCharIndex + 10));
+    var prefix = cache.text.substring(Math.max(0, startCharIndex - 32), startCharIndex);
+    var suffix = cache.text.substring(endCharIndex, Math.min(cache.text.length, endCharIndex + 32));
 
     var rect = range.getBoundingClientRect();
     emit('selection', {
