@@ -1,11 +1,24 @@
 import { Highlight, Comment, AnnotationsBundle } from '../services/ShibeiService';
 
+// Four-color palette — same order as Reader.ets so the "change color" swatch
+// in the long-press menu reads left-to-right in the familiar sequence.
+interface HlColorOption { value: string; label: string; }
+const HL_COLORS: HlColorOption[] = [
+  { value: '#ffeb3b', label: '黄' },
+  { value: '#81c784', label: '绿' },
+  { value: '#64b5f6', label: '蓝' },
+  { value: '#f48fb1', label: '粉' },
+];
+
 @Component
 export struct AnnotationPanel {
   @Prop bundle: AnnotationsBundle = { highlights: [], comments: [] };
-  // Emits the highlight id to scroll to; Reader calls runJavaScript to flash.
+  // Short tap on a highlight card → flash on page (Reader calls runJavaScript).
   onTapHighlight: (id: string) => void = () => {};
   onDeleteHighlight: (id: string) => void = () => {};
+  onChangeHighlightColor: (id: string, color: string) => void = () => {};
+  onCopyHighlightLink: (id: string) => void = () => {};
+  onAddHighlightComment: (hlId: string) => void = () => {};
   onAddResourceComment: () => void = () => {};
   onEditComment: (id: string) => void = () => {};
   onDeleteComment: (id: string) => void = () => {};
@@ -81,24 +94,38 @@ export struct AnnotationPanel {
     return this.bundle.comments.filter((c: Comment) => c.highlight_id === hlId);
   }
 
+  // Desktop displays dates as `YYYY/M/D` via toLocaleDateString; match that
+  // here with manual formatting since ArkTS's Intl surface is limited.
+  private formatDate(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
+  // Card visual mirrors the desktop AnnotationPanel: 3px left color strip,
+  // text preview, small meta row (dot + date), inline "+ 评论" action.
+  // Destructive actions (delete, copy link, change color) live behind
+  // long-press so single taps aren't misread as "delete".
   @Builder HighlightCard(h: Highlight) {
     Column() {
-      Row() {
-        // Color dot — using Text fallback instead of Circle() to avoid ArkTS
-        // strict-mode constructor-arg issues; visual result is identical.
-        Text('').width(10).height(10).backgroundColor(h.color).borderRadius(5);
-        Text(h.text_content)
-          .fontSize(14).maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
-          .fontColor($r('sys.color.ohos_id_color_text_primary'))
-          .layoutWeight(1)
-          .margin({ left: 8 });
-        Text('×').fontSize(18)
-          .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
-          .width(28).height(28).textAlign(TextAlign.Center)
-          .onClick(() => this.onDeleteHighlight(h.id));
-      }
-      .width('100%').alignItems(VerticalAlign.Top);
+      Text(h.text_content)
+        .fontSize(14)
+        .maxLines(3)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .fontColor($r('sys.color.ohos_id_color_text_primary'))
+        .width('100%');
 
+      Row() {
+        Text('●').fontSize(10).fontColor(h.color);
+        Blank();
+        Text(this.formatDate(h.created_at))
+          .fontSize(11)
+          .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
+      }
+      .width('100%')
+      .margin({ top: 6 });
+
+      // Nested comments — tap to edit.
       ForEach(this.commentsFor(h.id), (c: Comment) => {
         Row() {
           Text(c.content).fontSize(13)
@@ -106,13 +133,85 @@ export struct AnnotationPanel {
             .layoutWeight(1);
         }
         .width('100%')
-        .padding({ left: 18, top: 4, right: 4 })
+        .padding({ left: 8, top: 6, right: 4 })
         .onClick(() => this.onEditComment(c.id));
       }, (c: Comment) => c.id);
+
+      // Inline "+ 评论" — primary text, left-aligned. Opens comment sheet
+      // with the highlight id preset so the saved comment is attached here.
+      Row() {
+        Text('+ 评论')
+          .fontSize(13)
+          .fontColor($r('sys.color.ohos_id_color_emphasize'));
+      }
+      .width('100%')
+      .margin({ top: 8 })
+      .onClick(() => this.onAddHighlightComment(h.id));
     }
     .width('100%')
-    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-    .onClick(() => this.onTapHighlight(h.id));
+    .padding({ left: 10, right: 10, top: 10, bottom: 10 })
+    .margin({ left: 12, right: 12, bottom: 8 })
+    .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+    .borderRadius(6)
+    .border({
+      width: { left: 3 },
+      color: { left: h.color },
+    })
+    .onClick(() => this.onTapHighlight(h.id))
+    .bindContextMenu(this.HighlightContextMenu(h), ResponseType.LongPress);
+  }
+
+  // Long-press menu for a highlight card: 4-color swatch row + copy link +
+  // delete. Matches the desktop right-click popover (minus dark-palette row
+  // since mobile doesn't invert snapshot colors yet).
+  @Builder HighlightContextMenu(h: Highlight) {
+    Column() {
+      Row() {
+        ForEach(HL_COLORS, (c: HlColorOption) => {
+          Stack() {
+            Text('')
+              .width(26).height(26)
+              .backgroundColor(c.value)
+              .borderRadius(13)
+              .border({
+                width: c.value === h.color ? 2 : 0,
+                color: $r('sys.color.ohos_id_color_emphasize'),
+              });
+          }
+          .width(40).height(40)
+          .onClick(() => this.onChangeHighlightColor(h.id, c.value));
+        }, (c: HlColorOption) => c.value);
+      }
+      .width('100%')
+      .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+      .justifyContent(FlexAlign.SpaceAround);
+
+      Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
+
+      Row() {
+        Text('复制链接')
+          .fontSize(15)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .onClick(() => this.onCopyHighlightLink(h.id));
+
+      Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
+
+      Row() {
+        Text('删除')
+          .fontSize(15)
+          .fontColor($r('sys.color.ohos_id_color_warning'))
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .onClick(() => this.onDeleteHighlight(h.id));
+    }
+    .width(240)
+    .backgroundColor($r('sys.color.ohos_id_color_background'));
   }
 
   @Builder CommentCard(c: Comment) {
@@ -120,10 +219,6 @@ export struct AnnotationPanel {
       Text(c.content).fontSize(14)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
         .layoutWeight(1);
-      Text('×').fontSize(18)
-        .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
-        .width(28).height(28).textAlign(TextAlign.Center)
-        .onClick(() => this.onDeleteComment(c.id));
     }
     .width('100%')
     .padding({ left: 12, right: 12, top: 8, bottom: 8 })

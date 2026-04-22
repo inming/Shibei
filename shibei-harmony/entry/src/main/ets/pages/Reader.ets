@@ -3,6 +3,7 @@ import { router } from '@kit.ArkUI';
 import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { ShibeiService, Resource, Comment } from '../services/ShibeiService';
 import { AnnotationsService } from '../services/AnnotationsService';
 import {
@@ -41,6 +42,9 @@ struct Reader {
   @State pendingSelection: SelectionPayload | null = null;
   @State commentDialogOpen: boolean = false;
   @State commentDialogId: string | null = null;  // null = new resource-level note
+  // Set when "+ 评论" is tapped on a highlight card — attaches the new
+  // comment to that highlight. null means a free-standing resource note.
+  @State commentDialogHighlightId: string | null = null;
   @State commentDialogDraft: string = '';
 
   private webController: webview.WebviewController = new webview.WebviewController();
@@ -208,6 +212,29 @@ struct Reader {
     }
   }
 
+  private changeHighlightColor(id: string, color: string): void {
+    if (!this.resource) return;
+    try {
+      AnnotationsService.instance.updateHighlightColor(this.resource.id, id, color);
+      // Service notify → subscribe fires → paintHighlights runs. No extra
+      // runJavaScript needed; the repaint redraws the span background.
+    } catch (err) {
+      promptAction.showToast({ message: (err as Error).message });
+    }
+  }
+
+  private copyHighlightLink(id: string): void {
+    if (!this.resource) return;
+    const url = `shibei://open/resource/${this.resource.id}?highlight=${id}`;
+    const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, url);
+    pasteboard.getSystemPasteboard().setData(data).then(() => {
+      promptAction.showToast({ message: '链接已复制' });
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'pasteboard setData fail: %{public}s', err.message);
+      promptAction.showToast({ message: '复制失败' });
+    });
+  }
+
   build() {
     Stack() {
       if (this.loading) {
@@ -226,8 +253,18 @@ struct Reader {
             bundle: this.bundle,
             onTapHighlight: (id: string) => this.flashHighlight(id),
             onDeleteHighlight: (id: string) => this.deleteHighlight(id),
+            onChangeHighlightColor: (id: string, color: string) =>
+              this.changeHighlightColor(id, color),
+            onCopyHighlightLink: (id: string) => this.copyHighlightLink(id),
+            onAddHighlightComment: (hlId: string) => {
+              this.commentDialogId = null;
+              this.commentDialogHighlightId = hlId;
+              this.commentDialogDraft = '';
+              this.commentDialogOpen = true;
+            },
             onAddResourceComment: () => {
               this.commentDialogId = null;
+              this.commentDialogHighlightId = null;
               this.commentDialogDraft = '';
               this.commentDialogOpen = true;
             },
@@ -235,6 +272,7 @@ struct Reader {
               const c = this.bundle.comments.find((x: Comment) => x.id === id);
               if (!c) return;
               this.commentDialogId = id;
+              this.commentDialogHighlightId = c.highlight_id;
               this.commentDialogDraft = c.content;
               this.commentDialogOpen = true;
             },
@@ -383,6 +421,7 @@ struct Reader {
             this.commentDialogOpen = false;
             this.commentDialogDraft = '';
             this.commentDialogId = null;
+            this.commentDialogHighlightId = null;
           });
         Text('保存')
           .fontSize(15).fontColor($r('sys.color.ohos_id_color_emphasize'))
@@ -405,11 +444,18 @@ struct Reader {
       if (this.commentDialogId) {
         AnnotationsService.instance.updateComment(this.resource.id, this.commentDialogId, content);
       } else {
-        AnnotationsService.instance.createComment(this.resource.id, null, content);
+        // commentDialogHighlightId is set when "+ 评论" is tapped on a
+        // highlight card; null path saves as a resource-level note.
+        AnnotationsService.instance.createComment(
+          this.resource.id,
+          this.commentDialogHighlightId,
+          content,
+        );
       }
       this.commentDialogOpen = false;
       this.commentDialogDraft = '';
       this.commentDialogId = null;
+      this.commentDialogHighlightId = null;
     } catch (err) {
       promptAction.showToast({ message: (err as Error).message });
     }
