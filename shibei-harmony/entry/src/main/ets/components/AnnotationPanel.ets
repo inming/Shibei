@@ -18,7 +18,7 @@ export struct AnnotationPanel {
           .fontSize(16).fontWeight(FontWeight.Medium)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .layoutWeight(1);
-        Text('+ 备注')
+        Text('+ 笔记')
           .fontSize(13).fontColor($r('sys.color.ohos_id_color_emphasize'))
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
           .onClick(() => this.onAddResourceComment());

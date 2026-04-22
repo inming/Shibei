@@ -166,6 +166,36 @@ struct Reader {
         }.width('100%').height('100%').justifyContent(FlexAlign.Center);
       } else {
         SideBarContainer(SideBarContainerType.Overlay) {
+          // SideBarContainer convention: FIRST child = side bar, SECOND = content.
+          // We put AnnotationPanel first (drawer) and the top-bar+Web column second.
+          AnnotationPanel({
+            bundle: this.bundle,
+            onTapHighlight: (id: string) => this.flashHighlight(id),
+            onDeleteHighlight: (id: string) => this.deleteHighlight(id),
+            onAddResourceComment: () => {
+              this.commentDialogId = null;
+              this.commentDialogDraft = '';
+              this.commentDialogOpen = true;
+            },
+            onEditComment: (id: string) => {
+              const c = this.bundle.comments.find((x: Comment) => x.id === id);
+              if (!c) return;
+              this.commentDialogId = id;
+              this.commentDialogDraft = c.content;
+              this.commentDialogOpen = true;
+            },
+            onDeleteComment: (id: string) => {
+              if (!this.resource) {
+                return;
+              }
+              try {
+                AnnotationsService.instance.deleteComment(this.resource.id, id);
+              } catch (err) {
+                promptAction.showToast({ message: (err as Error).message });
+              }
+            },
+          });
+
           // Main content: top bar + Web
           Column() {
             Row() {
@@ -224,35 +254,6 @@ struct Reader {
             .layoutWeight(1).width('100%');
           }
           .width('100%').height('100%');
-
-          // Side panel
-          AnnotationPanel({
-            bundle: this.bundle,
-            onTapHighlight: (id: string) => this.flashHighlight(id),
-            onDeleteHighlight: (id: string) => this.deleteHighlight(id),
-            onAddResourceComment: () => {
-              this.commentDialogId = null;
-              this.commentDialogDraft = '';
-              this.commentDialogOpen = true;
-            },
-            onEditComment: (id: string) => {
-              const c = this.bundle.comments.find((x: Comment) => x.id === id);
-              if (!c) return;
-              this.commentDialogId = id;
-              this.commentDialogDraft = c.content;
-              this.commentDialogOpen = true;
-            },
-            onDeleteComment: (id: string) => {
-              if (!this.resource) {
-                return;
-              }
-              try {
-                AnnotationsService.instance.deleteComment(this.resource.id, id);
-              } catch (err) {
-                promptAction.showToast({ message: (err as Error).message });
-              }
-            },
-          });
         }
         .showSideBar(this.panelOpen)
         .sideBarWidth(280)
@@ -266,7 +267,7 @@ struct Reader {
     .width('100%').height('100%')
     .bindSheet($$this.commentDialogOpen, this.CommentSheet(), {
       height: 320,
-      title: { title: this.commentDialogId ? '编辑备注' : '新建备注' },
+      title: { title: this.commentDialogId ? '编辑笔记' : '新建笔记' },
     });
   }
 

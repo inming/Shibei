@@ -16,6 +16,8 @@ struct Settings {
   @State theme: ThemeMode = 'system';
   @State resetting: boolean = false;
   @State resetError: string = '';
+  @State syncing: boolean = false;
+  @State syncStatus: string = '';
 
   async aboutToAppear(): Promise<void> {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -33,6 +35,39 @@ struct Settings {
     router.replaceUrl({ url: 'pages/LockScreen' }).catch((err: Error) => {
       hilog.error(0x0000, 'shibei', 'replaceUrl fail: %{public}s', err.message);
     });
+  }
+
+  // Manual sync trigger. Mobile has no automatic sync loop yet — the user
+  // pulls fresh data via this button. Progress events update `syncStatus`
+  // so the row reflects live phase ("downloading", "applying"...).
+  private async syncNow(): Promise<void> {
+    if (this.syncing) return;
+    this.syncing = true;
+    this.syncStatus = '准备中…';
+    const unsub = ShibeiService.instance.onSyncProgress((ev) => {
+      if (ev.total > 0) {
+        this.syncStatus = `${ev.phase} ${ev.current}/${ev.total}`;
+      } else {
+        this.syncStatus = ev.phase;
+      }
+    });
+    try {
+      const result = await ShibeiService.instance.syncMetadata();
+      if (result.kind === 'success') {
+        promptAction.showToast({
+          message: `同步完成 ↑${result.uploaded} ↓${result.downloaded}`,
+        });
+      } else {
+        promptAction.showToast({ message: '同步跳过' });
+      }
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      promptAction.showToast({ message: `同步失败: ${code}` });
+    } finally {
+      unsub();
+      this.syncing = false;
+      this.syncStatus = '';
+    }
   }
 
   // Two-tap confirmation: native dialog first (hard confirm), then the
@@ -113,6 +148,30 @@ struct Settings {
             this.ThemeOption('浅色', 'light');
             Divider().color($r('sys.color.ohos_id_color_list_separator'));
             this.ThemeOption('深色', 'dark');
+          }
+          .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
+          .margin({ left: 12, right: 12 });
+
+          // ── 同步 ─────────────────────────────────────────
+          Text('同步').fontSize(13)
+            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+            .margin({ top: 24, left: 16, bottom: 4 });
+          Column() {
+            Row() {
+              Column() {
+                Text(this.syncing ? '同步中…' : '立即同步').fontSize(15)
+                  .fontColor($r('sys.color.ohos_id_color_text_primary'));
+                if (this.syncing && this.syncStatus) {
+                  Text(this.syncStatus).fontSize(12)
+                    .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+                    .margin({ top: 2 });
+                }
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+              Text('›').fontSize(18)
+                .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
+            }
+            .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
+            .onClick(() => this.syncNow());
           }
           .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
           .margin({ left: 12, right: 12 });
