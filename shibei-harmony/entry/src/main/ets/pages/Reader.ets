@@ -198,11 +198,11 @@ struct Reader {
                   this.webController.registerJavaScriptProxy(
                     this.bridge, 'shibeiBridge', ['emit'],
                   );
-                  this.webController.refresh();
-                  // Load the HTML string. baseUrl uses shibei scheme so the
-                  // annotator's href check doesn't reject it.
+                  // loadData's historyUrl param must be a string — passing null
+                  // throws BusinessError 401 on HarmonyOS NEXT. Empty string
+                  // means "no history entry", which is what we want.
                   const baseUrl = `shibei://resource/${this.resource ? this.resource.id : ''}`;
-                  this.webController.loadData(this.html, 'text/html', 'UTF-8', baseUrl, null);
+                  this.webController.loadData(this.html, 'text/html', 'UTF-8', baseUrl, '');
                 })
                 .width('100%').height('100%')
                 .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
