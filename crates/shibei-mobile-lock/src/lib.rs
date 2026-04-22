@@ -14,6 +14,7 @@
 //! brute force.
 
 pub mod pin;
+pub mod wrap;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LockError {
