@@ -30,6 +30,13 @@ extern char* shibei_ffi_list_tags(void);
 extern char* shibei_ffi_get_resource(const char* id);
 extern char* shibei_ffi_get_resource_summary(const char* id, int32_t max_chars);
 extern char* shibei_ffi_get_resource_html(const char* id);
+extern char* shibei_ffi_list_annotations(const char* resource_id);
+extern char* shibei_ffi_create_highlight(const char* input_json);
+extern char* shibei_ffi_delete_highlight(const char* id);
+extern char* shibei_ffi_update_highlight_color(const char* id, const char* color);
+extern char* shibei_ffi_create_comment(const char* input_json);
+extern char* shibei_ffi_update_comment(const char* id, const char* content);
+extern char* shibei_ffi_delete_comment(const char* id);
 extern char* shibei_ffi_hello(void);
 extern int32_t shibei_ffi_add(int32_t a, int32_t b);
 extern char* shibei_ffi_s3_smoke_test(const char* endpoint, const char* region, const char* bucket, const char* access_key, const char* secret_key);
@@ -352,6 +359,101 @@ static napi_value get_resource_html_wrap(napi_env env, napi_callback_info info) 
     return result;
 }
 
+static napi_value list_annotations_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_resource_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_list_annotations(buf_resource_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value create_highlight_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_input_json[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_input_json, sizeof(buf_input_json), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_create_highlight(buf_input_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value delete_highlight_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_delete_highlight(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value update_highlight_color_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char buf_color[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_color, sizeof(buf_color), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_update_highlight_color(buf_id, buf_color);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value create_comment_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_input_json[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_input_json, sizeof(buf_input_json), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_create_comment(buf_input_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value update_comment_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char buf_content[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_content, sizeof(buf_content), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_update_comment(buf_id, buf_content);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value delete_comment_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_delete_comment(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
 static napi_value hello_wrap(napi_env env, napi_callback_info info) {
     (void)info;
     napi_value result = NULL;
@@ -459,6 +561,13 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"getResource", NULL, get_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceSummary", NULL, get_resource_summary_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceHtml", NULL, get_resource_html_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"listAnnotations", NULL, list_annotations_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"createHighlight", NULL, create_highlight_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"deleteHighlight", NULL, delete_highlight_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"updateHighlightColor", NULL, update_highlight_color_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"createComment", NULL, create_comment_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"updateComment", NULL, update_comment_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"deleteComment", NULL, delete_comment_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"hello", NULL, hello_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"add", NULL, add_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3SmokeTest", NULL, s3_smoke_test_wrap, NULL, NULL, NULL, napi_default, NULL},

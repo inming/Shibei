@@ -190,6 +190,48 @@ pub unsafe extern "C" fn shibei_ffi_get_resource_html(id: *const c_char) -> *mut
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_annotations(resource_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_annotations(cstr_to_string(resource_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_create_highlight(input_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::create_highlight(cstr_to_string(input_json));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_delete_highlight(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::delete_highlight(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_update_highlight_color(id: *const c_char, color: *const c_char) -> *mut c_char {
+    let s = crate::commands::update_highlight_color(cstr_to_string(id), cstr_to_string(color));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_create_comment(input_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::create_comment(cstr_to_string(input_json));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_update_comment(id: *const c_char, content: *const c_char) -> *mut c_char {
+    let s = crate::commands::update_comment(cstr_to_string(id), cstr_to_string(content));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_delete_comment(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::delete_comment(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_hello() -> *mut c_char {
     let s = crate::commands::hello();
     leak_cstring(s)

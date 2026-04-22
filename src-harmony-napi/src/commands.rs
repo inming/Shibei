@@ -630,6 +630,163 @@ fn find_ci(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
 }
 
 // ────────────────────────────────────────────────────────────
+// Annotations (Phase 3a)
+// ────────────────────────────────────────────────────────────
+
+/// Returns JSON envelope `{"highlights":[...], "comments":[...]}` for a
+/// resource. Soft-deleted rows are filtered server-side.
+#[shibei_napi]
+pub fn list_annotations(resource_id: String) -> String {
+    let result = with_conn(|conn| {
+        let highlights = shibei_db::highlights::get_highlights_for_resource(conn, &resource_id)?;
+        let comments = shibei_db::comments::get_comments_for_resource(conn, &resource_id)?;
+        Ok((highlights, comments))
+    });
+    match result {
+        Ok((h, c)) => {
+            let h_json = serde_json::to_string(&h).unwrap_or_else(|_| "[]".into());
+            let c_json = serde_json::to_string(&c).unwrap_or_else(|_| "[]".into());
+            format!(r#"{{"highlights":{h_json},"comments":{c_json}}}"#)
+        }
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+/// Input JSON: `{"resourceId":"...", "textContent":"...", "anchor":{...}, "color":"#RRGGBB"}`.
+/// Returns: `{"highlight":{...}}` | `{"error":"..."}`.
+/// Anchor stored verbatim as JSON — mobile annotator emits HTML-shaped
+/// anchors `{text_position, text_quote}`.
+#[shibei_napi]
+pub fn create_highlight(input_json: String) -> String {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Input {
+        resource_id: String,
+        text_content: String,
+        anchor: serde_json::Value,
+        color: String,
+    }
+    let input: Input = match serde_json::from_str(&input_json) {
+        Ok(v) => v,
+        Err(e) => return format!(r#"{{"error":"error.badInput: {e}"}}"#),
+    };
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::highlights::create_highlight(
+            conn,
+            &input.resource_id,
+            &input.text_content,
+            &input.anchor,
+            &input.color,
+            Some(&ctx),
+        )
+    });
+    match result {
+        Ok(h) => {
+            let h_json = serde_json::to_string(&h).unwrap_or_default();
+            format!(r#"{{"highlight":{h_json}}}"#)
+        }
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn delete_highlight(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!("error.{e}"),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| shibei_db::highlights::delete_highlight(conn, &id, Some(&ctx)));
+    match result {
+        Ok(()) => "ok".to_string(),
+        Err(e) => format!("error.{e}"),
+    }
+}
+
+#[shibei_napi]
+pub fn update_highlight_color(id: String, color: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::highlights::update_highlight_color(conn, &id, &color, Some(&ctx))
+    });
+    match result {
+        Ok(h) => format!(r#"{{"highlight":{}}}"#, serde_json::to_string(&h).unwrap_or_default()),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+/// Input JSON: `{"resourceId":"...", "highlightId":"..."|null, "content":"..."}`.
+#[shibei_napi]
+pub fn create_comment(input_json: String) -> String {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Input {
+        resource_id: String,
+        highlight_id: Option<String>,
+        content: String,
+    }
+    let input: Input = match serde_json::from_str(&input_json) {
+        Ok(v) => v,
+        Err(e) => return format!(r#"{{"error":"error.badInput: {e}"}}"#),
+    };
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::comments::create_comment(
+            conn,
+            &input.resource_id,
+            input.highlight_id.as_deref(),
+            &input.content,
+            Some(&ctx),
+        )
+    });
+    match result {
+        Ok(c) => format!(r#"{{"comment":{}}}"#, serde_json::to_string(&c).unwrap_or_default()),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn update_comment(id: String, content: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!("error.{e}"),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| shibei_db::comments::update_comment(conn, &id, &content, Some(&ctx)));
+    match result {
+        Ok(()) => "ok".to_string(),
+        Err(e) => format!("error.{e}"),
+    }
+}
+
+#[shibei_napi]
+pub fn delete_comment(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!("error.{e}"),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| shibei_db::comments::delete_comment(conn, &id, Some(&ctx)));
+    match result {
+        Ok(()) => "ok".to_string(),
+        Err(e) => format!("error.{e}"),
+    }
+}
+
+// ────────────────────────────────────────────────────────────
 // Sync examples (migrated from Phase 0 hand-rolled shim)
 // ────────────────────────────────────────────────────────────
 
