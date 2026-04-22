@@ -31,7 +31,16 @@ export default class EntryAbility extends UIAbility {
     // per process — customizeSchemes is a static, process-wide call.
     try {
       webview.WebviewController.customizeSchemes([
-        { schemeName: 'shibei-pdf', isSupportCORS: true, isSupportFetch: true },
+        {
+          schemeName: 'shibei-pdf',
+          isSupportCORS: true,
+          isSupportFetch: true,
+          // Standard scheme makes Chromium treat URLs like http/https for
+          // origin/CORS/XHR semantics. Without this, XHR to this scheme
+          // reports status 0 even when onInterceptRequest returns 200 —
+          // pdfjs interprets that as a network failure.
+          isStandard: true,
+        },
       ]);
     } catch (err) {
       hilog.warn(0x0000, 'shibei', 'customizeSchemes failed: %{public}s',

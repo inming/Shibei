@@ -49,6 +49,15 @@ struct PdfSpike {
       resp.setResponseEncoding('');
       resp.setResponseCode(200);
       resp.setReasonMessage('OK');
+      // pdfjs's XHR status check reports (0) unless the response carries
+      // proper HTTP-shaped headers. Content-Length is also needed or
+      // pdfjs's range-request fallback kicks in and hangs.
+      resp.setResponseHeader([
+        { headerKey: 'Content-Type', headerValue: 'application/pdf' },
+        { headerKey: 'Content-Length', headerValue: String(bytes.byteLength) },
+        { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' },
+        { headerKey: 'Cache-Control', headerValue: 'no-store' },
+      ]);
       // setResponseData accepts ArrayBuffer on API 11+. The Uint8Array's
       // underlying buffer is what pdfjs ultimately consumes.
       resp.setResponseData(bytes.buffer);
