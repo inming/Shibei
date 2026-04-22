@@ -29,6 +29,20 @@ pub struct AppState {
     pub db_pool: SharedPool,
     pub encryption: Arc<EncryptionState>,
     pub device_id: String,
+    pub clock: shibei_db::hlc::HlcClock,
+}
+
+impl AppState {
+    /// Build a SyncContext tied to this device's clock + id. The returned
+    /// handle borrows from `&self`, so callers hold it only as long as the
+    /// state reference. Every CRUD call that should land in sync_log gets
+    /// `Some(&state.make_sync_context())`.
+    pub fn make_sync_context(&self) -> shibei_db::SyncContext<'_> {
+        shibei_db::SyncContext {
+            clock: &self.clock,
+            device_id: &self.device_id,
+        }
+    }
 }
 
 static APP_STATE: OnceLock<AppState> = OnceLock::new();
@@ -57,11 +71,13 @@ pub fn init(data_dir: PathBuf, ca_bundle_path: PathBuf) -> Result<(), String> {
     ensure_inbox(&shared_pool)?;
     std::env::set_var("SSL_CERT_FILE", &ca_bundle_path);
 
+    let clock = shibei_db::hlc::HlcClock::new(device_id.clone());
     let state = AppState {
         data_dir,
         db_pool: shared_pool,
         encryption: Arc::new(EncryptionState::new()),
         device_id,
+        clock,
     };
 
     // If two threads race into init at the same time we pick one winner; the
