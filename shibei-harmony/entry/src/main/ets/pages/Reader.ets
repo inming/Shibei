@@ -2,7 +2,7 @@ import { webview } from '@kit.ArkWeb';
 import { router } from '@kit.ArkUI';
 import { promptAction } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { ShibeiService, Resource } from '../services/ShibeiService';
+import { ShibeiService, Resource, Comment } from '../services/ShibeiService';
 import { AnnotationsService } from '../services/AnnotationsService';
 import {
   AnnotationBridge,
@@ -28,6 +28,9 @@ struct Reader {
   @State bundle: AnnotationsBundle = { highlights: [], comments: [] };
   @State panelOpen: boolean = false;
   @State pendingSelection: SelectionPayload | null = null;
+  @State commentDialogOpen: boolean = false;
+  @State commentDialogId: string | null = null;  // null = new resource-level note
+  @State commentDialogDraft: string = '';
 
   private webController: webview.WebviewController = new webview.WebviewController();
   private bridge: AnnotationBridge = new AnnotationBridge({
@@ -227,8 +230,18 @@ struct Reader {
             bundle: this.bundle,
             onTapHighlight: (id: string) => this.flashHighlight(id),
             onDeleteHighlight: (id: string) => this.deleteHighlight(id),
-            onAddResourceComment: () => { /* Phase 3a: Task 10 */ },
-            onEditComment: (_id: string) => { /* Task 10 */ },
+            onAddResourceComment: () => {
+              this.commentDialogId = null;
+              this.commentDialogDraft = '';
+              this.commentDialogOpen = true;
+            },
+            onEditComment: (id: string) => {
+              const c = this.bundle.comments.find((x: Comment) => x.id === id);
+              if (!c) return;
+              this.commentDialogId = id;
+              this.commentDialogDraft = c.content;
+              this.commentDialogOpen = true;
+            },
             onDeleteComment: (id: string) => {
               if (!this.resource) {
                 return;
@@ -250,6 +263,57 @@ struct Reader {
         .width('100%').height('100%');
       }
     }
-    .width('100%').height('100%');
+    .width('100%').height('100%')
+    .bindSheet($$this.commentDialogOpen, this.CommentSheet(), {
+      height: 320,
+      title: { title: this.commentDialogId ? '编辑备注' : '新建备注' },
+    });
+  }
+
+  @Builder CommentSheet() {
+    Column() {
+      TextArea({ text: this.commentDialogDraft, placeholder: '写下你的想法…' })
+        .fontSize(15)
+        .width('100%')
+        .height(160)
+        .onChange((v: string) => { this.commentDialogDraft = v; });
+      Row() {
+        Text('取消')
+          .fontSize(15)
+          .padding({ left: 20, right: 20, top: 10, bottom: 10 })
+          .onClick(() => {
+            this.commentDialogOpen = false;
+            this.commentDialogDraft = '';
+            this.commentDialogId = null;
+          });
+        Text('保存')
+          .fontSize(15).fontColor($r('sys.color.ohos_id_color_emphasize'))
+          .padding({ left: 20, right: 20, top: 10, bottom: 10 })
+          .onClick(() => this.saveComment());
+      }
+      .width('100%').justifyContent(FlexAlign.End);
+    }
+    .width('100%').padding(16);
+  }
+
+  private saveComment(): void {
+    if (!this.resource) return;
+    const content = this.commentDialogDraft.trim();
+    if (!content) {
+      this.commentDialogOpen = false;
+      return;
+    }
+    try {
+      if (this.commentDialogId) {
+        AnnotationsService.instance.updateComment(this.resource.id, this.commentDialogId, content);
+      } else {
+        AnnotationsService.instance.createComment(this.resource.id, null, content);
+      }
+      this.commentDialogOpen = false;
+      this.commentDialogDraft = '';
+      this.commentDialogId = null;
+    } catch (err) {
+      promptAction.showToast({ message: (err as Error).message });
+    }
   }
 }
