@@ -89,7 +89,8 @@ export class HuksService {
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_IV, value: iv },
+      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
+      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
     ];
     const handle = await huks.initSession(DEVICE_ALIAS, { properties: props });
     const finished = await huks.finishSession(handle.handle, { properties: props, inData: pt });
@@ -108,7 +109,8 @@ export class HuksService {
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_IV, value: parts.iv },
+      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
+      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: parts.iv },
     ];
     const handle = await huks.initSession(DEVICE_ALIAS, { properties: initProps });
     // AE_TAG only goes on finishSession for GCM decrypt; on init it triggers -30.
@@ -218,7 +220,8 @@ export class HuksService {
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: purpose },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_IV, value: iv },
+      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
+      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
     ];
 
     hilog.info(0x0000, 'shibei', 'bioCipher: calling initSession');
