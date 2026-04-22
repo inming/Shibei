@@ -36,6 +36,13 @@ import {
   deleteComment as napiDeleteComment,
   getPdfBytes as napiGetPdfBytes,
   ensurePdfDownloaded as napiEnsurePdfDownloaded,
+  lockIsConfigured as napiLockIsConfigured,
+  lockIsBioEnabled as napiLockIsBioEnabled,
+  lockIsMkLoaded as napiLockIsMkLoaded,
+  lockLockoutRemainingSecs as napiLockLockoutRemainingSecs,
+  lockSetupPin as napiLockSetupPin,
+  lockUnlockWithPin as napiLockUnlockWithPin,
+  lockDisable as napiLockDisable,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -109,6 +116,54 @@ export class ShibeiService {
     if (result !== 'ok') {
       throw new ShibeiError(result);
     }
+  }
+
+  // ── App Lock (Phase 4) ────────────────────────────────────
+
+  lockIsConfigured(): boolean {
+    return napiLockIsConfigured();
+  }
+
+  lockIsBioEnabled(): boolean {
+    return napiLockIsBioEnabled();
+  }
+
+  lockIsMkLoaded(): boolean {
+    return napiLockIsMkLoaded();
+  }
+
+  lockLockoutRemainingSecs(): number {
+    return napiLockLockoutRemainingSecs();
+  }
+
+  async lockSetupPin(pin: string): Promise<void> {
+    let result: string;
+    try {
+      result = await napiLockSetupPin(pin);
+    } catch (rejected) {
+      throw new ShibeiError(asErrorCode(rejected));
+    }
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  async lockUnlockWithPin(pin: string): Promise<void> {
+    let result: string;
+    try {
+      result = await napiLockUnlockWithPin(pin);
+    } catch (rejected) {
+      throw new ShibeiError(asErrorCode(rejected));
+    }
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  async lockDisable(pin: string): Promise<void> {
+    let result: string;
+    try {
+      result = await napiLockDisable(pin);
+    } catch (rejected) {
+      throw new ShibeiError(asErrorCode(rejected));
+    }
+    if (result !== 'ok') throw new ShibeiError(result);
   }
 
   // ── Pairing QR decrypt ────────────────────────────────────

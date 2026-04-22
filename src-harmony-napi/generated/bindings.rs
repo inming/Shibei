@@ -310,3 +310,83 @@ pub unsafe extern "C" fn shibei_ffi_on_tick_unsubscribe(token: *mut c_void) {
     cancel.store(true, Ordering::SeqCst);
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_is_configured() -> bool {
+    crate::commands::lock_is_configured()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_is_bio_enabled() -> bool {
+    crate::commands::lock_is_bio_enabled()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_is_mk_loaded() -> bool {
+    crate::commands::lock_is_mk_loaded()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_lockout_remaining_secs() -> i32 {
+    crate::commands::lock_lockout_remaining_secs()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_setup_pin(pin: *const c_char, ctx: *mut c_void) {
+    let pin = cstr_to_string(pin);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::lock_setup_pin(pin).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_unlock_with_pin(pin: *const c_char, ctx: *mut c_void) {
+    let pin = cstr_to_string(pin);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::lock_unlock_with_pin(pin).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_disable(pin: *const c_char, ctx: *mut c_void) {
+    let pin = cstr_to_string(pin);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::lock_disable(pin).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+

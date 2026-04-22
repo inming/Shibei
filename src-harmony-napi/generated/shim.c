@@ -45,6 +45,13 @@ extern char* shibei_ffi_s3_smoke_test(const char* endpoint, const char* region, 
 extern void shibei_ffi_echo_async(const char* text, void* ctx);
 extern void* shibei_ffi_on_tick(int64_t interval_ms, void* ctx);
 extern void shibei_ffi_on_tick_unsubscribe(void* token);
+extern bool shibei_ffi_lock_is_configured(void);
+extern bool shibei_ffi_lock_is_bio_enabled(void);
+extern bool shibei_ffi_lock_is_mk_loaded(void);
+extern int32_t shibei_ffi_lock_lockout_remaining_secs(void);
+extern void shibei_ffi_lock_setup_pin(const char* pin, void* ctx);
+extern void shibei_ffi_lock_unlock_with_pin(const char* pin, void* ctx);
+extern void shibei_ffi_lock_disable(const char* pin, void* ctx);
 
 // C callbacks invoked from Rust worker threads.
 void shibei_async_resolve(void* ctx, int ok, const char* payload);
@@ -571,6 +578,86 @@ static napi_value on_tick_unsubscribe_wrap(napi_env env, napi_callback_info info
     napi_value undef = NULL; napi_get_undefined(env, &undef); return undef;
 }
 
+static napi_value lock_is_configured_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    bool ret = shibei_ffi_lock_is_configured();
+    napi_get_boolean(env, ret, &result);
+    return result;
+}
+
+static napi_value lock_is_bio_enabled_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    bool ret = shibei_ffi_lock_is_bio_enabled();
+    napi_get_boolean(env, ret, &result);
+    return result;
+}
+
+static napi_value lock_is_mk_loaded_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    bool ret = shibei_ffi_lock_is_mk_loaded();
+    napi_get_boolean(env, ret, &result);
+    return result;
+}
+
+static napi_value lock_lockout_remaining_secs_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    int32_t ret = shibei_ffi_lock_lockout_remaining_secs();
+    napi_create_int32(env, ret, &result);
+    return result;
+}
+
+static napi_value lock_setup_pin_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_pin[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "lockSetupPin_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_lock_setup_pin(buf_pin, ctx);
+    return promise;
+}
+
+static napi_value lock_unlock_with_pin_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_pin[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "lockUnlockWithPin_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_lock_unlock_with_pin(buf_pin, ctx);
+    return promise;
+}
+
+static napi_value lock_disable_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_pin[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "lockDisable_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_lock_disable(buf_pin, ctx);
+    return promise;
+}
+
 // ── Module registration ───────────────────────────────────────────
 static napi_value shibei_register_exports(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
@@ -606,6 +693,13 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"s3SmokeTest", NULL, s3_smoke_test_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"echoAsync", NULL, echo_async_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"onTick", NULL, on_tick_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockIsConfigured", NULL, lock_is_configured_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockIsBioEnabled", NULL, lock_is_bio_enabled_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockIsMkLoaded", NULL, lock_is_mk_loaded_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockLockoutRemainingSecs", NULL, lock_lockout_remaining_secs_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockSetupPin", NULL, lock_setup_pin_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockUnlockWithPin", NULL, lock_unlock_with_pin_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockDisable", NULL, lock_disable_wrap, NULL, NULL, NULL, napi_default, NULL},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);
     return exports;

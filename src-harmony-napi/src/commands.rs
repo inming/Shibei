@@ -915,3 +915,42 @@ pub fn on_tick(interval_ms: i64, cb: ThreadsafeCallback<i64>) -> Subscription {
     });
     Subscription::new()
 }
+
+// ────────────────────────────────────────────────────────────
+// App lock (Phase 4)
+// ────────────────────────────────────────────────────────────
+
+#[shibei_napi]
+pub fn lock_is_configured() -> bool {
+    crate::lock::is_configured()
+}
+
+#[shibei_napi]
+pub fn lock_is_bio_enabled() -> bool {
+    crate::lock::is_bio_enabled()
+}
+
+#[shibei_napi]
+pub fn lock_is_mk_loaded() -> bool {
+    state::is_unlocked()
+}
+
+#[shibei_napi]
+pub fn lock_lockout_remaining_secs() -> i32 {
+    crate::lock::lockout_remaining_secs()
+}
+
+#[shibei_napi(async)]
+pub async fn lock_setup_pin(pin: String) -> Result<String, String> {
+    crate::lock::setup_pin(pin)
+}
+
+#[shibei_napi(async)]
+pub async fn lock_unlock_with_pin(pin: String) -> Result<String, String> {
+    crate::lock::unlock_with_pin(pin)
+}
+
+#[shibei_napi(async)]
+pub async fn lock_disable(pin: String) -> Result<String, String> {
+    crate::lock::disable(pin)
+}
