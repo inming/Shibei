@@ -507,6 +507,10 @@ pub fn get_resource_summary(id: String, max_chars: i32) -> String {
 // Reader (Phase 3a)
 // ────────────────────────────────────────────────────────────
 
+// Mobile annotator script, embedded at compile time. The HAP rawfile/ copy
+// is for reference only; this is what actually gets injected into the WebView.
+const ANNOTATOR_MOBILE_JS: &str = include_str!("../annotator-mobile.js");
+
 /// Returns the snapshot HTML for a resource with the mobile annotator
 /// injected into `<head>`. Script tags from the original page are stripped
 /// first (same policy as desktop — `strip_script_tags`) so page JS can't
@@ -514,12 +518,6 @@ pub fn get_resource_summary(id: String, max_chars: i32) -> String {
 ///
 /// Returns the HTML string, or `error.*` prefixed string on failure.
 /// ArkTS checks `starts_with("error.")` before feeding to WebView.
-///
-/// The `annotator-mobile.js` content is embedded at compile time via
-/// `include_str!`. The HAP ships a copy in `rawfile/` for reference
-/// but this NAPI version is the one actually injected.
-const ANNOTATOR_MOBILE_JS: &str = include_str!("../annotator-mobile.js");
-
 #[shibei_napi]
 pub fn get_resource_html(id: String) -> String {
     let app = match state::get() {
