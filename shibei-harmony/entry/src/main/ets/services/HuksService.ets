@@ -234,29 +234,34 @@ export interface BioAuthBundle {
 
 /// Prompt the user for fingerprint/face and return the authToken. Throws if
 /// the user cancels or the device doesn't support the requested level.
+///
+/// Uses the HarmonyOS NEXT `getUserAuthInstance(AuthParam, WidgetParam)` API
+/// with system-provided biometric sheet. The legacy `getAuthInstance` often
+/// returns CANCELED (12500003) because it relies on app-provided UI that
+/// doesn't render reliably on NEXT.
 export async function requestBioAuth(): Promise<BioAuthBundle> {
   const challenge = new Uint8Array(32);
   for (let i = 0; i < 32; i++) challenge[i] = Math.floor(Math.random() * 256);
-  const auth = userAuth.getAuthInstance(
+  const authParam: userAuth.AuthParam = {
     challenge,
-    userAuth.UserAuthType.FINGERPRINT,
-    userAuth.AuthTrustLevel.ATL2,
-  );
+    authType: [userAuth.UserAuthType.FINGERPRINT, userAuth.UserAuthType.FACE],
+    authTrustLevel: userAuth.AuthTrustLevel.ATL2,
+  };
+  const widgetParam: userAuth.WidgetParam = {
+    title: '验证身份以解锁拾贝',
+  };
+  const auth = userAuth.getUserAuthInstance(authParam, widgetParam);
   return new Promise<BioAuthBundle>((resolve, reject) => {
-    // AuthEvent is an object with a `callback(result: AuthResultInfo)` method,
-    // not a bare function. `AuthResultInfo.result` carries the code; `.token`
-    // is the auth token when result === SUCCESS.
-    const authEvent: userAuth.AuthEvent = {
-      callback: (info: userAuth.AuthResultInfo): void => {
-        if (info.result === userAuth.ResultCode.SUCCESS) {
-          resolve({ authToken: info.token ?? new Uint8Array(), challenge });
+    auth.on('result', {
+      onResult: (result: userAuth.UserAuthResult): void => {
+        if (result.result === userAuth.UserAuthResultCode.SUCCESS) {
+          resolve({ authToken: result.token ?? new Uint8Array(), challenge });
         } else {
-          hilog.warn(0x0000, 'shibei', 'bio auth failed: %{public}d', info.result);
-          reject(new Error(`error.bioAuthFailed:${info.result}`));
+          hilog.warn(0x0000, 'shibei', 'bio auth failed: %{public}d', result.result);
+          reject(new Error(`error.bioAuthFailed:${result.result}`));
         }
       },
-    };
-    auth.on('result', authEvent);
+    });
     try { auth.start(); }
     catch (e) { reject(e as Error); }
   });

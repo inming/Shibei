@@ -1,7 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { router, promptAction } from '@kit.ArkUI';
+import { router, promptAction, focusControl } from '@kit.ArkUI';
 import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { LockService } from '../services/LockService';
+
+const PIN_INPUT_ID = 'lockScreenPinInput';
 
 // Phase 4 lock screen. Entry condition (EntryAbility routes here):
 //   App Lock configured + MK NOT loaded.
@@ -33,6 +35,23 @@ struct LockScreen {
     // Auto-trigger biometric if enabled and not throttled.
     if (this.bioAvailable && this.throttleSecs <= 0) {
       await this.tryBio();
+    }
+  }
+
+  onPageShow(): void {
+    // The hidden TextInput driving PIN input needs explicit focus so the
+    // soft keyboard pops up automatically. Request on page-show (fires
+    // after the first layout pass so the id target exists), and again
+    // after a short delay as a belt-and-suspenders for slow layout frames.
+    if (!this.showRecovery && this.throttleSecs <= 0) {
+      try { focusControl.requestFocus(PIN_INPUT_ID); }
+      catch (e) { hilog.warn(0x0000, 'shibei', 'focus pin fail: %{public}s', (e as Error).message); }
+      setTimeout(() => {
+        if (!this.showRecovery && this.throttleSecs <= 0) {
+          try { focusControl.requestFocus(PIN_INPUT_ID); }
+          catch (e) { /* already focused */ }
+        }
+      }, 120);
     }
   }
 
@@ -153,11 +172,13 @@ struct LockScreen {
         this.PinDots();
 
         TextInput({ placeholder: '', text: this.pin })
+          .id(PIN_INPUT_ID)
           .type(InputType.Number)
           .maxLength(4)
           .opacity(0)
           .height(1)
           .enabled(this.throttleSecs <= 0)
+          .defaultFocus(true)
           .onChange((v: string) => {
             const digits = v.replace(/\D/g, '').slice(0, 4);
             this.pin = digits;
