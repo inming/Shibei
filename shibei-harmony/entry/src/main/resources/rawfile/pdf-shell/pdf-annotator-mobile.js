@@ -45,9 +45,11 @@
         fullText: collectTextContent(textLayerEl),
       };
       // Paint any already-known highlights that belong to this page.
+      // anchor.page is 0-indexed (matches desktop PDFReader.tsx), pageNum
+      // from main.js is 1-indexed (matches pdfjs getPage).
       Object.keys(highlights).forEach(function(id) {
         var h = highlights[id];
-        if (h.anchor && h.anchor.page === pageNum) drawHighlight(h);
+        if (h.anchor && h.anchor.page === pageNum - 1) drawHighlight(h);
       });
     } catch (err) {
       console.error('TextLayer render fail page', pageNum, err);
@@ -145,6 +147,9 @@
       emit('selection', { collapsed: true });
       return;
     }
+    // DOM dataset.pageNumber is 1-indexed (matches pdfjs page numbers for
+    // debugging clarity); anchor.page is 0-indexed to match desktop's
+    // PDFReader.tsx convention so highlights round-trip cross-device.
     var pageNum = parseInt(pageDiv.dataset.pageNumber, 10);
     var cache = pageCache[pageNum];
     if (!cache) return;
@@ -166,7 +171,7 @@
       textContent: exact,
       anchor: {
         type: 'pdf',
-        page: pageNum,
+        page: pageNum - 1,   // emit 0-indexed, match desktop
         charIndex: startCharIndex,
         length: endCharIndex - startCharIndex,
         textQuote: { exact: exact, prefix: prefix, suffix: suffix },
@@ -188,8 +193,11 @@
   }
 
   function drawHighlight(h) {
-    var pageNum = h.anchor && h.anchor.page;
-    if (!pageNum) return;
+    // anchor.page is 0-indexed; DOM dataset.pageNumber and pageCache key
+    // are both 1-indexed (natural for pdfjs getPage). Convert here.
+    if (!h.anchor) return;
+    if (typeof h.anchor.page !== 'number') return;
+    var pageNum = h.anchor.page + 1;
     var pageDiv = document.querySelector('.page[data-page-number="' + pageNum + '"]');
     if (!pageDiv) return;  // page not yet rendered; onPageRendered will repaint when it is
     var cache = pageCache[pageNum];
