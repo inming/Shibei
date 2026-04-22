@@ -15,6 +15,7 @@
 
 pub mod pin;
 pub mod wrap;
+pub mod throttle;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LockError {
