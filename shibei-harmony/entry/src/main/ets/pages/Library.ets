@@ -96,58 +96,73 @@ struct Library {
             onPick: (id: string) => this.onFolderPick(id),
           });
 
-          Column() {
-            // TopBar — manual ☰ that tracks `drawerOpen` (folded mode only).
-            // The built-in SideBarContainer control button is hidden via
-            // .showControlButton(false) below so the drawer doesn't end up
-            // overlapping a fixed-position toggle when it slides in.
-            //
-            // In expanded mode the drawer is always visible (Embed), so we
-            // hide the toggle entirely with a Stack slot that reserves the
-            // 44px width for symmetry with the ⚙ on the right.
-            Row() {
-              if (this.foldStatus === FoldStatus.EXPANDED) {
-                Text('').width(44).height(44);
-              } else {
-                Text(this.drawerOpen ? '✕' : '☰')
+          Stack() {
+            Column() {
+              // TopBar — manual ☰ that tracks `drawerOpen` (folded mode only).
+              // The built-in SideBarContainer control button is hidden via
+              // .showControlButton(false) below so the drawer doesn't end up
+              // overlapping a fixed-position toggle when it slides in.
+              //
+              // In expanded mode the drawer is always visible (Embed), so we
+              // hide the toggle entirely with a Stack slot that reserves the
+              // 44px width for symmetry with the ⚙ on the right.
+              Row() {
+                if (this.foldStatus === FoldStatus.EXPANDED) {
+                  Text('').width(44).height(44);
+                } else {
+                  Text(this.drawerOpen ? '✕' : '☰')
+                    .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
+                    .width(44).height(44).textAlign(TextAlign.Center)
+                    .onClick(() => { this.drawerOpen = !this.drawerOpen; });
+                }
+                Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
+                  .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                  .textAlign(TextAlign.Center);
+                // Plain Text + onClick (rather than Button) so the glyph isn't
+                // squeezed by Button's default inner padding — ⚙ was clipping
+                // inside a 40×40 Button on Mate X5.
+                Text('🔍')
+                  .fontSize(20)
+                  .width(44).height(44).textAlign(TextAlign.Center)
+                  .onClick(() => {
+                    router.pushUrl({ url: 'pages/Search' }).catch((err: Error) => {
+                      hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
+                    });
+                  });
+                Text('⚙')
                   .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
                   .width(44).height(44).textAlign(TextAlign.Center)
-                  .onClick(() => { this.drawerOpen = !this.drawerOpen; });
+                  .onClick(() => {
+                    router.pushUrl({ url: 'pages/Settings' }).catch((err: Error) => {
+                      hilog.warn(0x0000, 'shibei', 'Settings pushUrl fail: %{public}s', err.message);
+                    });
+                  });
               }
-              Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
-                .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                .textAlign(TextAlign.Center);
-              // Plain Text + onClick (rather than Button) so the glyph isn't
-              // squeezed by Button's default inner padding — ⚙ was clipping
-              // inside a 40×40 Button on Mate X5.
-              Text('🔍')
-                .fontSize(20)
-                .width(44).height(44).textAlign(TextAlign.Center)
-                .onClick(() => {
-                  router.pushUrl({ url: 'pages/Search' }).catch((err: Error) => {
-                    hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
-                  });
-                });
-              Text('⚙')
-                .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
-                .width(44).height(44).textAlign(TextAlign.Center)
-                .onClick(() => {
-                  router.pushUrl({ url: 'pages/Settings' }).catch((err: Error) => {
-                    hilog.warn(0x0000, 'shibei', 'Settings pushUrl fail: %{public}s', err.message);
-                  });
-                });
+              .width('100%')
+              .padding({ left: 4, right: 4, top: 4, bottom: 4 })
+              .backgroundColor($r('sys.color.ohos_id_color_background'));
+
+              ResourceList({
+                folderId: this.selectedFolderId,
+                onOpenResource: (id: string) => this.onOpenResource(id),
+              });
+
+            }.width('100%').height('100%')
+            .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+
+            // Tap-catcher scrim — only in FOLDED mode when the drawer is open.
+            // SideBarContainer's autoHide doesn't fire when inner components
+            // (lists, scroll views) swallow touches. This transparent layer
+            // sits on top of the Column only while the drawer is visible,
+            // intercepts the tap, and closes the drawer.
+            if (this.foldStatus === FoldStatus.FOLDED && this.drawerOpen) {
+              Column()
+                .width('100%').height('100%')
+                .backgroundColor('#01000000')
+                .onClick(() => { this.drawerOpen = false; });
             }
-            .width('100%')
-            .padding({ left: 4, right: 4, top: 4, bottom: 4 })
-            .backgroundColor($r('sys.color.ohos_id_color_background'));
-
-            ResourceList({
-              folderId: this.selectedFolderId,
-              onOpenResource: (id: string) => this.onOpenResource(id),
-            });
-
-          }.width('100%').height('100%')
-          .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+          }
+          .width('100%').height('100%');
         }
         .showSideBar(this.foldStatus === FoldStatus.EXPANDED ? true : this.drawerOpen)
         .sideBarWidth(260)
