@@ -195,7 +195,20 @@
       let list;
       try { list = JSON.parse(listJson); } catch (_) { return; }
       for (const h of list || []) {
-        if (state.highlightsById.has(h.id)) continue;
+        const existing = state.highlightsById.get(h.id);
+        if (existing) {
+          // Already wrapped — just re-apply color if it changed so swatch
+          // taps in the long-press menu (and remote color edits via sync)
+          // repaint without a full wrap/unwrap cycle.
+          if (existing.color !== h.color) {
+            const sel = `shibei-hl[data-shibei-id="${CSS.escape(h.id)}"]`;
+            document.querySelectorAll(sel).forEach((el) => {
+              el.style.setProperty("--shibei-hl-color", h.color);
+            });
+            state.highlightsById.set(h.id, h);
+          }
+          continue;
+        }
         const range = resolveAnchor(h.anchor);
         if (!range) continue;
         wrapHighlight(range, h.id, h.color);
