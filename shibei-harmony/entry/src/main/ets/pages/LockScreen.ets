@@ -29,21 +29,20 @@ struct LockScreen {
 
   private throttleTimer: number = -1;
 
+  private autoBioAttempted: boolean = false;
+
   async aboutToAppear(): Promise<void> {
     this.bioAvailable = ShibeiService.instance.lockIsBioEnabled();
     this.throttleSecs = ShibeiService.instance.lockLockoutRemainingSecs();
     if (this.throttleSecs > 0) this.startThrottleCountdown();
-    // Auto-trigger biometric if enabled and not throttled.
-    if (this.bioAvailable && this.throttleSecs <= 0) {
-      await this.tryBio();
-    }
+    // Bio auto-trigger is moved to onPageShow — aboutToAppear fires before
+    // the page is visible, and calling HUKS initSession that early hits
+    // `ClientInit: client init send fail` / HUKS -30 (IPC msg fail).
   }
 
   onPageShow(): void {
-    // The hidden TextInput driving PIN input needs explicit focus so the
-    // soft keyboard pops up automatically. Request on page-show (fires
-    // after the first layout pass so the id target exists), and again
-    // after a short delay as a belt-and-suspenders for slow layout frames.
+    // PIN input focus (soft keyboard auto-pop). First call + 120ms fallback
+    // for slow layout frames.
     if (!this.showRecovery && this.throttleSecs <= 0) {
       try { focusControl.requestFocus(PIN_INPUT_ID); }
       catch (e) { hilog.warn(0x0000, 'shibei', 'focus pin fail: %{public}s', (e as Error).message); }
@@ -53,6 +52,18 @@ struct LockScreen {
           catch (e) { /* already focused */ }
         }
       }, 120);
+    }
+
+    // Auto-trigger biometric on every page show — once per page instance
+    // so the prompt doesn't re-pop if the user cancelled. Delay 400ms so
+    // HUKS service IPC is warm (calling too early → HUKS -30).
+    if (this.bioAvailable && this.throttleSecs <= 0 && !this.showRecovery && !this.autoBioAttempted) {
+      this.autoBioAttempted = true;
+      setTimeout(() => {
+        if (this.bioAvailable && this.throttleSecs <= 0 && !this.showRecovery) {
+          this.tryBio();
+        }
+      }, 400);
     }
   }
 
@@ -82,11 +93,16 @@ struct LockScreen {
       });
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
+      hilog.warn(0x0000, 'shibei', 'tryBio failed: %{public}s', code);
       if (code === 'error.bioRevoked') {
         this.errorMsg = '指纹库已变更,请用 PIN 解锁后在设置里重新启用生物识别';
         this.bioAvailable = false;
+      } else if (code === 'error.bioAuthFailed' || code.startsWith('error.bioAuthFailed:')) {
+        // User cancel / wrong finger — silent, user can retry via button.
+      } else {
+        // HUKS service errors, etc. Surface so user isn't confused by silence.
+        this.errorMsg = `生物识别失败: ${code}`;
       }
-      // Other failures (user-cancel, auth-fail) silently fall back to PIN input.
     }
   }
 
