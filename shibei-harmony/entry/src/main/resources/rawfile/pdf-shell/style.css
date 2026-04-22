@@ -34,6 +34,9 @@ body {
   width: var(--w);
   height: var(--h);
   overflow: hidden;
+  /* New stacking context so child z-indices are self-contained and the
+     highlight-layer reliably wins over pdfjs-populated text spans. */
+  z-index: 0;
 }
 .page canvas { width: 100%; height: 100%; display: block; }
 .page .text-layer {
@@ -42,6 +45,7 @@ body {
   opacity: .2;  /* visible while debugging; flip to 0 once prod-stable */
   line-height: 1;
   -webkit-user-select: text;
+  z-index: 1;
 }
 .page .text-layer span {
   position: absolute;
@@ -53,6 +57,9 @@ body {
 
 .highlight-layer {
   position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  /* Sits above the pdfjs-generated text-layer so taps on an overlay
+     rect land on .hl (pointer-events:auto) rather than a text span. */
+  z-index: 2;
   pointer-events: none;
 }
 .highlight-layer .hl {

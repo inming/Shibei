@@ -238,6 +238,14 @@
     els.forEach(function(el) { el.remove(); });
   }
 
+  // Drop the text-layer cache so a caller tearing down and re-rendering
+  // pages (e.g. main.js's fold/rotation relayout) doesn't paint against
+  // stale DOM references. Highlights map is preserved — it's the source
+  // of truth and re-painting happens when each page re-fires onPageRendered.
+  window.__shibei.resetPageCache = function() {
+    pageCache = {};
+  };
+
   // ── Public API (ArkTS drives via runJavaScript) ──────────────────────
 
   window.__shibei.paintHighlights = function(listJson) {
