@@ -242,9 +242,24 @@ export interface BioAuthBundle {
 export async function requestBioAuth(): Promise<BioAuthBundle> {
   const challenge = new Uint8Array(32);
   for (let i = 0; i < 32; i++) challenge[i] = Math.floor(Math.random() * 256);
+  // Build authType array from types that are actually available at ATL2.
+  // Declaring an unavailable type (e.g. FACE on a fingerprint-only device)
+  // causes getUserAuthInstance to throw 401 parameter error.
+  const authTypes: userAuth.UserAuthType[] = [];
+  try {
+    userAuth.getAvailableStatus(userAuth.UserAuthType.FINGERPRINT, userAuth.AuthTrustLevel.ATL2);
+    authTypes.push(userAuth.UserAuthType.FINGERPRINT);
+  } catch (e) { /* fingerprint not available at ATL2 */ }
+  try {
+    userAuth.getAvailableStatus(userAuth.UserAuthType.FACE, userAuth.AuthTrustLevel.ATL2);
+    authTypes.push(userAuth.UserAuthType.FACE);
+  } catch (e) { /* face not available at ATL2 */ }
+  if (authTypes.length === 0) {
+    throw new Error('error.bioUnavailable');
+  }
   const authParam: userAuth.AuthParam = {
     challenge,
-    authType: [userAuth.UserAuthType.FINGERPRINT, userAuth.UserAuthType.FACE],
+    authType: authTypes,
     authTrustLevel: userAuth.AuthTrustLevel.ATL2,
   };
   const widgetParam: userAuth.WidgetParam = {
