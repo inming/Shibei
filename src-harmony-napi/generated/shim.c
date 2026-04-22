@@ -52,6 +52,10 @@ extern int32_t shibei_ffi_lock_lockout_remaining_secs(void);
 extern void shibei_ffi_lock_setup_pin(const char* pin, void* ctx);
 extern void shibei_ffi_lock_unlock_with_pin(const char* pin, void* ctx);
 extern void shibei_ffi_lock_disable(const char* pin, void* ctx);
+extern void shibei_ffi_lock_enable_bio(const char* bio_wrapped_mk_b64, void* ctx);
+extern char* shibei_ffi_lock_get_bio_wrapped_mk(void);
+extern void shibei_ffi_lock_push_unwrapped_mk(const char* mk_b64, void* ctx);
+extern void shibei_ffi_lock_recover_with_e2ee(const char* password, const char* new_pin, void* ctx);
 
 // C callbacks invoked from Rust worker threads.
 void shibei_async_resolve(void* ctx, int ok, const char* payload);
@@ -658,6 +662,65 @@ static napi_value lock_disable_wrap(napi_env env, napi_callback_info info) {
     return promise;
 }
 
+static napi_value lock_enable_bio_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_bio_wrapped_mk_b64[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_bio_wrapped_mk_b64, sizeof(buf_bio_wrapped_mk_b64), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "lockEnableBio_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_lock_enable_bio(buf_bio_wrapped_mk_b64, ctx);
+    return promise;
+}
+
+static napi_value lock_get_bio_wrapped_mk_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_lock_get_bio_wrapped_mk();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value lock_push_unwrapped_mk_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_mk_b64[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_mk_b64, sizeof(buf_mk_b64), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "lockPushUnwrappedMk_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_lock_push_unwrapped_mk(buf_mk_b64, ctx);
+    return promise;
+}
+
+static napi_value lock_recover_with_e2ee_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_password[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_password, sizeof(buf_password), &len); }
+    char buf_new_pin[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_new_pin, sizeof(buf_new_pin), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "lockRecoverWithE2ee_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_lock_recover_with_e2ee(buf_password, buf_new_pin, ctx);
+    return promise;
+}
+
 // ── Module registration ───────────────────────────────────────────
 static napi_value shibei_register_exports(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
@@ -700,6 +763,10 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"lockSetupPin", NULL, lock_setup_pin_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockUnlockWithPin", NULL, lock_unlock_with_pin_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockDisable", NULL, lock_disable_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockEnableBio", NULL, lock_enable_bio_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockGetBioWrappedMk", NULL, lock_get_bio_wrapped_mk_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockPushUnwrappedMk", NULL, lock_push_unwrapped_mk_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockRecoverWithE2ee", NULL, lock_recover_with_e2ee_wrap, NULL, NULL, NULL, napi_default, NULL},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);
     return exports;

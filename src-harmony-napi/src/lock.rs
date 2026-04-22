@@ -180,3 +180,104 @@ pub fn disable(pin_str: String) -> Result<String, String> {
     prefs.save(&app.data_dir)?;
     Ok("ok".to_string())
 }
+
+// ──────────── Bio (HUKS) + forgot-PIN recovery (Task 6) ────────────
+
+use base64::Engine;
+
+/// ArkTS has already done HUKS bio-key `wrap` of the current in-memory MK
+/// and passes the ciphertext to us as base64. We just persist it —
+/// `mk_bio.blob` contains HUKS-wrapped 32 bytes (AES-GCM, HUKS-internal nonce).
+pub fn enable_bio(bio_wrapped_mk_b64: String) -> Result<String, String> {
+    let app = state::get()?;
+    let store = FileStore::new(&app.data_dir).map_err(|e| format!("error.fsInit: {e}"))?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&bio_wrapped_mk_b64)
+        .map_err(|e| format!("error.badBioBlob: {e}"))?;
+    store.write("mk_bio", &bytes)?;
+
+    let mut prefs = SecurityPrefs::load(&app.data_dir);
+    prefs.bio_enabled = true;
+    prefs.save(&app.data_dir)?;
+    Ok("ok".to_string())
+}
+
+/// Hand ArkTS the wrapped-MK blob so it can unwrap through HUKS. Returns
+/// base64 ciphertext or empty string if not configured. The subsequent
+/// `push_unwrapped_mk` is what actually puts MK in memory.
+pub fn get_bio_wrapped_mk() -> String {
+    let Ok(app) = state::get() else { return String::new() };
+    let store = match FileStore::new(&app.data_dir) {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    match store.read("mk_bio") {
+        Ok(Some(bytes)) => base64::engine::general_purpose::STANDARD.encode(&bytes),
+        _ => String::new(),
+    }
+}
+
+/// ArkTS has unwrapped the MK through HUKS bio-key. Push it into
+/// EncryptionState so sync / annotations work. On success also resets
+/// the throttle.
+pub fn push_unwrapped_mk(mk_b64: String) -> Result<String, String> {
+    let app = state::get()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&mk_b64)
+        .map_err(|e| format!("error.badMkBlob: {e}"))?;
+    if bytes.len() != 32 {
+        return Err(format!("error.badMkBlob: len {}", bytes.len()));
+    }
+    let mut mk_arr = Zeroizing::new([0u8; 32]);
+    mk_arr.copy_from_slice(&bytes);
+    // Also zeroize the intermediate Vec<u8> — can't wrap it in Zeroizing<Vec<u8>>
+    // without the `alloc` feature, so overwrite in place before it drops.
+    let mut bytes_mut = bytes;
+    for b in bytes_mut.iter_mut() {
+        *b = 0;
+    }
+    drop(bytes_mut);
+    app.encryption.set_key(mk_arr);
+
+    let mut prefs = SecurityPrefs::load(&app.data_dir);
+    let mut t = prefs.throttle();
+    t.on_success();
+    prefs.merge_throttle(&t);
+    prefs.save(&app.data_dir)?;
+    Ok("ok".to_string())
+}
+
+/// Called by LockScreen's "forgot PIN" flow. Unlocks via E2EE password
+/// (rebuilds MK from keyring.json), then re-runs the PIN setup so the
+/// user picks a new PIN. Bio path is wiped — user must re-enroll in
+/// Settings because the old mk_bio.blob is now stale.
+pub async fn recover_with_e2ee(password: String, new_pin: String) -> Result<String, String> {
+    use shibei_sync::backend::SyncBackend;
+    let backend = crate::commands::build_raw_backend_pub()?;
+    let data = backend
+        .download("meta/keyring.json")
+        .await
+        .map_err(|e| format!("error.keyDownloadFailed: {e}"))?;
+    let json = String::from_utf8(data).map_err(|e| format!("error.keyFileFormatError: {e}"))?;
+    let keyring = shibei_sync::keyring::Keyring::from_json(&json)
+        .map_err(|e| format!("error.keyFileParseFailed: {e}"))?;
+    let mk = keyring.unlock(&password).map_err(|e| match e {
+        shibei_sync::keyring::KeyringError::WrongPassword => "error.wrongPassword".to_string(),
+        shibei_sync::keyring::KeyringError::Tampered => "error.keyFileTampered".to_string(),
+        other => format!("error.unlockFailed: {other}"),
+    })?;
+
+    let app = state::get()?;
+    app.encryption.set_key(mk);
+    let store = FileStore::new(&app.data_dir).map_err(|e| format!("error.fsInit: {e}"))?;
+    store.delete("mk_bio")?;
+    store.delete("mk_pin")?;
+    store.delete("pin_hash")?;
+    let mut prefs = SecurityPrefs::load(&app.data_dir);
+    prefs.bio_enabled = false;
+    prefs.failed_attempts = 0;
+    prefs.lockout_until_ms = 0;
+    prefs.save(&app.data_dir)?;
+
+    setup_pin(new_pin)
+}

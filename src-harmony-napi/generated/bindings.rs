@@ -390,3 +390,70 @@ pub unsafe extern "C" fn shibei_ffi_lock_disable(pin: *const c_char, ctx: *mut c
     });
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_enable_bio(bio_wrapped_mk_b64: *const c_char, ctx: *mut c_void) {
+    let bio_wrapped_mk_b64 = cstr_to_string(bio_wrapped_mk_b64);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::lock_enable_bio(bio_wrapped_mk_b64).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_get_bio_wrapped_mk() -> *mut c_char {
+    let s = crate::commands::lock_get_bio_wrapped_mk();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_push_unwrapped_mk(mk_b64: *const c_char, ctx: *mut c_void) {
+    let mk_b64 = cstr_to_string(mk_b64);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::lock_push_unwrapped_mk(mk_b64).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_lock_recover_with_e2ee(password: *const c_char, new_pin: *const c_char, ctx: *mut c_void) {
+    let password = cstr_to_string(password);
+    let new_pin = cstr_to_string(new_pin);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::lock_recover_with_e2ee(password, new_pin).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+

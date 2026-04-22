@@ -43,6 +43,10 @@ import {
   lockSetupPin as napiLockSetupPin,
   lockUnlockWithPin as napiLockUnlockWithPin,
   lockDisable as napiLockDisable,
+  lockEnableBio as napiLockEnableBio,
+  lockGetBioWrappedMk as napiLockGetBioWrappedMk,
+  lockPushUnwrappedMk as napiLockPushUnwrappedMk,
+  lockRecoverWithE2ee as napiLockRecoverWithE2ee,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -163,6 +167,37 @@ export class ShibeiService {
     } catch (rejected) {
       throw new ShibeiError(asErrorCode(rejected));
     }
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Persist a bio-wrapped MK blob (ArkTS HuksService did the wrap).
+  async lockEnableBio(wrappedMkB64: string): Promise<void> {
+    let result: string;
+    try { result = await napiLockEnableBio(wrappedMkB64); }
+    catch (rejected) { throw new ShibeiError(asErrorCode(rejected)); }
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Fetch the bio-wrapped MK blob (ArkTS HuksService will unwrap). Empty
+  /// string → bio not enabled / blob missing.
+  lockGetBioWrappedMk(): string {
+    return napiLockGetBioWrappedMk();
+  }
+
+  /// After ArkTS unwraps MK via HUKS bio-key, push the plaintext back in
+  /// to activate EncryptionState.
+  async lockPushUnwrappedMk(mkB64: string): Promise<void> {
+    let result: string;
+    try { result = await napiLockPushUnwrappedMk(mkB64); }
+    catch (rejected) { throw new ShibeiError(asErrorCode(rejected)); }
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Forgot-PIN path: unlock via E2EE password + set a new PIN.
+  async lockRecoverWithE2ee(password: string, newPin: string): Promise<void> {
+    let result: string;
+    try { result = await napiLockRecoverWithE2ee(password, newPin); }
+    catch (rejected) { throw new ShibeiError(asErrorCode(rejected)); }
     if (result !== 'ok') throw new ShibeiError(result);
   }
 

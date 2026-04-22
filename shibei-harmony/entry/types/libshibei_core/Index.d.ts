@@ -40,3 +40,7 @@ export const lockLockoutRemainingSecs: () => number;
 export const lockSetupPin: (pin: string) => Promise<string>;
 export const lockUnlockWithPin: (pin: string) => Promise<string>;
 export const lockDisable: (pin: string) => Promise<string>;
+export const lockEnableBio: (bioWrappedMkB64: string) => Promise<string>;
+export const lockGetBioWrappedMk: () => string;
+export const lockPushUnwrappedMk: (mkB64: string) => Promise<string>;
+export const lockRecoverWithE2ee: (password: string, newPin: string) => Promise<string>;

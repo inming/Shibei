@@ -293,6 +293,11 @@ pub fn subscribe_sync_progress(cb: ThreadsafeCallback<String>) -> Subscription {
     Subscription::new()
 }
 
+/// Phase 4: expose for lock.rs recovery flow.
+pub(crate) fn build_raw_backend_pub() -> Result<shibei_sync::backend::S3Backend, String> {
+    build_raw_backend()
+}
+
 fn build_raw_backend() -> Result<shibei_sync::backend::S3Backend, String> {
     let (endpoint, region, bucket, access_key, secret_key) = with_conn(|conn| {
         let endpoint = shibei_sync::sync_state::get(conn, "config:s3_endpoint")?.unwrap_or_default();
@@ -953,4 +958,24 @@ pub async fn lock_unlock_with_pin(pin: String) -> Result<String, String> {
 #[shibei_napi(async)]
 pub async fn lock_disable(pin: String) -> Result<String, String> {
     crate::lock::disable(pin)
+}
+
+#[shibei_napi(async)]
+pub async fn lock_enable_bio(bio_wrapped_mk_b64: String) -> Result<String, String> {
+    crate::lock::enable_bio(bio_wrapped_mk_b64)
+}
+
+#[shibei_napi]
+pub fn lock_get_bio_wrapped_mk() -> String {
+    crate::lock::get_bio_wrapped_mk()
+}
+
+#[shibei_napi(async)]
+pub async fn lock_push_unwrapped_mk(mk_b64: String) -> Result<String, String> {
+    crate::lock::push_unwrapped_mk(mk_b64)
+}
+
+#[shibei_napi(async)]
+pub async fn lock_recover_with_e2ee(password: String, new_pin: String) -> Result<String, String> {
+    crate::lock::recover_with_e2ee(password, new_pin).await
 }
