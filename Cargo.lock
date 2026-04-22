@@ -4544,6 +4544,22 @@ name = "shibei-events"
 version = "0.1.0"
 
 [[package]]
+name = "shibei-mobile-lock"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "hkdf",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
 name = "shibei-napi-codegen"
 version = "0.1.0"
 dependencies = [

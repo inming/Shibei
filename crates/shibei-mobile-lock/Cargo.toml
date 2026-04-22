@@ -1,0 +1,21 @@
+[package]
+name = "shibei-mobile-lock"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+description = "Mobile lock-screen crypto (PIN hash / PIN-KEK / MK wrap / throttle) — no Tauri/SQLite deps."
+
+[lib]
+name = "shibei_mobile_lock"
+
+[dependencies]
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+zeroize = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+base64 = "0.22"
