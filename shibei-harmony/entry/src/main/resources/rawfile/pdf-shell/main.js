@@ -32,6 +32,12 @@
     pageViewports: [],     // [idx] → viewport @ fit-to-width scale
     rendered: new Set(),   // page idx where canvas has been drawn
     scale: 1.0,
+    // Bumped every time relayoutForNewWidth fires. renderPage captures
+    // the current gen at start and bails at every await boundary if the
+    // gen has advanced — this prevents an in-flight old-scale render
+    // from publishing a stale text-layer after relayout has swapped
+    // in new-scale containers.
+    renderGen: 0,
   };
 
   (async function() {
@@ -115,8 +121,10 @@
   async function renderPage(n) {
     if (state.rendered.has(n)) return;
     state.rendered.add(n);   // reserve early so concurrent IO callbacks don't double-render
+    var myGen = state.renderGen;
     try {
       var page = await state.pdf.getPage(n);
+      if (myGen !== state.renderGen) return;   // stale after relayout
       var viewport = page.getViewport({ scale: state.scale });
       var div = state.pageDivs[n];
       div.style.setProperty('--w', viewport.width + 'px');
@@ -134,6 +142,12 @@
         renderParams.transform = [dpr, 0, 0, dpr, 0, 0];
       }
       await page.render(renderParams).promise;
+      if (myGen !== state.renderGen) {
+        // Relayout superseded this render. The canvas we just appended
+        // is already removed by relayout's DOM sweep, but bail before
+        // populating a stale text-layer / firing onPageRendered.
+        return;
+      }
 
       // Text-layer container; populated by pdf-annotator-mobile.js (Task 6).
       var tl = document.createElement('div');
@@ -157,6 +171,11 @@
   // scrolling back to it after.
   async function relayoutForNewWidth() {
     if (!state.pdf) return;
+
+    // Bump generation so any in-flight renderPage from the prior scale
+    // aborts at its next await boundary instead of publishing a stale
+    // text-layer whose span positions are from the old viewport.
+    state.renderGen++;
 
     // Capture current top-visible page for restore.
     var topPage = 1;
