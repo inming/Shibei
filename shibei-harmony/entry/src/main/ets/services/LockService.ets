@@ -150,18 +150,13 @@ export class LockService {
       mkB64 = await huks.unwrapBio(wrapped);
       hilog.info(0x0000, 'shibei', 'unlockWithBio: unwrapBio ok, mk len=%{public}d', mkB64.length);
     } catch (e) {
-      const msg = (e as Error).message;
+      // Force-cast to string via conversion — some ArkTS runtime builds
+      // return a message value where `.startsWith` is undefined, producing
+      // a confusing "undefined is not callable" cascade that masks the
+      // real HUKS error.
+      const raw = (e as Error).message;
+      const msg: string = (typeof raw === 'string') ? raw : String(raw);
       hilog.warn(0x0000, 'shibei', 'unwrapBio threw: %{public}s', msg);
-      // Propagate the underlying error verbatim — don't auto-nuke the bio key.
-      // A HUKS IPC hiccup (`-30`, surfaced as "The parameter does not exist.")
-      // or a user-cancelled prompt doesn't mean the key is revoked; force-
-      // deleting on those is what produced the mysterious "undefined is not
-      // callable" cascade (the delete path throws, masking the real error).
-      // Truly-revoked keys can be cleaned up by the user via Settings
-      // 生物识别 toggle off → on, or the recoverWithE2ee path.
-      if (msg.startsWith('error.bioAuthFailed')) {
-        throw new ShibeiError('error.bioAuthFailed');
-      }
       throw new ShibeiError(msg);
     }
     hilog.info(0x0000, 'shibei', 'unlockWithBio: pushing mk');
