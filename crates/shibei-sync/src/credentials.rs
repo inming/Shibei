@@ -29,3 +29,13 @@ pub fn delete_credentials(conn: &Connection) -> Result<(), DbError> {
     sync_state::delete(conn, "config:s3_secret_key")?;
     Ok(())
 }
+
+/// Phase 4 migration helper: delete the SQLite credentials rows after ArkTS
+/// moved them into secure/s3_creds.blob. Idempotent.
+///
+/// Credentials live as two rows in `sync_state` (`config:s3_access_key` and
+/// `config:s3_secret_key`); this is a thin alias over `delete_credentials`
+/// so the NAPI call site reads cleanly.
+pub fn clear_credentials(conn: &Connection) -> Result<(), DbError> {
+    delete_credentials(conn)
+}

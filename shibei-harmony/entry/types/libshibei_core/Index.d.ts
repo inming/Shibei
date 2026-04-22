@@ -44,3 +44,7 @@ export const lockEnableBio: (bioWrappedMkB64: string) => Promise<string>;
 export const lockGetBioWrappedMk: () => string;
 export const lockPushUnwrappedMk: (mkB64: string) => Promise<string>;
 export const lockRecoverWithE2ee: (password: string, newPin: string) => Promise<string>;
+export const s3CredsWrite: (wrappedB64: string) => string;
+export const s3CredsRead: () => string;
+export const s3CredsClearLegacy: () => string;
+export const setS3CredsOnly: (accessKey: string, secretKey: string) => string;

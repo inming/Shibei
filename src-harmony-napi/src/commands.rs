@@ -979,3 +979,62 @@ pub async fn lock_push_unwrapped_mk(mk_b64: String) -> Result<String, String> {
 pub async fn lock_recover_with_e2ee(password: String, new_pin: String) -> Result<String, String> {
     crate::lock::recover_with_e2ee(password, new_pin).await
 }
+
+// ────────────────────────────────────────────────────────────
+// S3 credentials secure storage (Phase 4)
+// ────────────────────────────────────────────────────────────
+
+#[shibei_napi]
+pub fn s3_creds_write(wrapped_b64: String) -> String {
+    match s3_creds_write_inner(&wrapped_b64) {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}
+
+fn s3_creds_write_inner(wrapped_b64: &str) -> Result<(), String> {
+    use base64::Engine;
+    use crate::secure_store::SecureStore;
+    let app = state::get()?;
+    let store = crate::secure_store::FileStore::new(&app.data_dir)
+        .map_err(|e| format!("error.fsInit: {e}"))?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(wrapped_b64)
+        .map_err(|e| format!("error.badS3Blob: {e}"))?;
+    store.write("s3_creds", &bytes)?;
+    Ok(())
+}
+
+#[shibei_napi]
+pub fn s3_creds_read() -> String {
+    use base64::Engine;
+    use crate::secure_store::SecureStore;
+    let Ok(app) = state::get() else { return String::new() };
+    let store = match crate::secure_store::FileStore::new(&app.data_dir) {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    match store.read("s3_creds") {
+        Ok(Some(bytes)) => base64::engine::general_purpose::STANDARD.encode(&bytes),
+        _ => String::new(),
+    }
+}
+
+#[shibei_napi]
+pub fn s3_creds_clear_legacy() -> String {
+    match with_conn(shibei_sync::credentials::clear_credentials) {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}
+
+#[shibei_napi]
+pub fn set_s3_creds_only(access_key: String, secret_key: String) -> String {
+    let result = with_conn(|conn| {
+        shibei_sync::credentials::store_credentials(conn, &access_key, &secret_key)
+    });
+    match result {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}

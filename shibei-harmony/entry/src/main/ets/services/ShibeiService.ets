@@ -47,6 +47,10 @@ import {
   lockGetBioWrappedMk as napiLockGetBioWrappedMk,
   lockPushUnwrappedMk as napiLockPushUnwrappedMk,
   lockRecoverWithE2ee as napiLockRecoverWithE2ee,
+  s3CredsWrite as napiS3CredsWrite,
+  s3CredsRead as napiS3CredsRead,
+  s3CredsClearLegacy as napiS3CredsClearLegacy,
+  setS3CredsOnly as napiSetS3CredsOnly,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -198,6 +202,37 @@ export class ShibeiService {
     let result: string;
     try { result = await napiLockRecoverWithE2ee(password, newPin); }
     catch (rejected) { throw new ShibeiError(asErrorCode(rejected)); }
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  // ── S3 creds secure storage (Phase 4, Task 7) ─────────────
+  //
+  // These methods are passthroughs; the actual HUKS wrap/unwrap happens in
+  // HuksService (Task 8). Task 8 will refactor setS3Config() to chain these
+  // with HuksService.wrap/unwrapDeviceBound. For now, setS3Config keeps its
+  // existing SQLite-only behavior.
+
+  /// Persist already-HUKS-wrapped S3 creds bytes (base64) to secure/s3_creds.blob.
+  s3CredsWrite(wrappedB64: string): void {
+    const result: string = napiS3CredsWrite(wrappedB64);
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Read the HUKS-wrapped S3 creds blob as base64. Empty string if missing.
+  s3CredsRead(): string {
+    return napiS3CredsRead();
+  }
+
+  /// Wipe the legacy SQLite credentials row after migration. Idempotent.
+  s3CredsClearLegacy(): void {
+    const result: string = napiS3CredsClearLegacy();
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Populate SQLite credentials runtime cache from plaintext access/secret
+  /// (called by Task 8's primeS3Creds after HUKS unwrap on app startup).
+  setS3CredsOnly(accessKey: string, secretKey: string): void {
+    const result: string = napiSetS3CredsOnly(accessKey, secretKey);
     if (result !== 'ok') throw new ShibeiError(result);
   }
 

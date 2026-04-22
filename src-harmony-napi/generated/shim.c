@@ -56,6 +56,10 @@ extern void shibei_ffi_lock_enable_bio(const char* bio_wrapped_mk_b64, void* ctx
 extern char* shibei_ffi_lock_get_bio_wrapped_mk(void);
 extern void shibei_ffi_lock_push_unwrapped_mk(const char* mk_b64, void* ctx);
 extern void shibei_ffi_lock_recover_with_e2ee(const char* password, const char* new_pin, void* ctx);
+extern char* shibei_ffi_s3_creds_write(const char* wrapped_b64);
+extern char* shibei_ffi_s3_creds_read(void);
+extern char* shibei_ffi_s3_creds_clear_legacy(void);
+extern char* shibei_ffi_set_s3_creds_only(const char* access_key, const char* secret_key);
 
 // C callbacks invoked from Rust worker threads.
 void shibei_async_resolve(void* ctx, int ok, const char* payload);
@@ -721,6 +725,52 @@ static napi_value lock_recover_with_e2ee_wrap(napi_env env, napi_callback_info i
     return promise;
 }
 
+static napi_value s3_creds_write_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_wrapped_b64[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_wrapped_b64, sizeof(buf_wrapped_b64), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_s3_creds_write(buf_wrapped_b64);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value s3_creds_read_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_s3_creds_read();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value s3_creds_clear_legacy_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_s3_creds_clear_legacy();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value set_s3_creds_only_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_access_key[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_access_key, sizeof(buf_access_key), &len); }
+    char buf_secret_key[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_secret_key, sizeof(buf_secret_key), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_set_s3_creds_only(buf_access_key, buf_secret_key);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
 // ── Module registration ───────────────────────────────────────────
 static napi_value shibei_register_exports(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
@@ -767,6 +817,10 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"lockGetBioWrappedMk", NULL, lock_get_bio_wrapped_mk_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockPushUnwrappedMk", NULL, lock_push_unwrapped_mk_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockRecoverWithE2ee", NULL, lock_recover_with_e2ee_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"s3CredsWrite", NULL, s3_creds_write_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"s3CredsRead", NULL, s3_creds_read_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"s3CredsClearLegacy", NULL, s3_creds_clear_legacy_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"setS3CredsOnly", NULL, set_s3_creds_only_wrap, NULL, NULL, NULL, napi_default, NULL},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);
     return exports;
