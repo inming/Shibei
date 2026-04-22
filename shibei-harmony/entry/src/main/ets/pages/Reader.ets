@@ -583,6 +583,13 @@ struct Reader {
               this.lastScrollY = ev.yOffset;
               this.scheduleScrollSave();
             })
+            .onConsole((ev: OnConsoleEvent) => {
+              // Surface the shell's console.log into hilog so we can
+              // diagnose width / scale issues from ssh+hdc.
+              hilog.info(0x0000, 'shibei', 'pdf-shell: %{public}s',
+                ev.message.getMessage());
+              return false;  // still propagate to the default handler
+            })
             .width('100%').height('100%')
             .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
         }
