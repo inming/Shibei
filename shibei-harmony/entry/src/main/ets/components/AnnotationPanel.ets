@@ -12,16 +12,13 @@ export struct AnnotationPanel {
 
   build() {
     Column() {
-      // Header
+      // Header — title only; "+ 笔记" moved to a sticky footer for parity
+      // with the desktop panel layout.
       Row() {
         Text(`标注 (${this.bundle.highlights.length})`)
           .fontSize(16).fontWeight(FontWeight.Medium)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .layoutWeight(1);
-        Text('+ 笔记')
-          .fontSize(13).fontColor($r('sys.color.ohos_id_color_emphasize'))
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .onClick(() => this.onAddResourceComment());
       }
       .width('100%')
       .padding({ left: 12, right: 12, top: 12, bottom: 8 });
@@ -58,6 +55,19 @@ export struct AnnotationPanel {
       .layoutWeight(1)
       .width('100%')
       .align(Alignment.Top);
+
+      // Footer — sticky "+ 笔记" button at the bottom of the drawer.
+      Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
+      Row() {
+        Text('+ 笔记')
+          .fontSize(15)
+          .fontColor($r('sys.color.ohos_id_color_emphasize'))
+          .layoutWeight(1)
+          .textAlign(TextAlign.Center);
+      }
+      .width('100%')
+      .padding({ top: 12, bottom: 12 })
+      .onClick(() => this.onAddResourceComment());
     }
     .width('100%').height('100%')
     .backgroundColor($r('sys.color.ohos_id_color_sub_background'));

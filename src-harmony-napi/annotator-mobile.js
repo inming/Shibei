@@ -131,10 +131,18 @@
 
   function wrapHighlight(range, id, color) {
     const nodes = [];
-    const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT, null);
-    let n;
-    while ((n = walker.nextNode())) {
-      if (range.intersectsNode(n)) nodes.push(n);
+    const root = range.commonAncestorContainer;
+    if (root.nodeType === Node.TEXT_NODE) {
+      // TreeWalker with a text-node root doesn't yield the root itself.
+      // Single-text-node selections are extremely common (a sentence within
+      // a <p>) so handle explicitly.
+      if (range.intersectsNode(root)) nodes.push(root);
+    } else {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+      let n;
+      while ((n = walker.nextNode())) {
+        if (range.intersectsNode(n)) nodes.push(n);
+      }
     }
     const wrapped = [];
     for (const node of nodes) {

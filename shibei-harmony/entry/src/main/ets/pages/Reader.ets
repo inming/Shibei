@@ -1,6 +1,7 @@
 import { webview } from '@kit.ArkWeb';
 import { router } from '@kit.ArkUI';
 import { promptAction } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ShibeiService, Resource, Comment } from '../services/ShibeiService';
 import { AnnotationsService } from '../services/AnnotationsService';
@@ -12,11 +13,21 @@ import {
 } from '../components/AnnotationBridge';
 import { AnnotationPanel } from '../components/AnnotationPanel';
 import { AnnotationsBundle } from '../services/ShibeiService';
+import { getReaderScroll, saveReaderScroll } from '../app/ReaderScrollState';
 
 // Route param shape.
 interface ReaderParams { resourceId?: string; }
 
-const DEFAULT_HL_COLOR = '#ffeb3b';
+// Palette shown in the selection action bar. Order left→right matches
+// the desktop picker. Yellow is the first tap position since it's the
+// historical default.
+interface HlColor { value: string; label: string; }
+const HL_COLORS: HlColor[] = [
+  { value: '#ffeb3b', label: '黄' },
+  { value: '#81c784', label: '绿' },
+  { value: '#64b5f6', label: '蓝' },
+  { value: '#f48fb1', label: '粉' },
+];
 
 @Entry
 @Component
@@ -39,6 +50,11 @@ struct Reader {
     onReady: (p: ReadyPayload) => this.handleReady(p),
   });
   private unsubscribe: (() => void) | null = null;
+  // Debounce scroll persistence — onScroll fires continuously during a
+  // flick and we don't want to hammer preferences.
+  private scrollSaveTimer: number = -1;
+  private lastScrollY: number = 0;
+  private restoredScroll: boolean = false;
 
   aboutToAppear(): void {
     const raw = router.getParams();
@@ -82,6 +98,42 @@ struct Reader {
       this.unsubscribe();
     }
     this.unsubscribe = null;
+    // Flush any pending scroll save so we don't lose the last 500ms.
+    if (this.scrollSaveTimer !== -1) {
+      clearTimeout(this.scrollSaveTimer);
+      this.scrollSaveTimer = -1;
+      this.flushScroll();
+    }
+  }
+
+  private flushScroll(): void {
+    if (!this.resource) return;
+    const ctx = getContext(this) as common.UIAbilityContext;
+    saveReaderScroll(ctx, this.resource.id, this.lastScrollY).catch(() => {});
+  }
+
+  private scheduleScrollSave(): void {
+    if (this.scrollSaveTimer !== -1) clearTimeout(this.scrollSaveTimer);
+    this.scrollSaveTimer = setTimeout(() => {
+      this.scrollSaveTimer = -1;
+      this.flushScroll();
+    }, 500);
+  }
+
+  private async restoreScrollIfNeeded(): Promise<void> {
+    if (this.restoredScroll || !this.resource) return;
+    this.restoredScroll = true;
+    try {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      const y = await getReaderScroll(ctx, this.resource.id);
+      if (y > 0) {
+        // scrollTo in pixels; Web's own scroll offset accepts 0-based y.
+        this.webController.scrollTo(0, y);
+      }
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'restoreScroll fail: %{public}s',
+        (err as Error).message);
+    }
   }
 
   private paintHighlights(): void {
@@ -114,9 +166,11 @@ struct Reader {
 
   private handleReady(_: ReadyPayload): void {
     this.paintHighlights();
+    // Web reports DOMContentLoaded inside the iframe; safe to restore scroll now.
+    this.restoreScrollIfNeeded();
   }
 
-  private createHighlightFromPending(): void {
+  private createHighlightWithColor(color: string): void {
     const sel = this.pendingSelection;
     if (!sel || !this.resource || !sel.textContent || !sel.anchor) {
       return;
@@ -126,7 +180,7 @@ struct Reader {
         this.resource.id,
         sel.textContent,
         sel.anchor,
-        DEFAULT_HL_COLOR,
+        color,
       );
       this.pendingSelection = null;
       this.webController.runJavaScript(`window.__shibei && window.__shibei.clearSelection();`)
@@ -234,21 +288,37 @@ struct Reader {
                   const baseUrl = `shibei://resource/${this.resource ? this.resource.id : ''}`;
                   this.webController.loadData(this.html, 'text/html', 'UTF-8', baseUrl, '');
                 })
+                .onScroll((ev: OnScrollEvent) => {
+                  this.lastScrollY = ev.yOffset;
+                  this.scheduleScrollSave();
+                })
                 .width('100%').height('100%')
                 .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
 
-              // Floating selection action bar — shown when user has an active selection.
+              // Floating selection action bar — shown when user has an active
+              // selection. Tap a color circle to create a highlight with that color.
               if (this.pendingSelection !== null && !this.pendingSelection.collapsed) {
                 Row() {
-                  Text('高亮').fontSize(14)
-                    .fontColor(Color.White)
-                    .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
-                    .padding({ left: 16, right: 16, top: 8, bottom: 8 })
-                    .borderRadius(18)
-                    .onClick(() => this.createHighlightFromPending());
+                  ForEach(HL_COLORS, (c: HlColor) => {
+                    Stack() {
+                      Text('')
+                        .width(32).height(32)
+                        .backgroundColor(c.value)
+                        .borderRadius(16)
+                        .border({ width: 2, color: $r('sys.color.ohos_id_color_background') });
+                    }
+                    .width(44).height(44)
+                    .margin({ left: 6, right: 6 })
+                    .onClick(() => this.createHighlightWithColor(c.value));
+                  }, (c: HlColor) => c.value);
                 }
-                .width('100%').justifyContent(FlexAlign.Center)
-                .position({ x: 0, y: '90%' });
+                .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+                .borderRadius(28)
+                .backgroundColor($r('sys.color.ohos_id_color_background'))
+                .shadow({ radius: 12, color: '#40000000', offsetY: 2 })
+                .position({ x: 0, y: '85%' })
+                .margin({ left: 16, right: 16 })
+                .justifyContent(FlexAlign.Center);
               }
             }
             .layoutWeight(1).width('100%');
@@ -256,6 +326,13 @@ struct Reader {
           .width('100%').height('100%');
         }
         .showSideBar(this.panelOpen)
+        .autoHide(true)
+        .onChange((value: boolean) => {
+          // Fired when SideBarContainer toggles visibility (including
+          // tap-outside auto-dismiss on Overlay type). Keep panelOpen in sync
+          // so the ☰ toggle state matches what's actually drawn.
+          this.panelOpen = value;
+        })
         .sideBarWidth(280)
         .minSideBarWidth(240)
         .maxSideBarWidth(360)
@@ -266,7 +343,13 @@ struct Reader {
     }
     .width('100%').height('100%')
     .bindSheet($$this.commentDialogOpen, this.CommentSheet(), {
-      height: 320,
+      // SheetType.BOTTOM forces the drawer-style sheet on wide layouts
+      // (unfolded Mate X5 defaults to CENTER, looking like a modal window).
+      // Detents let the user drag between medium (~half screen) and large.
+      preferType: SheetType.BOTTOM,
+      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+      showClose: true,
+      dragBar: true,
       title: { title: this.commentDialogId ? '编辑笔记' : '新建笔记' },
     });
   }
