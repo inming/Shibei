@@ -630,6 +630,75 @@ fn find_ci(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
 }
 
 // ────────────────────────────────────────────────────────────
+// PDF Reader (Phase 3b)
+// ────────────────────────────────────────────────────────────
+
+/// Returns the raw PDF bytes for a resource as a base64 string (standard
+/// alphabet, with padding). Empty string on any failure (not initialized,
+/// file missing, read error). ArkTS callers decode with
+/// `util.base64Helper.decode(...)` to Uint8Array.
+///
+/// The codegen's scalar ABI doesn't support `Vec<u8>` yet (Track A5), and
+/// building out the length-prefixed buffer FFI path for one consumer is
+/// premature — base64 overhead on a 10 MB PDF is ~50 ms / one extra copy,
+/// acceptable for MVP. See `docs/superpowers/specs/2026-04-22-phase3b-pdf-support-design.md` §5.
+///
+/// Empty-on-error signals "not available" to the caller; ArkTS translates to
+/// a "PDF 文件不存在" UI, same policy as `get_resource_html`'s error surface.
+#[shibei_napi]
+pub fn get_pdf_bytes(id: String) -> String {
+    use base64::Engine;
+
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("get_pdf_bytes: not initialized: {e}");
+            return String::new();
+        }
+    };
+    let pdf_path = app
+        .data_dir
+        .join("storage")
+        .join(&id)
+        .join("snapshot.pdf");
+    match std::fs::read(&pdf_path) {
+        Ok(bytes) => base64::engine::general_purpose::STANDARD.encode(&bytes),
+        Err(e) => {
+            eprintln!("get_pdf_bytes: read failed {}: {e}", pdf_path.display());
+            String::new()
+        }
+    }
+}
+
+/// Ensure the local snapshot.pdf for a resource is present on disk; if
+/// missing, pull it down via the S3 sync backend. Returns `"ok"` on success
+/// (including the file-already-present fast path) or an `error.*` string on
+/// failure.
+///
+/// Mirrors the desktop on-demand snapshot policy in `SyncEngine`. Requires
+/// that `setS3Config` has run at least once AND (when the remote bucket has
+/// `meta/keyring.json`) `setE2EEPassword` has run successfully this session —
+/// same preconditions as `sync_metadata`.
+#[shibei_napi(async)]
+pub async fn ensure_pdf_downloaded(id: String) -> Result<String, String> {
+    let app = state::get()?;
+    let pdf_path = app
+        .data_dir
+        .join("storage")
+        .join(&id)
+        .join("snapshot.pdf");
+    if pdf_path.exists() {
+        return Ok("ok".to_string());
+    }
+    let engine = build_sync_engine().await?;
+    engine
+        .download_snapshot(&id, "pdf")
+        .await
+        .map_err(|e| format!("error.downloadFailed: {e}"))?;
+    Ok("ok".to_string())
+}
+
+// ────────────────────────────────────────────────────────────
 // Annotations (Phase 3a)
 // ────────────────────────────────────────────────────────────
 

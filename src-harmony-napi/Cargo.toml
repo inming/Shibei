@@ -26,6 +26,7 @@ rusqlite = { version = "0.34", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "time", "macros", "sync"] }
 rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
+base64 = "0.22"
 
 [build-dependencies]
 cc = "1"

@@ -30,6 +30,8 @@ extern char* shibei_ffi_list_tags(void);
 extern char* shibei_ffi_get_resource(const char* id);
 extern char* shibei_ffi_get_resource_summary(const char* id, int32_t max_chars);
 extern char* shibei_ffi_get_resource_html(const char* id);
+extern char* shibei_ffi_get_pdf_bytes(const char* id);
+extern void shibei_ffi_ensure_pdf_downloaded(const char* id, void* ctx);
 extern char* shibei_ffi_list_annotations(const char* resource_id);
 extern char* shibei_ffi_create_highlight(const char* input_json);
 extern char* shibei_ffi_delete_highlight(const char* id);
@@ -359,6 +361,35 @@ static napi_value get_resource_html_wrap(napi_env env, napi_callback_info info) 
     return result;
 }
 
+static napi_value get_pdf_bytes_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_get_pdf_bytes(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value ensure_pdf_downloaded_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "ensurePdfDownloaded_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_ensure_pdf_downloaded(buf_id, ctx);
+    return promise;
+}
+
 static napi_value list_annotations_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
@@ -561,6 +592,8 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"getResource", NULL, get_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceSummary", NULL, get_resource_summary_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceHtml", NULL, get_resource_html_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"getPdfBytes", NULL, get_pdf_bytes_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"ensurePdfDownloaded", NULL, ensure_pdf_downloaded_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listAnnotations", NULL, list_annotations_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"createHighlight", NULL, create_highlight_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"deleteHighlight", NULL, delete_highlight_wrap, NULL, NULL, NULL, napi_default, NULL},

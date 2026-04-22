@@ -4509,6 +4509,7 @@ dependencies = [
 name = "shibei-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cc",
  "rusqlite",
  "rust-s3",
