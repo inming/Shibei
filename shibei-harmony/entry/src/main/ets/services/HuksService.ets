@@ -104,12 +104,15 @@ export class HuksService {
   // ── Bio-gated key ──────────────────────────────────────────
 
   async isBioAvailable(): Promise<boolean> {
+    // getAvailableStatus returns void and throws a BusinessError when the
+    // requested mode isn't available (no enrolled biometric, hardware
+    // missing, etc.). So "no throw" means available.
     try {
-      const result = userAuth.getAvailableStatus(
+      userAuth.getAvailableStatus(
         userAuth.UserAuthType.FINGERPRINT,
         userAuth.AuthTrustLevel.ATL2,
       );
-      return result === userAuth.ResultCode.SUCCESS;
+      return true;
     } catch (e) {
       return false;
     }
@@ -240,16 +243,20 @@ export async function requestBioAuth(): Promise<BioAuthBundle> {
     userAuth.AuthTrustLevel.ATL2,
   );
   return new Promise<BioAuthBundle>((resolve, reject) => {
-    // AuthEvent callback signature: (info: AuthResultInfo) => void.
-    // AuthResultInfo carries `.result` (the code) and optional `.token`.
-    auth.on('result', (info: userAuth.AuthResultInfo) => {
-      if (info.result === userAuth.ResultCode.SUCCESS) {
-        resolve({ authToken: info.token ?? new Uint8Array(), challenge });
-      } else {
-        hilog.warn(0x0000, 'shibei', 'bio auth failed: %{public}d', info.result);
-        reject(new Error(`error.bioAuthFailed:${info.result}`));
-      }
-    });
+    // AuthEvent is an object with a `callback(result: AuthResultInfo)` method,
+    // not a bare function. `AuthResultInfo.result` carries the code; `.token`
+    // is the auth token when result === SUCCESS.
+    const authEvent: userAuth.AuthEvent = {
+      callback: (info: userAuth.AuthResultInfo): void => {
+        if (info.result === userAuth.ResultCode.SUCCESS) {
+          resolve({ authToken: info.token ?? new Uint8Array(), challenge });
+        } else {
+          hilog.warn(0x0000, 'shibei', 'bio auth failed: %{public}d', info.result);
+          reject(new Error(`error.bioAuthFailed:${info.result}`));
+        }
+      },
+    };
+    auth.on('result', authEvent);
     try { auth.start(); }
     catch (e) { reject(e as Error); }
   });
