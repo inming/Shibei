@@ -15,8 +15,6 @@ import {
 import { AnnotationPanel } from '../components/AnnotationPanel';
 import { AnnotationsBundle } from '../services/ShibeiService';
 import { getReaderScroll, saveReaderScroll } from '../app/ReaderScrollState';
-import { KEY_FOLD_STATUS } from '../app/AppStorageKeys';
-import { FoldStatus } from '../app/FoldObserver';
 
 // Route param shape.
 interface ReaderParams { resourceId?: string; }
@@ -59,10 +57,6 @@ struct Reader {
   @State pdfReady: boolean = false;
   @State pdfDownloading: boolean = false;
   @State pdfError: string = '';
-  // Fold-state changes don't always propagate as a window.resize inside
-  // ArkWeb — we watch the global status and nudge the shell's relayout()
-  // manually when it flips.
-  @StorageProp(KEY_FOLD_STATUS) @Watch('onFoldChange') foldStatus: FoldStatus = FoldStatus.EXPANDED;
 
   private webController: webview.WebviewController = new webview.WebviewController();
   private bridge: AnnotationBridge = new AnnotationBridge({
@@ -171,15 +165,6 @@ struct Reader {
   // immediately; slow path pulls via shibei-sync's download_snapshot and
   // the UI sits on the "正在下载 PDF…" panel during the RPC. On any error
   // we surface the message into `pdfError` so the retry button appears.
-  private onFoldChange(): void {
-    // Nudge the PDF shell to recompute fit-to-width. Only fires for PDF
-    // resources; HTML reader re-flows naturally with the Web reflow.
-    if (!this.resource || this.resource.resource_type !== 'pdf') return;
-    this.webController.runJavaScript(
-      'window.__shibeiReader && window.__shibeiReader.relayout && window.__shibeiReader.relayout();',
-    ).catch(() => {});
-  }
-
   private async ensurePdfReady(id: string): Promise<void> {
     this.pdfError = '';
     this.pdfDownloading = true;
