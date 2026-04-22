@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PDF Reader</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="status">加载中…</div>
+<div id="pages"></div>
+
+<script>
+// ES2024 Uint8Array.toHex/fromHex polyfill — ArkWeb's Chromium lacks them
+// and pdfjs v4 trips on their absence (see pdfjs-demo for the history).
+(function() {
+  var P = Uint8Array.prototype;
+  if (typeof P.toHex !== 'function') {
+    P.toHex = function() {
+      var out = '';
+      for (var i = 0; i < this.length; i++) {
+        var h = this[i].toString(16);
+        out += h.length < 2 ? '0' + h : h;
+      }
+      return out;
+    };
+  }
+  if (typeof Uint8Array.fromHex !== 'function') {
+    Uint8Array.fromHex = function(hex) {
+      var len = hex.length >> 1;
+      var arr = new Uint8Array(len);
+      for (var i = 0; i < len; i++) arr[i] = parseInt(hex.substr(i*2, 2), 16);
+      return arr;
+    };
+  }
+})();
+</script>
+<script src="./pdf-bundle.js"></script>
+<script src="./pdf-worker-bundle.js"></script>
+<script src="./main.js"></script>
+</body>
+</html>

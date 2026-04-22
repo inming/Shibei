@@ -1,0 +1,70 @@
+body {
+  margin: 0;
+  padding: 0;
+  background: #f4f4f4;
+  font: 14px -apple-system, "PingFang SC", sans-serif;
+  -webkit-user-select: text;
+}
+
+#status {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: #fff; padding: 6px 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+  z-index: 100;
+  font-size: 12px;
+  color: #666;
+}
+#status.hidden { display: none; }
+
+#pages {
+  padding-top: 32px;
+  padding-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.page {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  width: var(--w);
+  height: var(--h);
+  overflow: hidden;
+}
+.page canvas { width: 100%; height: 100%; display: block; }
+.page .text-layer {
+  position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  overflow: hidden;
+  opacity: .2;  /* visible while debugging; flip to 0 once prod-stable */
+  line-height: 1;
+  -webkit-user-select: text;
+}
+.page .text-layer span {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  cursor: text;
+  transform-origin: 0 0;
+}
+
+.highlight-layer {
+  position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  pointer-events: none;
+}
+.highlight-layer .hl {
+  position: absolute;
+  background: var(--shibei-hl-color, #ffeb3b);
+  opacity: .35;
+  pointer-events: auto;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.highlight-layer .hl.flash {
+  animation: shibei-flash .8s ease-out;
+}
+@keyframes shibei-flash {
+  0%, 100% { opacity: .35; }
+  50% { opacity: .75; box-shadow: 0 0 0 2px rgba(255,235,59,.6); }
+}
