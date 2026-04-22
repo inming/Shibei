@@ -155,9 +155,12 @@
         return;
       }
 
-      // Text-layer container; populated by pdf-annotator-mobile.js (Task 6).
+      // Text-layer container; populated by pdf-annotator-mobile.js.
+      // Class must be "textLayer" (camelCase) — pdfjs-dist's bundled CSS
+      // rules key off that exact class name for per-span font-size +
+      // scale transform composition.
       var tl = document.createElement('div');
-      tl.className = 'text-layer';
+      tl.className = 'textLayer';
       div.appendChild(tl);
 
       // Signal annotator so it can fill text-layer + paint highlights for

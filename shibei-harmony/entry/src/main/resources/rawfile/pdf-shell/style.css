@@ -4,8 +4,7 @@ body {
   background: #f4f4f4;
   font: 14px -apple-system, "PingFang SC", sans-serif;
   -webkit-user-select: text;
-  -webkit-touch-callout: none;  /* block iOS-ish long-press callout */
-  /* Text still selectable so our annotator can emit 'selection' events */
+  -webkit-touch-callout: none;
 }
 
 #status {
@@ -34,31 +33,52 @@ body {
   width: var(--w);
   height: var(--h);
   overflow: hidden;
-  /* New stacking context so child z-indices are self-contained and the
-     highlight-layer reliably wins over pdfjs-populated text spans. */
   z-index: 0;
 }
 .page canvas { width: 100%; height: 100%; display: block; }
-.page .text-layer {
+
+/* pdfjs-dist v4 TextLayer CSS — mirrors node_modules/pdfjs-dist/web/pdf_viewer.css
+   relevant rules. pdfjs inline-sets `--font-height`, `--scale-x`, `--rotate`
+   on each span it creates; these rules compose them into the final font-size
+   and transform. Without matching `.textLayer` class + these rules, spans
+   render at default 16px and wildly overflow.
+
+   `--total-scale-factor` is set per-page by main.js → pageDiv, inherited here. */
+.textLayer {
   position: absolute; left: 0; top: 0; right: 0; bottom: 0;
   overflow: hidden;
-  opacity: .2;  /* visible while debugging; flip to 0 once prod-stable */
+  opacity: 0.2;  /* visible while debugging; drop to 0 for prod */
   line-height: 1;
   -webkit-user-select: text;
   z-index: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
 }
-.page .text-layer span {
+.textLayer :is(span, br) {
+  color: transparent;
   position: absolute;
   white-space: pre;
-  color: transparent;
   cursor: text;
-  transform-origin: 0 0;
+  transform-origin: 0% 0%;
+}
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.textLayer .markedContent { display: contents; }
+.textLayer span[role="img"] {
+  -webkit-user-select: none; user-select: none;
+  cursor: default;
 }
 
 .highlight-layer {
   position: absolute; left: 0; top: 0; right: 0; bottom: 0;
-  /* Sits above the pdfjs-generated text-layer so taps on an overlay
-     rect land on .hl (pointer-events:auto) rather than a text span. */
   z-index: 2;
   pointer-events: none;
 }
