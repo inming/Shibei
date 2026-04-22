@@ -109,7 +109,7 @@ export class HuksService {
         userAuth.UserAuthType.FINGERPRINT,
         userAuth.AuthTrustLevel.ATL2,
       );
-      return result === userAuth.ResultCodeV9.SUCCESS;
+      return result === userAuth.ResultCode.SUCCESS;
     } catch (e) {
       return false;
     }
@@ -240,12 +240,14 @@ export async function requestBioAuth(): Promise<BioAuthBundle> {
     userAuth.AuthTrustLevel.ATL2,
   );
   return new Promise<BioAuthBundle>((resolve, reject) => {
-    auth.on('result', (code: number, extra: userAuth.AuthResultInfo) => {
-      if (code === userAuth.ResultCodeV9.SUCCESS) {
-        resolve({ authToken: extra.token ?? new Uint8Array(), challenge });
+    // AuthEvent callback signature: (info: AuthResultInfo) => void.
+    // AuthResultInfo carries `.result` (the code) and optional `.token`.
+    auth.on('result', (info: userAuth.AuthResultInfo) => {
+      if (info.result === userAuth.ResultCode.SUCCESS) {
+        resolve({ authToken: info.token ?? new Uint8Array(), challenge });
       } else {
-        hilog.warn(0x0000, 'shibei', 'bio auth failed: %{public}d', code);
-        reject(new Error(`error.bioAuthFailed:${code}`));
+        hilog.warn(0x0000, 'shibei', 'bio auth failed: %{public}d', info.result);
+        reject(new Error(`error.bioAuthFailed:${info.result}`));
       }
     });
     try { auth.start(); }
