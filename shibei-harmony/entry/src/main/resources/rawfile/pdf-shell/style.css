@@ -4,6 +4,8 @@ body {
   background: #f4f4f4;
   font: 14px -apple-system, "PingFang SC", sans-serif;
   -webkit-user-select: text;
+  -webkit-touch-callout: none;  /* block iOS-ish long-press callout */
+  /* Text still selectable so our annotator can emit 'selection' events */
 }
 
 #status {

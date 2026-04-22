@@ -1,6 +1,10 @@
 (function() {
   'use strict';
 
+  // Suppress ArkWeb's default contextmenu popup so our selection palette
+  // is the only UI showing on long-press.
+  document.addEventListener('contextmenu', function(ev) { ev.preventDefault(); });
+
   var pdfjs = window.pdfjsLib;
   var statusEl = document.getElementById('status');
   var pagesEl = document.getElementById('pages');
