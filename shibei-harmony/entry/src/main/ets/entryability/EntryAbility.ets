@@ -51,6 +51,8 @@ export default class EntryAbility extends UIAbility {
       hilog.error(0x0000, 'shibei', 'cold-start init fail, falling to Onboard: %{public}s',
         (err as Error).message);
     }
+    // SPIKE: reverted in Task 0 Step 8
+    route = 'pages/PdfSpike';
     windowStage.loadContent(route, (err) => {
       if (err.code) {
         hilog.error(0x0000, 'shibei', 'loadContent failed: %{public}s', JSON.stringify(err));

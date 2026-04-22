@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Spike: shibei-pdf:// intercept</title>
+<style>
+  body { font: 14px -apple-system, sans-serif; padding: 8px; }
+  #status { padding: 8px; background: #eef; margin-bottom: 8px; }
+  canvas { width: 100%; border: 1px solid #aaa; }
+  pre { max-height: 30vh; overflow: auto; background: #f0f0f0; padding: 6px; font-size: 11px; }
+</style>
+</head>
+<body>
+<h3>Phase 3b Spike: custom scheme + onInterceptRequest</h3>
+<div id="status">loading…</div>
+<canvas id="page"></canvas>
+<h4>Log:</h4>
+<pre id="log"></pre>
+
+<script>
+// Polyfill ES2024 Uint8Array.toHex/fromHex missing in ArkWeb's Chromium.
+// pdfjs v4 uses these for fingerprinting and throws TypeError without them.
+(function() {
+  var P = Uint8Array.prototype;
+  if (typeof P.toHex !== 'function') {
+    P.toHex = function() {
+      var out = '';
+      for (var i = 0; i < this.length; i++) {
+        var h = this[i].toString(16);
+        out += h.length < 2 ? '0' + h : h;
+      }
+      return out;
+    };
+  }
+  if (typeof Uint8Array.fromHex !== 'function') {
+    Uint8Array.fromHex = function(hex) {
+      var len = hex.length >> 1;
+      var arr = new Uint8Array(len);
+      for (var i = 0; i < len; i++) arr[i] = parseInt(hex.substr(i*2, 2), 16);
+      return arr;
+    };
+  }
+})();
+</script>
+<script src="./pdf-bundle.js"></script>
+<script src="./pdf-worker-bundle.js"></script>
+<script>
+(async function() {
+  var logEl = document.getElementById('log');
+  var statusEl = document.getElementById('status');
+  function log(m) {
+    var line = (typeof m === 'string' ? m : JSON.stringify(m));
+    logEl.textContent += line + '\n';
+    console.log(line);
+  }
+  function setStatus(s) { statusEl.textContent = s; log('status: ' + s); }
+
+  try {
+    var pdfjs = window.pdfjsLib;
+    var wg = window.pdfjsWorker;
+    if (!pdfjs || !pdfjs.getDocument) { setStatus('ERR: pdfjsLib missing'); return; }
+    if (!wg || !wg.WorkerMessageHandler) { setStatus('ERR: pdfjsWorker global missing'); return; }
+    // Fake-worker: handler found on globalThis → pdfjs never fetches workerSrc.
+    pdfjs.GlobalWorkerOptions.workerSrc = 'about:blank';
+    setStatus('A: pdfjs globals ready');
+
+    // The key spike assertion: pdfjs.getDocument({url: 'shibei-pdf://test'})
+    // triggers a network request that ArkWeb's onInterceptRequest catches;
+    // ArkTS returns the sample PDF bytes.
+    setStatus('B: requesting shibei-pdf://test');
+    var task = pdfjs.getDocument({ url: 'shibei-pdf://test' });
+    var pdf = await task.promise;
+    setStatus('C: loaded, pages=' + pdf.numPages);
+
+    var page = await pdf.getPage(1);
+    var viewport = page.getViewport({ scale: 1.0 });
+    var canvas = document.getElementById('page');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    setStatus('D: SPIKE PASS — rendered page 1 (' + viewport.width + 'x' + viewport.height + ')');
+  } catch (err) {
+    var msg = err && err.message ? err.message : String(err);
+    var stack = err && err.stack ? err.stack.toString().substring(0, 400) : '';
+    setStatus('ERR: ' + msg);
+    log({ error: msg, stack: stack });
+  }
+})();
+</script>
+</body>
+</html>

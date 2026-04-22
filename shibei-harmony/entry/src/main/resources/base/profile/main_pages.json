@@ -5,6 +5,7 @@
     "pages/Library",
     "pages/Reader",
     "pages/Search",
-    "pages/Settings"
+    "pages/Settings",
+    "pages/PdfSpike"
   ]
 }
