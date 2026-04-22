@@ -11,7 +11,14 @@ interface DrawerItem {
   label: string;
   icon: string;
   isVirtual: boolean;
+  // Indent level for nested folders. Virtual folders are always 0.
+  // Root user folders are 0, their children 1, grandchildren 2, ...
+  depth: number;
 }
+
+// The shibei-db folder schema uses "__root__" as the synthetic parent of
+// top-level user folders. Mirrored from desktop src/lib/folderTree.ts.
+const ROOT_PARENT_ID = '__root__';
 
 @Component
 export struct FolderDrawer {
@@ -67,15 +74,37 @@ export struct FolderDrawer {
 
   private buildItems(): DrawerItem[] {
     const items: DrawerItem[] = [
-      { id: ALL_RESOURCES_ID, label: '所有资料', icon: '📚', isVirtual: true },
-      { id: INBOX_FOLDER_ID, label: '收件箱', icon: '📥', isVirtual: true },
+      { id: ALL_RESOURCES_ID, label: '所有资料', icon: '📚', isVirtual: true, depth: 0 },
+      { id: INBOX_FOLDER_ID, label: '收件箱', icon: '📥', isVirtual: true, depth: 0 },
     ];
-    // Filter the __inbox__ seed out of the regular folder list (it's in the
-    // virtual section above).
+    // Group the remaining folders by parent_id so the recursion can look up
+    // children cheaply. The __inbox__ seed is in the virtual section above
+    // and must be excluded from the tree.
+    const childrenByParent = new Map<string, Folder[]>();
     for (const f of this.folders) {
       if (f.id === INBOX_FOLDER_ID) continue;
-      items.push({ id: f.id, label: f.name, icon: '📁', isVirtual: false });
+      const parent = f.parent_id ?? ROOT_PARENT_ID;
+      const bucket = childrenByParent.get(parent) ?? [];
+      bucket.push(f);
+      childrenByParent.set(parent, bucket);
     }
+    // Stable ordering within each parent: sort_order then name.
+    childrenByParent.forEach((list: Folder[]) => {
+      list.sort((a: Folder, b: Folder) => {
+        if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
+        return a.name.localeCompare(b.name);
+      });
+    });
+
+    const walk = (parentId: string, depth: number): void => {
+      const kids = childrenByParent.get(parentId);
+      if (!kids) return;
+      for (const f of kids) {
+        items.push({ id: f.id, label: f.name, icon: '📁', isVirtual: false, depth });
+        walk(f.id, depth + 1);
+      }
+    };
+    walk(ROOT_PARENT_ID, 0);
     return items;
   }
 
@@ -102,10 +131,14 @@ export struct FolderDrawer {
               Text(item.icon).fontSize(16).margin({ right: 8 });
               Text(item.label).fontSize(15)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                .fontWeight(this.selectedFolderId === item.id ? FontWeight.Bold : FontWeight.Normal);
+                .fontWeight(this.selectedFolderId === item.id ? FontWeight.Bold : FontWeight.Normal)
+                .layoutWeight(1)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis });
             }
             .width('100%')
-            .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+            // 16px base left padding + 16px per nesting level.
+            .padding({ left: 16 + item.depth * 16, right: 16, top: 10, bottom: 10 })
             .backgroundColor(
               this.selectedFolderId === item.id
                 ? $r('sys.color.ohos_id_color_component_normal')
