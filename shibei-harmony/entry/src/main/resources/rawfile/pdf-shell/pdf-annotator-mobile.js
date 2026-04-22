@@ -273,7 +273,10 @@
   window.__shibei.removeHighlight = function(id) { removeHighlightLocal(id); };
 
   function doFlash(els) {
-    els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // inline:'nearest' prevents the browser from panning horizontally when
+    // the hl rect is wider than the viewport — without it, taller PDFs in
+    // folded mode got shoved left, cutting off the left edge of the page.
+    els[0].scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     els.forEach(function(el) {
       el.classList.add('flash');
       setTimeout(function() { el.classList.remove('flash'); }, 800);
@@ -297,7 +300,15 @@
       var found = document.querySelectorAll(sel);
       if (found.length > 0) {
         clearInterval(poll);
-        doFlash(found);
+        // Give the highlight-layer one more rAF to settle — drawHighlight
+        // may still be finishing as adjacent pages intersect and re-fire
+        // onPageRendered. Flashing too early pins scroll to a position
+        // that re-drifts as the layer finalizes.
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            doFlash(document.querySelectorAll(sel));
+          });
+        });
       } else if (++tries > 40) {   // ~4s timeout
         clearInterval(poll);
       }

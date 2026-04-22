@@ -337,7 +337,13 @@ struct Reader {
           // We put AnnotationPanel first (drawer) and the top-bar+Web column second.
           AnnotationPanel({
             bundle: this.bundle,
-            onTapHighlight: (id: string) => this.flashHighlight(id),
+            onTapHighlight: (id: string) => {
+              // Auto-close the drawer on folded / overlay layouts — user
+              // expects the tap to "jump" them to the passage, and keeping
+              // the drawer open covers the page they just navigated to.
+              this.panelOpen = false;
+              this.flashHighlight(id);
+            },
             onDeleteHighlight: (id: string) => this.deleteHighlight(id),
             onChangeHighlightColor: (id: string, color: string) =>
               this.changeHighlightColor(id, color),
