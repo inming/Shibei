@@ -26,6 +26,14 @@ import {
   getResourceSummary as napiGetResourceSummary,
   hello as napiHello,
   echoAsync as napiEchoAsync,
+  getResourceHtml as napiGetResourceHtml,
+  listAnnotations as napiListAnnotations,
+  createHighlight as napiCreateHighlight,
+  deleteHighlight as napiDeleteHighlight,
+  updateHighlightColor as napiUpdateHighlightColor,
+  createComment as napiCreateComment,
+  updateComment as napiUpdateComment,
+  deleteComment as napiDeleteComment,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -218,6 +226,86 @@ export class ShibeiService {
     return napiGetResourceSummary(id, maxChars);
   }
 
+  // ── Reader ────────────────────────────────────────────────
+
+  /// Returns the snapshot HTML for `id` with annotator-mobile.js already
+  /// injected. Throws ShibeiError if the resource has no snapshot on disk
+  /// (e.g. sync hasn't downloaded it yet — caller should trigger download).
+  getResourceHtml(id: string): string {
+    const result: string = napiGetResourceHtml(id);
+    if (result.startsWith('error.')) {
+      throw new ShibeiError(result);
+    }
+    return result;
+  }
+
+  // ── Annotations ───────────────────────────────────────────
+
+  listAnnotations(resourceId: string): AnnotationsBundle {
+    const raw: string = napiListAnnotations(resourceId);
+    const parsed = JSON.parse(raw) as AnnotationsEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    return {
+      highlights: parsed.highlights ?? [],
+      comments: parsed.comments ?? [],
+    };
+  }
+
+  createHighlight(
+    resourceId: string,
+    textContent: string,
+    anchor: Object,
+    color: string,
+  ): Highlight {
+    const payload = JSON.stringify({
+      resourceId,
+      textContent,
+      anchor,
+      color,
+    });
+    const raw: string = napiCreateHighlight(payload);
+    const parsed = JSON.parse(raw) as HighlightEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    if (!parsed.highlight) throw new ShibeiError('error.unexpectedResponse');
+    return parsed.highlight;
+  }
+
+  deleteHighlight(id: string): void {
+    const result: string = napiDeleteHighlight(id);
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  updateHighlightColor(id: string, color: string): Highlight {
+    const raw: string = napiUpdateHighlightColor(id, color);
+    const parsed = JSON.parse(raw) as HighlightEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    if (!parsed.highlight) throw new ShibeiError('error.unexpectedResponse');
+    return parsed.highlight;
+  }
+
+  createComment(
+    resourceId: string,
+    highlightId: string | null,
+    content: string,
+  ): Comment {
+    const payload = JSON.stringify({ resourceId, highlightId, content });
+    const raw: string = napiCreateComment(payload);
+    const parsed = JSON.parse(raw) as CommentEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    if (!parsed.comment) throw new ShibeiError('error.unexpectedResponse');
+    return parsed.comment;
+  }
+
+  updateComment(id: string, content: string): void {
+    const result: string = napiUpdateComment(id, content);
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  deleteComment(id: string): void {
+    const result: string = napiDeleteComment(id);
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
   // ── Smoke tests (kept for Demo pages; remove when confidence earned) ─
 
   hello(): string {
@@ -251,6 +339,33 @@ export interface Resource {
   description?: string | null;
   // ... other fields exist; extend here when UI needs them.
 }
+
+export interface Highlight {
+  id: string;
+  resource_id: string;
+  text_content: string;
+  anchor: Object;
+  color: string;
+  created_at: string;
+}
+
+export interface Comment {
+  id: string;
+  highlight_id: string | null;
+  resource_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnnotationsBundle {
+  highlights: Highlight[];
+  comments: Comment[];
+}
+
+interface HighlightEnvelope { highlight?: Highlight; error?: string; }
+interface CommentEnvelope { comment?: Comment; error?: string; }
+interface AnnotationsEnvelope { highlights?: Highlight[]; comments?: Comment[]; error?: string; }
 
 // shibei-db serializes SearchResult with `#[serde(rename_all = "camelCase")]`
 // so the wire shape is matchFields / matchedBody, not snake_case. Getting
