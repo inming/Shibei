@@ -295,6 +295,20 @@ struct Reader {
                 .width('100%').height('100%')
                 .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
 
+              // Tap-catcher scrim. Only renders when the annotation drawer is
+              // open. ArkWeb's Web captures all touches, so SideBarContainer's
+              // autoHide never fires when the user taps the page area. This
+              // transparent layer sits on top of the Web only while the drawer
+              // is visible, catches the tap, and closes the drawer. Uses a
+              // near-transparent fill (not pure Color.Transparent) so the hit
+              // test actually registers.
+              if (this.panelOpen) {
+                Column()
+                  .width('100%').height('100%')
+                  .backgroundColor('#01000000')
+                  .onClick(() => { this.panelOpen = false; });
+              }
+
               // Floating selection action bar — shown when user has an active
               // selection. Tap a color circle to create a highlight with that color.
               if (this.pendingSelection !== null && !this.pendingSelection.collapsed) {
