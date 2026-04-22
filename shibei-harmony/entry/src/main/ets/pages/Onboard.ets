@@ -10,8 +10,6 @@ import {
   SyncResultSuccess,
   SyncProgressEvent,
 } from '../services/ShibeiService';
-import { runSpike } from '../app/HuksSpike';
-
 // Track C — 4-step Onboard wizard wrapping the Demo 12 flow:
 //   Welcome → Config (scan/form + save) → Password unlock → First sync
 // After the final sync completes the user is replaced into Demo 11 Library.
@@ -28,10 +26,7 @@ struct Onboard {
   @State dataDir: string = '';
   @State initError: string = '';
 
-  // Phase 4 HUKS spike — throwaway hidden trigger (5 long-presses on title)
-  @State private spikeCounter: number = 0;
-
-  // Step 1 — S3 config
+// Step 1 — S3 config
   @State endpoint: string = 'https://';
   @State region: string = '';
   @State bucket: string = '';
@@ -223,31 +218,6 @@ struct Onboard {
     });
   }
 
-  // Phase 4 HUKS spike — throwaway. 5 consecutive long-presses on the welcome
-  // title runs the spike and shows the result in a dialog.
-  private async handleSpikeLongPress(): Promise<void> {
-    this.spikeCounter += 1;
-    if (this.spikeCounter < 5) {
-      return;
-    }
-    this.spikeCounter = 0;
-    try {
-      const result: string = await runSpike();
-      promptAction.showDialog({
-        title: 'HUKS Spike',
-        message: result,
-        buttons: [{ text: 'OK', color: '#333' }],
-      });
-    } catch (err) {
-      const msg: string = err instanceof Error ? err.message : String(err);
-      promptAction.showDialog({
-        title: 'HUKS Spike',
-        message: `spike threw: ${msg}`,
-        buttons: [{ text: 'OK', color: '#333' }],
-      });
-    }
-  }
-
   private phaseLabel(phase: string): string {
     if (phase === 'uploading') return '上传本地变更';
     if (phase === 'downloading') return '下载远端变更';
@@ -275,8 +245,7 @@ struct Onboard {
   @Builder
   StepWelcome() {
     Column() {
-      Text('拾贝').fontSize(36).fontWeight(FontWeight.Bold).margin({ top: 120, bottom: 12 })
-        .gesture(LongPressGesture().onAction(() => { this.handleSpikeLongPress(); }));
+      Text('拾贝').fontSize(36).fontWeight(FontWeight.Bold).margin({ top: 120, bottom: 12 });
       Text('个人只读资料库').fontSize(16).fontColor('#666').margin({ bottom: 48 });
       Text('连接你的桌面端,同步书签、笔记与全文搜索索引。')
         .fontSize(14).fontColor('#888').textAlign(TextAlign.Center)
