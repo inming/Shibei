@@ -34,9 +34,12 @@ import {
   createComment as napiCreateComment,
   updateComment as napiUpdateComment,
   deleteComment as napiDeleteComment,
+  getPdfBytes as napiGetPdfBytes,
+  ensurePdfDownloaded as napiEnsurePdfDownloaded,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { util } from '@kit.ArkTS';
 import { extractCaBundle } from '../app/CaBundle';
 
 /// Thrown by ShibeiService when NAPI returns an error.* code. The raw code
@@ -263,6 +266,30 @@ export class ShibeiService {
       throw new ShibeiError(result);
     }
     return result;
+  }
+
+  // ── PDF (Phase 3b) ────────────────────────────────────────
+  //
+  // NAPI returns base64 (scalar ABI doesn't do Vec<u8> yet — see design
+  // doc §5 / commands.rs comments). Empty string = not-on-disk; caller
+  // should hit ensurePdfDownloaded first.
+
+  /// Read the PDF bytes for a resource. Returns a zero-length Uint8Array
+  /// if the file isn't on disk (caller should trigger ensurePdfDownloaded).
+  getPdfBytes(id: string): Uint8Array {
+    const b64: string = napiGetPdfBytes(id);
+    if (!b64) return new Uint8Array(0);
+    return new util.Base64Helper().decodeSync(b64);
+  }
+
+  /// Ensure snapshot.pdf is on local disk; pulls it via S3 sync backend
+  /// if missing. Fast path when the file already exists. Throws
+  /// ShibeiError on download failure.
+  async ensurePdfDownloaded(id: string): Promise<void> {
+    const result: string = await napiEnsurePdfDownloaded(id);
+    if (result !== 'ok') {
+      throw new ShibeiError(result);
+    }
   }
 
   // ── Annotations ───────────────────────────────────────────
