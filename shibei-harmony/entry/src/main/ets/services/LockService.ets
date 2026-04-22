@@ -137,24 +137,33 @@ export class LockService {
   }
 
   async unlockWithBio(): Promise<void> {
+    hilog.info(0x0000, 'shibei', 'unlockWithBio: entry');
     const svc = ShibeiService.instance;
     const huks = HuksService.instance;
+    hilog.info(0x0000, 'shibei', 'unlockWithBio: calling lockGetBioWrappedMk');
     const wrapped = svc.lockGetBioWrappedMk();
+    hilog.info(0x0000, 'shibei', 'unlockWithBio: wrapped len=%{public}d', wrapped.length);
     if (!wrapped) throw new ShibeiError('error.bioNotEnabled');
     let mkB64: string;
     try {
-      // unwrapBio drives init → user-auth (with HUKS challenge) → finish.
+      hilog.info(0x0000, 'shibei', 'unlockWithBio: calling huks.unwrapBio');
       mkB64 = await huks.unwrapBio(wrapped);
+      hilog.info(0x0000, 'shibei', 'unlockWithBio: unwrapBio ok, mk len=%{public}d', mkB64.length);
     } catch (e) {
       const msg = (e as Error).message;
-      hilog.warn(0x0000, 'shibei', 'unwrapBio failed: %{public}s', msg);
-      // Distinguish user-cancel/authFailed from bio-revoked (HUKS returned err)
+      hilog.warn(0x0000, 'shibei', 'unwrapBio threw: %{public}s', msg);
       if (msg.startsWith('error.bioAuthFailed')) {
         throw new ShibeiError('error.bioAuthFailed');
+      }
+      if (msg === 'undefined is not callable' || msg.includes('secureStoreCorrupted')) {
+        // Don't nuke the bio key just because of a bug in our code — only
+        // do that on HUKS-level key-invalidation, which surfaces as other msgs.
+        throw new ShibeiError(msg);
       }
       await huks.deleteBioKey();
       throw new ShibeiError('error.bioRevoked');
     }
+    hilog.info(0x0000, 'shibei', 'unlockWithBio: pushing mk');
     await svc.lockPushUnwrappedMk(mkB64);
     this.setState(LockState.Unlocked);
   }

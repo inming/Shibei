@@ -180,7 +180,10 @@ export class HuksService {
   // ── internals ──────────────────────────────────────────────
 
   private async bioCipher(inputB64: string, purpose: number): Promise<string> {
+    hilog.info(0x0000, 'shibei', 'bioCipher: entry purpose=%{public}d inputLen=%{public}d',
+      purpose, inputB64.length);
     const encoder = new util.Base64Helper();
+    hilog.info(0x0000, 'shibei', 'bioCipher: Base64Helper ok');
     const isEncrypt = purpose === huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT;
 
     // Step 1: pick IV + build inData + optional TAG from the binary blob.
@@ -190,12 +193,17 @@ export class HuksService {
     if (isEncrypt) {
       iv = this.randomIv();
       inData = encoder.decodeSync(inputB64);
+      hilog.info(0x0000, 'shibei', 'bioCipher: encrypt prep iv=%{public}d pt=%{public}d',
+        iv.byteLength, inData.byteLength);
     } else {
       const blobBytes = encoder.decodeSync(inputB64);
+      hilog.info(0x0000, 'shibei', 'bioCipher: decoded blobBytes=%{public}d', blobBytes.byteLength);
       const parts = splitIvCtTag(blobBytes);
       iv = parts.iv;
       inData = parts.ctBody;
       tag = parts.tag;
+      hilog.info(0x0000, 'shibei', 'bioCipher: split iv=%{public}d ct=%{public}d tag=%{public}d',
+        iv.byteLength, inData.byteLength, tag.byteLength);
     }
 
     const initProps: huks.HuksParam[] = [
@@ -212,20 +220,27 @@ export class HuksService {
 
     // Step 2: open HUKS session — the returned handle carries a `challenge`
     // we MUST hand to userAuth, since HUKS ties auth-token validity to it.
+    hilog.info(0x0000, 'shibei', 'bioCipher: calling initSession');
     const handle = await huks.initSession(BIO_ALIAS, { properties: initProps });
+    hilog.info(0x0000, 'shibei', 'bioCipher: initSession ok handle=%{public}d', handle.handle);
     const hukschallenge: Uint8Array = handle.challenge ?? new Uint8Array();
     if (hukschallenge.byteLength === 0) {
       throw new Error('error.secureStoreCorrupted: HUKS returned no challenge');
     }
 
     // Step 3: prompt user for biometric with HUKS-minted challenge.
+    hilog.info(0x0000, 'shibei', 'bioCipher: requesting bio auth, challenge=%{public}d',
+      hukschallenge.byteLength);
     const authToken = await requestBioAuthForChallenge(hukschallenge);
+    hilog.info(0x0000, 'shibei', 'bioCipher: auth ok token=%{public}d', authToken.byteLength);
 
     // Step 4: finishSession with auth token bound via AUTH_TOKEN tag.
     const finishProps: huks.HuksParam[] = [...initProps,
       { tag: huks.HuksTag.HUKS_TAG_AUTH_TOKEN, value: authToken },
     ];
     const finished = await huks.finishSession(handle.handle, { properties: finishProps, inData });
+    hilog.info(0x0000, 'shibei', 'bioCipher: finishSession ok out=%{public}d',
+      finished.outData?.byteLength ?? 0);
     const outData = finished.outData ?? new Uint8Array();
 
     if (isEncrypt) {
