@@ -3,19 +3,22 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { ShibeiService } from '../services/ShibeiService';
+import { LockService, LockState } from '../services/LockService';
 import { loadTheme, applyTheme } from '../app/ThemeManager';
 import { FoldObserver } from '../app/FoldObserver';
 
-// Cold-start routing (Track C/F):
+// Cold-start routing (Track C/F + Phase 4):
 //   no saved S3 config            → pages/Onboard      (fresh install)
-//   saved config + locked vault   → pages/LockScreen   (E2EE password re-entry)
-//   saved config + unlocked vault → pages/Library
+//   saved config + Locked state   → pages/LockScreen   (PIN / bio / E2EE recovery)
+//   saved config + other state    → pages/Library
 //
-// The vault is always locked on cold start in Phase 2 — the Master Key
-// lives in memory only. Phase 3 will wire HUKS biometric unwrap so the
-// MK can be restored without password re-entry. `isUnlocked` is still
-// checked here because this method can also fire on window restoration
-// within the same process lifetime, where the MK may still be cached.
+// Phase 4 introduces LockService as the authoritative lock-state oracle.
+// On cold start `LockService.initialize()` classifies the app as Locked
+// (PIN configured) or Disabled (no PIN); subsequent background/foreground
+// transitions drive the 30 s grace timer. `primeS3Creds()` runs before
+// classification to repopulate the runtime S3 cache from disk (both calls
+// are independent — order is primeS3Creds → initialize purely for
+// readability).
 //
 // If NAPI init fails we fall through to Onboard so the user at least sees
 // the wizard's error banner instead of a blank window.
@@ -64,12 +67,18 @@ export default class EntryAbility extends UIAbility {
     let route = 'pages/Onboard';
     try {
       await ShibeiService.instance.init(this.context);
+      // Phase 4: prime creds + classify lock state before routing.
+      await ShibeiService.instance.primeS3Creds().catch((e: Error) => {
+        hilog.warn(0x0000, 'shibei', 'prime s3 creds failed: %{public}s', e.message);
+      });
+      await LockService.instance.initialize();
+
       if (!ShibeiService.instance.hasSavedConfig()) {
         route = 'pages/Onboard';
-      } else if (ShibeiService.instance.isUnlocked()) {
-        route = 'pages/Library';
-      } else {
+      } else if (LockService.instance.getState() === LockState.Locked) {
         route = 'pages/LockScreen';
+      } else {
+        route = 'pages/Library';
       }
     } catch (err) {
       hilog.error(0x0000, 'shibei', 'cold-start init fail, falling to Onboard: %{public}s',
@@ -80,5 +89,15 @@ export default class EntryAbility extends UIAbility {
         hilog.error(0x0000, 'shibei', 'loadContent failed: %{public}s', JSON.stringify(err));
       }
     });
+  }
+
+  onBackground(): void {
+    hilog.info(0x0000, 'shibei', 'EntryAbility onBackground');
+    LockService.instance.onBackgrounded();
+  }
+
+  onForeground(): void {
+    hilog.info(0x0000, 'shibei', 'EntryAbility onForeground');
+    LockService.instance.onForegrounded();
   }
 }

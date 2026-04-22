@@ -10,6 +10,7 @@ import {
   SyncResultSuccess,
   SyncProgressEvent,
 } from '../services/ShibeiService';
+import { LockService } from '../services/LockService';
 // Track C — 4-step Onboard wizard wrapping the Demo 12 flow:
 //   Welcome → Config (scan/form + save) → Password unlock → First sync
 // After the final sync completes the user is replaced into Demo 11 Library.
@@ -22,9 +23,16 @@ import {
 @Entry
 @Component
 struct Onboard {
-  @State currentStep: number = 0;          // 0 welcome | 1 config | 2 password | 3 sync
+  @State currentStep: number = 0;          // 0 welcome | 1 config | 2 password | 3 sync | 4 lock-enroll
   @State dataDir: string = '';
   @State initError: string = '';
+
+  // Step 4 — optional App Lock enrollment
+  @State onboardPinInput: string = '';
+  @State onboardPinConfirm: string = '';
+  @State onboardPinStep: 'enter' | 'confirm' = 'enter';
+  @State onboardPinError: string = '';
+  @State enrollingLock: boolean = false;
 
 // Step 1 — S3 config
   @State endpoint: string = 'https://';
@@ -202,8 +210,10 @@ struct Onboard {
         this.syncSummary = '同步已跳过(已在进行中?)';
       }
       // Small delay so the 400ms "done" tick from the progress bar finishes
-      // animating before the page replaces.
-      setTimeout(() => this.enterLibrary(), 600);
+      // animating before advancing to the optional app-lock enrollment step.
+      setTimeout(() => {
+        this.currentStep = 4;
+      }, 600);
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.syncError = `同步失败: ${code}`;
@@ -216,6 +226,55 @@ struct Onboard {
     router.replaceUrl({ url: 'pages/Library' }).catch((err: Error) => {
       hilog.error(0x0000, 'shibei', 'replaceUrl fail: %{public}s', err.message);
     });
+  }
+
+  // ── Step 4: optional App Lock enrollment ──────────────────────
+
+  private async submitOnboardPin(): Promise<void> {
+    if (this.onboardPinStep === 'enter') {
+      if (!/^\d{4}$/.test(this.onboardPinInput)) {
+        this.onboardPinError = 'PIN 必须是 4 位数字';
+        return;
+      }
+      this.onboardPinError = '';
+      this.onboardPinConfirm = '';
+      this.onboardPinStep = 'confirm';
+      return;
+    }
+    if (this.onboardPinConfirm !== this.onboardPinInput) {
+      this.onboardPinError = '两次输入不一致,请重新输入';
+      this.onboardPinStep = 'enter';
+      this.onboardPinInput = '';
+      this.onboardPinConfirm = '';
+      return;
+    }
+    this.enrollingLock = true;
+    try {
+      const dlg = await promptAction.showDialog({
+        title: '启用生物识别?',
+        message: '指纹或面部识别可以让日常解锁更快。',
+        buttons: [
+          { text: '只用 PIN', color: '#666' },
+          { text: '启用生物识别', color: '#2b7de9' },
+        ],
+      });
+      const wantBio = dlg.index === 1;
+      await LockService.instance.setupPin(this.onboardPinInput, wantBio);
+      this.onboardPinInput = '';
+      this.onboardPinConfirm = '';
+      this.enterLibrary();
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      this.onboardPinError = `启用失败: ${code}`;
+      this.onboardPinStep = 'enter';
+      this.onboardPinInput = '';
+      this.onboardPinConfirm = '';
+    }
+    this.enrollingLock = false;
+  }
+
+  private skipAppLock(): void {
+    this.enterLibrary();
   }
 
   private phaseLabel(phase: string): string {
@@ -236,8 +295,10 @@ struct Onboard {
         this.StepConfig();
       } else if (this.currentStep === 2) {
         this.StepPassword();
-      } else {
+      } else if (this.currentStep === 3) {
         this.StepSync();
+      } else {
+        this.StepLockEnroll();
       }
     }.width('100%').height('100%');
   }
@@ -391,6 +452,59 @@ struct Onboard {
       }.width('80%').margin({ top: 24 });
 
       Text('4 / 4').fontSize(11).fontColor('#aaa').margin({ top: 48 });
+    }
+    .width('100%').height('100%')
+    .alignItems(HorizontalAlign.Center);
+  }
+
+  @Builder
+  StepLockEnroll() {
+    Column() {
+      Text('启用 App 锁?').fontSize(22).fontWeight(FontWeight.Bold)
+        .margin({ top: 80, bottom: 12 });
+      Text('设置 4 位 PIN,日常可以用指纹或面部快速解锁。')
+        .fontSize(13).fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .margin({ left: 32, right: 32, bottom: 48 })
+        .textAlign(TextAlign.Center);
+
+      Text(this.onboardPinStep === 'enter' ? '输入 4 位 PIN' : '再输入一次确认')
+        .fontSize(14)
+        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .margin({ bottom: 12 });
+
+      TextInput({
+        placeholder: '',
+        text: this.onboardPinStep === 'enter' ? this.onboardPinInput : this.onboardPinConfirm,
+      })
+        .type(InputType.Number)
+        .maxLength(4)
+        .width('60%')
+        .enabled(!this.enrollingLock)
+        .onChange((v: string) => {
+          const d = v.replace(/\D/g, '').slice(0, 4);
+          if (this.onboardPinStep === 'enter') {
+            this.onboardPinInput = d;
+          } else {
+            this.onboardPinConfirm = d;
+          }
+          if (d.length === 4) this.submitOnboardPin();
+        });
+
+      if (this.onboardPinError) {
+        Text(this.onboardPinError).fontSize(12)
+          .fontColor($r('sys.color.ohos_id_color_warning'))
+          .margin({ top: 12, left: 32, right: 32 })
+          .textAlign(TextAlign.Center);
+      }
+
+      Blank().layoutWeight(1);
+
+      Button('暂不启用').width('80%').height(44)
+        .backgroundColor(Color.Transparent)
+        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .enabled(!this.enrollingLock)
+        .margin({ bottom: 32 })
+        .onClick(() => this.skipAppLock());
     }
     .width('100%').height('100%')
     .alignItems(HorizontalAlign.Center);
