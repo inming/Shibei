@@ -504,6 +504,134 @@ pub fn get_resource_summary(id: String, max_chars: i32) -> String {
 }
 
 // ────────────────────────────────────────────────────────────
+// Reader (Phase 3a)
+// ────────────────────────────────────────────────────────────
+
+/// Returns the snapshot HTML for a resource with the mobile annotator
+/// injected into `<head>`. Script tags from the original page are stripped
+/// first (same policy as desktop — `strip_script_tags`) so page JS can't
+/// mutate the DOM on load and break anchor offsets.
+///
+/// Returns the HTML string, or `error.*` prefixed string on failure.
+/// ArkTS checks `starts_with("error.")` before feeding to WebView.
+///
+/// The `annotator-mobile.js` content is embedded at compile time via
+/// `include_str!`. The HAP ships a copy in `rawfile/` for reference
+/// but this NAPI version is the one actually injected.
+const ANNOTATOR_MOBILE_JS: &str = include_str!("../annotator-mobile.js");
+
+#[shibei_napi]
+pub fn get_resource_html(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!("error.notInitialized: {e}"),
+    };
+    let html_path = app
+        .data_dir
+        .join("storage")
+        .join(&id)
+        .join("snapshot.html");
+    let html = match std::fs::read_to_string(&html_path) {
+        Ok(s) => s,
+        Err(e) => return format!("error.snapshotNotFound: {e}"),
+    };
+    // Strip page scripts, then inject the annotator.
+    strip_scripts_and_inject(&html)
+}
+
+fn strip_scripts_and_inject(html: &str) -> String {
+    let stripped = strip_script_tags(html);
+    let override_css = "<style>*{-webkit-user-select:text!important;user-select:text!important;}</style>";
+    let script_tag = format!("{}<script>{}</script>", override_css, ANNOTATOR_MOBILE_JS);
+    if let Some(pos) = stripped.find("</head>") {
+        let mut r = stripped;
+        r.insert_str(pos, &script_tag);
+        r
+    } else if let Some(pos) = stripped.find("<body") {
+        let mut r = stripped;
+        r.insert_str(pos, &script_tag);
+        r
+    } else {
+        format!("{}{}", script_tag, stripped)
+    }
+}
+
+/// Strip `<script …>…</script>` blocks. Matches only when the char after
+/// "<script" is `>`, `/`, or ASCII whitespace. Copy of desktop lib.rs logic.
+fn strip_script_tags(html: &str) -> String {
+    let bytes = html.as_bytes();
+    let mut out = String::with_capacity(html.len());
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let hit = match find_ci(bytes, cursor, b"<script") {
+            Some(p) => p,
+            None => break,
+        };
+        let after = hit + 7;
+        let boundary = after >= bytes.len()
+            || matches!(
+                bytes[after],
+                b'>' | b'/' | b' ' | b'\t' | b'\n' | b'\r' | 0x0c
+            );
+        if !boundary {
+            out.push_str(&html[cursor..hit + 1]);
+            cursor = hit + 1;
+            continue;
+        }
+        out.push_str(&html[cursor..hit]);
+        let open_end = match bytes[after..].iter().position(|&b| b == b'>') {
+            Some(p) => after + p + 1,
+            None => {
+                cursor = bytes.len();
+                break;
+            }
+        };
+        let close_hit = match find_ci(bytes, open_end, b"</script") {
+            Some(p) => p,
+            None => {
+                cursor = bytes.len();
+                break;
+            }
+        };
+        let close_end = match bytes[close_hit + 8..].iter().position(|&b| b == b'>') {
+            Some(p) => close_hit + 8 + p + 1,
+            None => {
+                cursor = bytes.len();
+                break;
+            }
+        };
+        cursor = close_end;
+    }
+    if cursor < bytes.len() {
+        out.push_str(&html[cursor..]);
+    }
+    out
+}
+
+fn find_ci(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || start >= haystack.len() {
+        return None;
+    }
+    let mut i = start;
+    while i + needle.len() <= haystack.len() {
+        let mut ok = true;
+        for j in 0..needle.len() {
+            let a = haystack[i + j].to_ascii_lowercase();
+            let b = needle[j].to_ascii_lowercase();
+            if a != b {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+// ────────────────────────────────────────────────────────────
 // Sync examples (migrated from Phase 0 hand-rolled shim)
 // ────────────────────────────────────────────────────────────
 

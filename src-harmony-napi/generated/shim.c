@@ -29,6 +29,7 @@ extern char* shibei_ffi_search_resources(const char* query, const char* tag_ids_
 extern char* shibei_ffi_list_tags(void);
 extern char* shibei_ffi_get_resource(const char* id);
 extern char* shibei_ffi_get_resource_summary(const char* id, int32_t max_chars);
+extern char* shibei_ffi_get_resource_html(const char* id);
 extern char* shibei_ffi_hello(void);
 extern int32_t shibei_ffi_add(int32_t a, int32_t b);
 extern char* shibei_ffi_s3_smoke_test(const char* endpoint, const char* region, const char* bucket, const char* access_key, const char* secret_key);
@@ -338,6 +339,19 @@ static napi_value get_resource_summary_wrap(napi_env env, napi_callback_info inf
     return result;
 }
 
+static napi_value get_resource_html_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_get_resource_html(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
 static napi_value hello_wrap(napi_env env, napi_callback_info info) {
     (void)info;
     napi_value result = NULL;
@@ -444,6 +458,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"listTags", NULL, list_tags_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResource", NULL, get_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceSummary", NULL, get_resource_summary_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"getResourceHtml", NULL, get_resource_html_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"hello", NULL, hello_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"add", NULL, add_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3SmokeTest", NULL, s3_smoke_test_wrap, NULL, NULL, NULL, napi_default, NULL},

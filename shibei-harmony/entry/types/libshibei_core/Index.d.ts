@@ -18,6 +18,7 @@ export const searchResources: (query: string, tagIdsJson: string) => string;
 export const listTags: () => string;
 export const getResource: (id: string) => string;
 export const getResourceSummary: (id: string, maxChars: number) => string;
+export const getResourceHtml: (id: string) => string;
 export const hello: () => string;
 export const add: (a: number, b: number) => number;
 export const s3SmokeTest: (endpoint: string, region: string, bucket: string, accessKey: string, secretKey: string) => string;
