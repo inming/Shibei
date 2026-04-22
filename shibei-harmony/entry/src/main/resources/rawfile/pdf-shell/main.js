@@ -48,19 +48,14 @@
       // ArkWeb sometimes reports a stale / default clientWidth before the
       // Web component has finished its first layout pass — wait a frame
       // so the real width lands before we compute scale.
+      // Wait a frame so ArkWeb's Web component finishes its initial
+      // layout pass before we read clientWidth — pre-layout it sometimes
+      // reports a stale default that drifts from the final host size.
       await new Promise(function(r) { requestAnimationFrame(function() { r(null); }); });
       var containerWidth = pagesEl.clientWidth - 16;
-      console.log('init width pagesEl=' + pagesEl.clientWidth
-        + ' innerWidth=' + window.innerWidth
-        + ' docWidth=' + document.documentElement.clientWidth
-        + ' dpr=' + window.devicePixelRatio);
-      // Page 1 sets the scale. Pages of different sizes still render
-      // correctly — each gets its own per-page viewport in renderPage().
       var first = await state.pdf.getPage(1);
       var unscaled = first.getViewport({ scale: 1.0 });
       state.scale = containerWidth / unscaled.width;
-      console.log('init scale=' + state.scale + ' page1Unscaled=' + unscaled.width
-        + ' page1Scaled=' + (unscaled.width * state.scale));
 
       // Create placeholder divs for every page so IntersectionObserver can
       // observe scroll-into-view without loading every page up front.
@@ -105,7 +100,6 @@
             resizeTimer = null;
             var newWidth = pagesEl.clientWidth;
             if (!newWidth || Math.abs(newWidth - lastWidth) < 2) return;
-            console.log('pdf-shell resize', lastWidth, '→', newWidth);
             lastWidth = newWidth;
             relayoutForNewWidth().catch(console.error);
           }, 200);
@@ -200,11 +194,6 @@
     var first = await state.pdf.getPage(1);
     var unscaled = first.getViewport({ scale: 1.0 });
     state.scale = containerWidth / unscaled.width;
-    console.log('relayout pagesEl=' + pagesEl.clientWidth
-      + ' innerWidth=' + window.innerWidth
-      + ' newScale=' + state.scale
-      + ' page1Scaled=' + (unscaled.width * state.scale)
-      + ' restoreTop=' + topPage);
 
     // Flush all cached render state and DOM children (canvas / text-layer /
     // highlight-layer) so IntersectionObserver repaints from scratch.
