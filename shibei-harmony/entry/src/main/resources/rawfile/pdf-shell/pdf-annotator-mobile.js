@@ -56,8 +56,9 @@
         spans.push({ el: span, start: start, end: end });
         charOffset = end;
         fullText += it.str;
-
-        if (it.hasEOL) { fullText += '\n'; charOffset += 1; }
+        // Desktop uses createTreeWalker over text nodes in collectTextContent —
+        // no synthetic newline on item.hasEOL. Match that exactly so
+        // charIndex/length anchors are byte-for-byte interoperable.
       }
     }
 
