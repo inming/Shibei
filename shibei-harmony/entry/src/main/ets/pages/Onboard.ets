@@ -154,7 +154,7 @@ struct Onboard {
     this.savingConfig = true;
     this.configError = '';
     try {
-      ShibeiService.instance.setS3Config(cfg);
+      await ShibeiService.instance.setS3Config(cfg);
       this.currentStep = 2;
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;

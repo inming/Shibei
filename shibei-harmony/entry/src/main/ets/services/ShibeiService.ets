@@ -56,6 +56,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
 import { extractCaBundle } from '../app/CaBundle';
+import { HuksService } from './HuksService';
 
 /// Thrown by ShibeiService when NAPI returns an error.* code. The raw code
 /// (e.g. "error.notInitialized") is available for i18n lookup upstream.
@@ -258,12 +259,49 @@ export class ShibeiService {
 
   // ── Config + sync (Track A4 batch 1 + 3) ──────────────────
 
-  /// Persist S3 config + credentials. No network call. Overwrites any
-  /// previously-saved values.
-  setS3Config(cfg: S3ConfigInput): void {
-    const result: string = napiSetS3Config(JSON.stringify(cfg));
-    if (result !== 'ok') {
-      throw new ShibeiError(result);
+  /// Persist S3 config + credentials. Credentials are HUKS-wrapped via
+  /// HuksService before being handed to the Rust side for file I/O.
+  /// Non-sensitive fields (endpoint/region/bucket) still go into SQLite's
+  /// sync_state — only access_key/secret_key are moved to the secure blob.
+  async setS3Config(cfg: S3ConfigInput): Promise<void> {
+    const nonSensitive: S3ConfigInput = {
+      endpoint: cfg.endpoint,
+      region: cfg.region,
+      bucket: cfg.bucket,
+      accessKey: '',
+      secretKey: '',
+    };
+    const result: string = napiSetS3Config(JSON.stringify(nonSensitive));
+    if (result !== 'ok') throw new ShibeiError(result);
+
+    // Runtime cache — so build_raw_backend can find creds until the next
+    // cold start (when primeS3Creds does the same).
+    this.setS3CredsOnly(cfg.accessKey, cfg.secretKey);
+
+    // HUKS-wrapped persistence.
+    const credsJson = JSON.stringify({ accessKey: cfg.accessKey, secretKey: cfg.secretKey } as S3Creds);
+    const plainB64 = stringToBase64(credsJson);
+    const wrappedB64 = await HuksService.instance.wrapDeviceBound(plainB64);
+    this.s3CredsWrite(wrappedB64);
+
+    // Wipe any legacy SQLite row from before Phase 4 migration. Idempotent.
+    this.s3CredsClearLegacy();
+  }
+
+  /// Called on cold start from EntryAbility.onWindowStageCreate after init().
+  /// Reads the HUKS-wrapped S3 creds from disk, unwraps, and plumbs them
+  /// back into sync_state so build_raw_backend finds them. No-op if the
+  /// blob is missing (onboarding will write fresh creds later).
+  async primeS3Creds(): Promise<void> {
+    const wrappedB64: string = this.s3CredsRead();
+    if (!wrappedB64) return;
+    try {
+      const plainB64 = await HuksService.instance.unwrapDeviceBound(wrappedB64);
+      const plainJson = base64ToString(plainB64);
+      const creds = JSON.parse(plainJson) as S3Creds;
+      this.setS3CredsOnly(creds.accessKey, creds.secretKey);
+    } catch (e) {
+      hilog.warn(0x0000, 'shibei', 's3 creds unwrap failed: %{public}s', (e as Error).message);
     }
   }
 
@@ -647,4 +685,24 @@ function parseListOrThrow<T>(raw: string, label: string): T[] {
     throw new ShibeiError(`${label}: unexpected response shape`);
   }
   return parsed as T[];
+}
+
+// ── S3 creds JSON helpers (Phase 4, Task 8) ───────────────────
+//
+// The wrapped blob on disk is base64(JSON({iv, ct})). The inner payload
+// (once HUKS-unwrapped) is JSON({accessKey, secretKey}). Declared as a
+// named interface because ArkTS strict mode forbids object-literal types.
+interface S3Creds {
+  accessKey: string;
+  secretKey: string;
+}
+
+function stringToBase64(s: string): string {
+  const bytes = new util.TextEncoder().encodeInto(s);
+  return new util.Base64Helper().encodeToStringSync(bytes);
+}
+
+function base64ToString(b64: string): string {
+  const bytes = new util.Base64Helper().decodeSync(b64);
+  return new util.TextDecoder('utf-8').decodeToString(bytes);
 }
