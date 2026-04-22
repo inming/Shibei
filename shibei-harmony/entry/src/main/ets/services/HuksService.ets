@@ -148,64 +148,82 @@ export class HuksService {
     catch (e) { /* not found is fine */ }
   }
 
-  /// Wrap `plainB64` using the bio-gated key. Caller MUST have just done a
-  /// userAuth.authV9() successfully — HUKS challenge_type=NORMAL ties the
-  /// operation handle to the auth token. Returns base64 of `{iv,ct}` JSON.
-  async wrapBio(plainB64: string, authToken: Uint8Array): Promise<string> {
-    return this.bioCipher(plainB64, authToken, huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT);
+  /// Wrap `plainB64` using the bio-gated key. Runs the full
+  /// init → user-auth-with-HUKS-challenge → finish flow internally; caller
+  /// does NOT pre-authenticate. CHALLENGE_TYPE_NORMAL requires the user-auth
+  /// token be bound to the exact challenge HUKS minted during initSession,
+  /// so we cannot reuse a pre-existing token. Returns base64 of `{iv,ct}` JSON.
+  async wrapBio(plainB64: string): Promise<string> {
+    return this.bioCipher(plainB64, huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT);
   }
 
-  async unwrapBio(wrappedB64: string, authToken: Uint8Array): Promise<string> {
-    return this.bioCipher(wrappedB64, authToken, huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT);
+  async unwrapBio(wrappedB64: string): Promise<string> {
+    return this.bioCipher(wrappedB64, huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT);
   }
 
   // ── internals ──────────────────────────────────────────────
 
-  private async bioCipher(inputB64: string, authToken: Uint8Array, purpose: number): Promise<string> {
+  private async bioCipher(inputB64: string, purpose: number): Promise<string> {
     const encoder = new util.Base64Helper();
-    if (purpose === huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT) {
-      const pt = encoder.decodeSync(inputB64);
-      const iv = this.randomIv();
-      const props: huks.HuksParam[] = [
-        { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
-        { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
-        { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: purpose },
-        { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
-        { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-        { tag: huks.HuksTag.HUKS_TAG_IV, value: iv },
-        { tag: huks.HuksTag.HUKS_TAG_AUTH_TOKEN, value: authToken },
-      ];
-      const handle = await huks.initSession(BIO_ALIAS, { properties: props });
-      const finished = await huks.finishSession(handle.handle, { properties: props, inData: pt });
-      const outData = finished.outData ?? new Uint8Array();
+    const isEncrypt = purpose === huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT;
+
+    // Step 1: pick IV + build initSession props.
+    let iv: Uint8Array;
+    let tag: Uint8Array | null = null;
+    let inData: Uint8Array;
+    if (isEncrypt) {
+      iv = this.randomIv();
+      inData = encoder.decodeSync(inputB64);
+    } else {
+      const wrappedBytes = encoder.decodeSync(inputB64);
+      const blob: CipherBlob = JSON.parse(new util.TextDecoder('utf-8').decodeToString(wrappedBytes)) as CipherBlob;
+      iv = encoder.decodeSync(blob.iv);
+      const ctAll = encoder.decodeSync(blob.ct);
+      if (ctAll.byteLength < TAG_LEN) {
+        throw new Error('error.secureStoreCorrupted: bio ct too short');
+      }
+      inData = ctAll.slice(0, ctAll.byteLength - TAG_LEN);
+      tag = ctAll.slice(ctAll.byteLength - TAG_LEN);
+    }
+
+    const initProps: huks.HuksParam[] = [
+      { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
+      { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
+      { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: purpose },
+      { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
+      { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
+      { tag: huks.HuksTag.HUKS_TAG_IV, value: iv },
+    ];
+    if (!isEncrypt && tag) {
+      initProps.push({ tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: tag });
+    }
+
+    // Step 2: open HUKS session — the returned handle carries a `challenge`
+    // we MUST hand to userAuth, since HUKS ties auth-token validity to it.
+    const handle = await huks.initSession(BIO_ALIAS, { properties: initProps });
+    const hukschallenge: Uint8Array = handle.challenge ?? new Uint8Array();
+    if (hukschallenge.byteLength === 0) {
+      throw new Error('error.secureStoreCorrupted: HUKS returned no challenge');
+    }
+
+    // Step 3: prompt user for biometric with HUKS-minted challenge.
+    const authToken = await requestBioAuthForChallenge(hukschallenge);
+
+    // Step 4: finishSession with auth token bound via AUTH_TOKEN tag.
+    const finishProps: huks.HuksParam[] = [...initProps,
+      { tag: huks.HuksTag.HUKS_TAG_AUTH_TOKEN, value: authToken },
+    ];
+    const finished = await huks.finishSession(handle.handle, { properties: finishProps, inData });
+    const outData = finished.outData ?? new Uint8Array();
+
+    if (isEncrypt) {
       const blob: CipherBlob = {
         iv: encoder.encodeToStringSync(iv),
         ct: encoder.encodeToStringSync(outData),
       };
       return encoder.encodeToStringSync(new util.TextEncoder().encodeInto(JSON.stringify(blob)));
     } else {
-      const wrappedBytes = encoder.decodeSync(inputB64);
-      const blob: CipherBlob = JSON.parse(new util.TextDecoder('utf-8').decodeToString(wrappedBytes)) as CipherBlob;
-      const iv = encoder.decodeSync(blob.iv);
-      const ctAll = encoder.decodeSync(blob.ct);
-      if (ctAll.byteLength < TAG_LEN) {
-        throw new Error('error.secureStoreCorrupted: bio ct too short');
-      }
-      const ctBody = ctAll.slice(0, ctAll.byteLength - TAG_LEN);
-      const tag = ctAll.slice(ctAll.byteLength - TAG_LEN);
-      const props: huks.HuksParam[] = [
-        { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
-        { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
-        { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: purpose },
-        { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
-        { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-        { tag: huks.HuksTag.HUKS_TAG_IV, value: iv },
-        { tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: tag },
-        { tag: huks.HuksTag.HUKS_TAG_AUTH_TOKEN, value: authToken },
-      ];
-      const handle = await huks.initSession(BIO_ALIAS, { properties: props });
-      const finished = await huks.finishSession(handle.handle, { properties: props, inData: ctBody });
-      return encoder.encodeToStringSync(finished.outData ?? new Uint8Array());
+      return encoder.encodeToStringSync(outData);
     }
   }
 
@@ -225,28 +243,15 @@ export class HuksService {
   }
 }
 
-/// Bundle handed by UserAuth → HuksService for bio operations. authToken
-/// lives ~5 seconds on the HUKS side; reuse is not safe across that window.
-export interface BioAuthBundle {
-  authToken: Uint8Array;
-  challenge: Uint8Array;
-}
-
-/// Prompt the user for fingerprint/face and return the authToken. Throws if
-/// the user cancels or the device doesn't support the requested level.
+/// Prompt the user for fingerprint auth using a HUKS-minted challenge and
+/// return just the auth token. The challenge MUST come from a HUKS
+/// `initSession` handle when the target key was generated with
+/// CHALLENGE_TYPE_NORMAL — otherwise HUKS `finishSession` rejects the token
+/// with ret=-43 (HksParamSet send fail).
 ///
-/// Uses the HarmonyOS NEXT `getUserAuthInstance(AuthParam, WidgetParam)` API
-/// with system-provided biometric sheet. The legacy `getAuthInstance` often
-/// returns CANCELED (12500003) because it relies on app-provided UI that
-/// doesn't render reliably on NEXT.
-export async function requestBioAuth(): Promise<BioAuthBundle> {
-  const challenge = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) challenge[i] = Math.floor(Math.random() * 256);
-  // Hard-code FINGERPRINT only — Mate X5 has fingerprint but no face hardware
-  // at ATL2. Probing availability with two getAvailableStatus calls was
-  // tripping ArkTS valuetype checks in the napi layer (see hilog C02401).
-  // If the device doesn't have fingerprint enrolled, `auth.start()` will
-  // reject with a clear code (e.g. 12500010 NOT_ENROLLED).
+/// Uses HarmonyOS NEXT `getUserAuthInstance(AuthParam, WidgetParam)` — the
+/// legacy `getAuthInstance` can't render the system sheet on NEXT.
+export async function requestBioAuthForChallenge(challenge: Uint8Array): Promise<Uint8Array> {
   const authParam: userAuth.AuthParam = {
     challenge,
     authType: [userAuth.UserAuthType.FINGERPRINT],
@@ -256,11 +261,11 @@ export async function requestBioAuth(): Promise<BioAuthBundle> {
     title: '验证身份以解锁拾贝',
   };
   const auth = userAuth.getUserAuthInstance(authParam, widgetParam);
-  return new Promise<BioAuthBundle>((resolve, reject) => {
+  return new Promise<Uint8Array>((resolve, reject) => {
     auth.on('result', {
       onResult: (result: userAuth.UserAuthResult): void => {
         if (result.result === userAuth.UserAuthResultCode.SUCCESS) {
-          resolve({ authToken: result.token ?? new Uint8Array(), challenge });
+          resolve(result.token ?? new Uint8Array());
         } else {
           hilog.warn(0x0000, 'shibei', 'bio auth failed: %{public}d', result.result);
           reject(new Error(`error.bioAuthFailed:${result.result}`));

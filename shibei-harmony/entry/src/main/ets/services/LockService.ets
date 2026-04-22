@@ -13,7 +13,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router } from '@kit.ArkUI';
 import { ShibeiService, ShibeiError } from './ShibeiService';
-import { HuksService, requestBioAuth, BioAuthBundle } from './HuksService';
+import { HuksService } from './HuksService';
 
 export enum LockState {
   NotConfigured = 'NotConfigured',
@@ -126,8 +126,8 @@ export class LockService {
     const mkB64: string = svc.lockGetMkForBioEnroll();
     if (!mkB64) throw new ShibeiError('error.notUnlocked');
     await huks.generateBioKey();
-    const bundle: BioAuthBundle = await requestBioAuth();
-    const wrapped = await huks.wrapBio(mkB64, bundle.authToken);
+    // wrapBio drives init → user-auth (with HUKS challenge) → finish internally.
+    const wrapped = await huks.wrapBio(mkB64);
     await svc.lockEnableBio(wrapped);
   }
 
@@ -141,14 +141,17 @@ export class LockService {
     const huks = HuksService.instance;
     const wrapped = svc.lockGetBioWrappedMk();
     if (!wrapped) throw new ShibeiError('error.bioNotEnabled');
-    let bundle: BioAuthBundle;
-    try { bundle = await requestBioAuth(); }
-    catch (e) { throw new ShibeiError('error.bioAuthFailed'); }
     let mkB64: string;
     try {
-      mkB64 = await huks.unwrapBio(wrapped, bundle.authToken);
+      // unwrapBio drives init → user-auth (with HUKS challenge) → finish.
+      mkB64 = await huks.unwrapBio(wrapped);
     } catch (e) {
-      hilog.warn(0x0000, 'shibei', 'unwrapBio failed: %{public}s', (e as Error).message);
+      const msg = (e as Error).message;
+      hilog.warn(0x0000, 'shibei', 'unwrapBio failed: %{public}s', msg);
+      // Distinguish user-cancel/authFailed from bio-revoked (HUKS returned err)
+      if (msg.startsWith('error.bioAuthFailed')) {
+        throw new ShibeiError('error.bioAuthFailed');
+      }
       await huks.deleteBioKey();
       throw new ShibeiError('error.bioRevoked');
     }
