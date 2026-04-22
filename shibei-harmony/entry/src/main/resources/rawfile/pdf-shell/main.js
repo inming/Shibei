@@ -89,10 +89,16 @@
       state.pageViewports[n] = viewport;
 
       var canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
       div.appendChild(canvas);
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+      var ctx = canvas.getContext('2d');
+      var renderParams = { canvasContext: ctx, viewport: viewport };
+      if (dpr !== 1) {
+        renderParams.transform = [dpr, 0, 0, dpr, 0, 0];
+      }
+      await page.render(renderParams).promise;
 
       // Text-layer container; populated by pdf-annotator-mobile.js (Task 6).
       var tl = document.createElement('div');
