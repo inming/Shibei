@@ -10,8 +10,13 @@
 //
 // HUKS AES-GCM `finishSession` returns `ct || tag` (16-byte tag appended);
 // for decrypt we must split them and feed AE_TAG separately.
-// We serialise blobs as JSON `{iv: base64, ct: base64}` so unwrap can feed
-// HUKS back the right pieces.
+//
+// Blob layout on disk (base64-encoded for transport across NAPI):
+//   [IV(12 bytes) | CT(N bytes) | TAG(16 bytes)]
+// A binary concat is used instead of a JSON `{iv,ct}` wrapper so we avoid
+// `util.TextEncoder` / `util.TextDecoder` — in some NEXT SDK builds
+// `new util.TextDecoder(...)` returns undefined, tripping "undefined is
+// not callable" at runtime.
 
 import { huks } from '@kit.UniversalKeystoreKit';
 import { userAuth } from '@kit.UserAuthenticationKit';
@@ -23,9 +28,31 @@ const BIO_ALIAS = 'shibei_bio_kek_v1';
 const IV_LEN = 12;   // HUKS AES-GCM requires 12-byte IV
 const TAG_LEN = 16;  // HUKS AES-GCM tag (split off outData on decrypt)
 
-interface CipherBlob {
-  iv: string;
-  ct: string;
+/// Concat [iv | body]. Returns a fresh Uint8Array.
+function concatIvBody(iv: Uint8Array, body: Uint8Array): Uint8Array {
+  const out = new Uint8Array(iv.byteLength + body.byteLength);
+  out.set(iv, 0);
+  out.set(body, iv.byteLength);
+  return out;
+}
+
+/// Split base64'd blob into (iv, ctBody, tag). Throws if shorter than
+/// iv+tag minimum.
+function splitIvCtTag(blobBytes: Uint8Array): IvCtTag {
+  if (blobBytes.byteLength < IV_LEN + TAG_LEN) {
+    throw new Error('error.secureStoreCorrupted: blob too short');
+  }
+  const iv = blobBytes.slice(0, IV_LEN);
+  const rest = blobBytes.slice(IV_LEN);
+  const tag = rest.slice(rest.byteLength - TAG_LEN);
+  const ctBody = rest.slice(0, rest.byteLength - TAG_LEN);
+  return { iv, ctBody, tag };
+}
+
+interface IvCtTag {
+  iv: Uint8Array;
+  ctBody: Uint8Array;
+  tag: Uint8Array;
 }
 
 export class HuksService {
@@ -67,36 +94,25 @@ export class HuksService {
     const handle = await huks.initSession(DEVICE_ALIAS, { properties: props });
     const finished = await huks.finishSession(handle.handle, { properties: props, inData: pt });
     const outData = finished.outData ?? new Uint8Array();
-    const blob: CipherBlob = {
-      iv: encoder.encodeToStringSync(iv),
-      ct: encoder.encodeToStringSync(outData),
-    };
-    const blobBytes = new util.TextEncoder().encodeInto(JSON.stringify(blob));
-    return encoder.encodeToStringSync(blobBytes);
+    // Binary layout: [IV | CT || TAG]. outData already contains CT||TAG.
+    return encoder.encodeToStringSync(concatIvBody(iv, outData));
   }
 
   async unwrapDeviceBound(outerB64: string): Promise<string> {
     const encoder = new util.Base64Helper();
-    const outerBytes = encoder.decodeSync(outerB64);
-    const blob: CipherBlob = JSON.parse(new util.TextDecoder('utf-8').decodeToString(outerBytes)) as CipherBlob;
-    const iv = encoder.decodeSync(blob.iv);
-    const ctAll = encoder.decodeSync(blob.ct);
-    if (ctAll.byteLength < TAG_LEN) {
-      throw new Error('error.secureStoreCorrupted: ct too short');
-    }
-    const ctBody = ctAll.slice(0, ctAll.byteLength - TAG_LEN);
-    const tag = ctAll.slice(ctAll.byteLength - TAG_LEN);
+    const blobBytes = encoder.decodeSync(outerB64);
+    const parts = splitIvCtTag(blobBytes);
     const props: huks.HuksParam[] = [
       { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
       { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_IV, value: iv },
-      { tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: tag },
+      { tag: huks.HuksTag.HUKS_TAG_IV, value: parts.iv },
+      { tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: parts.tag },
     ];
     const handle = await huks.initSession(DEVICE_ALIAS, { properties: props });
-    const finished = await huks.finishSession(handle.handle, { properties: props, inData: ctBody });
+    const finished = await huks.finishSession(handle.handle, { properties: props, inData: parts.ctBody });
     const pt = finished.outData ?? new Uint8Array();
     return encoder.encodeToStringSync(pt);
   }
@@ -167,7 +183,7 @@ export class HuksService {
     const encoder = new util.Base64Helper();
     const isEncrypt = purpose === huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT;
 
-    // Step 1: pick IV + build initSession props.
+    // Step 1: pick IV + build inData + optional TAG from the binary blob.
     let iv: Uint8Array;
     let tag: Uint8Array | null = null;
     let inData: Uint8Array;
@@ -175,15 +191,11 @@ export class HuksService {
       iv = this.randomIv();
       inData = encoder.decodeSync(inputB64);
     } else {
-      const wrappedBytes = encoder.decodeSync(inputB64);
-      const blob: CipherBlob = JSON.parse(new util.TextDecoder('utf-8').decodeToString(wrappedBytes)) as CipherBlob;
-      iv = encoder.decodeSync(blob.iv);
-      const ctAll = encoder.decodeSync(blob.ct);
-      if (ctAll.byteLength < TAG_LEN) {
-        throw new Error('error.secureStoreCorrupted: bio ct too short');
-      }
-      inData = ctAll.slice(0, ctAll.byteLength - TAG_LEN);
-      tag = ctAll.slice(ctAll.byteLength - TAG_LEN);
+      const blobBytes = encoder.decodeSync(inputB64);
+      const parts = splitIvCtTag(blobBytes);
+      iv = parts.iv;
+      inData = parts.ctBody;
+      tag = parts.tag;
     }
 
     const initProps: huks.HuksParam[] = [
@@ -217,11 +229,8 @@ export class HuksService {
     const outData = finished.outData ?? new Uint8Array();
 
     if (isEncrypt) {
-      const blob: CipherBlob = {
-        iv: encoder.encodeToStringSync(iv),
-        ct: encoder.encodeToStringSync(outData),
-      };
-      return encoder.encodeToStringSync(new util.TextEncoder().encodeInto(JSON.stringify(blob)));
+      // Binary layout [IV | CT || TAG]. outData already has CT||TAG.
+      return encoder.encodeToStringSync(concatIvBody(iv, outData));
     } else {
       return encoder.encodeToStringSync(outData);
     }
