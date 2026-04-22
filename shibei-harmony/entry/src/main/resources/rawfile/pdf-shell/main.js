@@ -129,6 +129,12 @@
       var div = state.pageDivs[n];
       div.style.setProperty('--w', viewport.width + 'px');
       div.style.setProperty('--h', viewport.height + 'px');
+      // pdfjs TextLayer positions spans via `transform: scale(var(--scale-factor))`.
+      // Without these vars set, the scale collapses to 1 and every span
+      // renders at its PDF-point-native width — wildly wider than the
+      // viewport. Must be set before TextLayer.render() in onPageRendered.
+      div.style.setProperty('--scale-factor', String(state.scale));
+      div.style.setProperty('--total-scale-factor', String(state.scale));
       state.pageViewports[n] = viewport;
 
       var canvas = document.createElement('canvas');
