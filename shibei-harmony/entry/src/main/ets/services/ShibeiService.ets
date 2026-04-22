@@ -275,33 +275,26 @@ export class ShibeiService {
 
   // ── Config + sync (Track A4 batch 1 + 3) ──────────────────
 
-  /// Persist S3 config + credentials. Credentials are HUKS-wrapped via
-  /// HuksService before being handed to the Rust side for file I/O.
-  /// Non-sensitive fields (endpoint/region/bucket) still go into SQLite's
-  /// sync_state — only access_key/secret_key are moved to the secure blob.
+  /// Persist S3 config + credentials. Phase 4 v1 keeps SQLite `sync_state`
+  /// rows as the runtime cache that `build_raw_backend` reads on every sync;
+  /// we ALSO persist the creds HUKS-wrapped in `secure/s3_creds.blob` so
+  /// next cold start can reprime via `primeS3Creds()`. Both writes are best
+  /// effort individually — the SQLite write is the critical path; HUKS
+  /// failure only removes the static-data-at-rest protection but doesn't
+  /// break sync.
   async setS3Config(cfg: S3ConfigInput): Promise<void> {
-    const nonSensitive: S3ConfigInput = {
-      endpoint: cfg.endpoint,
-      region: cfg.region,
-      bucket: cfg.bucket,
-      accessKey: '',
-      secretKey: '',
-    };
-    const result: string = napiSetS3Config(JSON.stringify(nonSensitive));
+    const result: string = napiSetS3Config(JSON.stringify(cfg));
     if (result !== 'ok') throw new ShibeiError(result);
 
-    // Runtime cache — so build_raw_backend can find creds until the next
-    // cold start (when primeS3Creds does the same).
-    this.setS3CredsOnly(cfg.accessKey, cfg.secretKey);
-
-    // HUKS-wrapped persistence.
     const credsJson = JSON.stringify({ accessKey: cfg.accessKey, secretKey: cfg.secretKey } as S3Creds);
     const plainB64 = stringToBase64(credsJson);
-    const wrappedB64 = await HuksService.instance.wrapDeviceBound(plainB64);
-    this.s3CredsWrite(wrappedB64);
-
-    // Wipe any legacy SQLite row from before Phase 4 migration. Idempotent.
-    this.s3CredsClearLegacy();
+    try {
+      const wrappedB64 = await HuksService.instance.wrapDeviceBound(plainB64);
+      this.s3CredsWrite(wrappedB64);
+    } catch (e) {
+      hilog.warn(0x0000, 'shibei', 's3 creds HUKS wrap failed (sync still works): %{public}s',
+        (e as Error).message);
+    }
   }
 
   /// Called on cold start from EntryAbility.onWindowStageCreate after init().
