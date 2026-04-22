@@ -175,8 +175,15 @@
       while (pd.firstChild) pd.removeChild(pd.firstChild);
     }
 
-    // Re-observe (the IO already has these divs, but kick a scroll to
-    // force re-evaluation of visibility).
+    // IntersectionObserver only fires on change — pages that were already
+    // visible won't re-emit isIntersecting after we emptied them, so we
+    // unobserve + reobserve to force a fresh visibility check. Without
+    // this, fold/rotate leaves visible pages blank until the user scrolls.
+    if (state.io) {
+      state.pageDivs.forEach(function(div) { if (div) state.io.unobserve(div); });
+      state.pageDivs.forEach(function(div) { if (div) state.io.observe(div); });
+    }
+
     if (state.pageDivs[topPage]) {
       state.pageDivs[topPage].scrollIntoView({ block: 'start' });
     }

@@ -272,14 +272,36 @@
 
   window.__shibei.removeHighlight = function(id) { removeHighlightLocal(id); };
 
-  window.__shibei.flashHighlight = function(id) {
-    var els = document.querySelectorAll('[data-shibei-id="' + cssEscape(id) + '"]');
-    if (els.length === 0) return;
+  function doFlash(els) {
     els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
     els.forEach(function(el) {
       el.classList.add('flash');
       setTimeout(function() { el.classList.remove('flash'); }, 800);
     });
+  }
+
+  window.__shibei.flashHighlight = function(id) {
+    var sel = '[data-shibei-id="' + cssEscape(id) + '"]';
+    var els = document.querySelectorAll(sel);
+    if (els.length > 0) { doFlash(els); return; }
+
+    // Virtual-scroll: target page may not be rendered yet. Scroll to its
+    // placeholder, let IntersectionObserver trigger the render, then
+    // poll for the hl DOM to appear and flash it.
+    var h = highlights[id];
+    if (!h || !h.anchor || typeof h.anchor.page !== 'number') return;
+    if (!window.__shibeiReader || !window.__shibeiReader.scrollToPage) return;
+    window.__shibeiReader.scrollToPage(h.anchor.page + 1);
+    var tries = 0;
+    var poll = setInterval(function() {
+      var found = document.querySelectorAll(sel);
+      if (found.length > 0) {
+        clearInterval(poll);
+        doFlash(found);
+      } else if (++tries > 40) {   // ~4s timeout
+        clearInterval(poll);
+      }
+    }, 100);
   };
 
   window.__shibei.clearSelection = function() {
