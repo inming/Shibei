@@ -220,8 +220,19 @@ export class HuksService {
 
     // Step 2: open HUKS session — the returned handle carries a `challenge`
     // we MUST hand to userAuth, since HUKS ties auth-token validity to it.
+    // HUKS IPC can return `-30` ("The parameter does not exist.") on cold
+    // start before its service binder is fully established. Retry once
+    // after 300 ms — empirically reliable on Mate X5 NEXT.
     hilog.info(0x0000, 'shibei', 'bioCipher: calling initSession');
-    const handle = await huks.initSession(BIO_ALIAS, { properties: initProps });
+    let handle: huks.HuksSessionHandle;
+    try {
+      handle = await huks.initSession(BIO_ALIAS, { properties: initProps });
+    } catch (e) {
+      hilog.warn(0x0000, 'shibei', 'initSession first try failed: %{public}s, retrying after 300ms',
+        (e as Error).message);
+      await new Promise<void>((r: () => void): void => { setTimeout(r, 300); });
+      handle = await huks.initSession(BIO_ALIAS, { properties: initProps });
+    }
     hilog.info(0x0000, 'shibei', 'bioCipher: initSession ok handle=%{public}d', handle.handle);
     const hukschallenge: Uint8Array = handle.challenge ?? new Uint8Array();
     if (hukschallenge.byteLength === 0) {

@@ -152,16 +152,17 @@ export class LockService {
     } catch (e) {
       const msg = (e as Error).message;
       hilog.warn(0x0000, 'shibei', 'unwrapBio threw: %{public}s', msg);
+      // Propagate the underlying error verbatim — don't auto-nuke the bio key.
+      // A HUKS IPC hiccup (`-30`, surfaced as "The parameter does not exist.")
+      // or a user-cancelled prompt doesn't mean the key is revoked; force-
+      // deleting on those is what produced the mysterious "undefined is not
+      // callable" cascade (the delete path throws, masking the real error).
+      // Truly-revoked keys can be cleaned up by the user via Settings
+      // 生物识别 toggle off → on, or the recoverWithE2ee path.
       if (msg.startsWith('error.bioAuthFailed')) {
         throw new ShibeiError('error.bioAuthFailed');
       }
-      if (msg === 'undefined is not callable' || msg.includes('secureStoreCorrupted')) {
-        // Don't nuke the bio key just because of a bug in our code — only
-        // do that on HUKS-level key-invalidation, which surfaces as other msgs.
-        throw new ShibeiError(msg);
-      }
-      await huks.deleteBioKey();
-      throw new ShibeiError('error.bioRevoked');
+      throw new ShibeiError(msg);
     }
     hilog.info(0x0000, 'shibei', 'unlockWithBio: pushing mk');
     await svc.lockPushUnwrappedMk(mkB64);
