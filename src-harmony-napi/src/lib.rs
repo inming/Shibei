@@ -14,6 +14,7 @@
 pub mod commands;
 pub mod progress;
 pub mod runtime;
+pub mod secure_store;
 pub mod state;
 mod s3_smoke;
 

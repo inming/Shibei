@@ -4517,11 +4517,14 @@ dependencies = [
  "serde_json",
  "shibei-db",
  "shibei-events",
+ "shibei-mobile-lock",
  "shibei-napi-macros",
  "shibei-pairing",
  "shibei-sync",
+ "tempfile",
  "tokio",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

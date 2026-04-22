@@ -19,6 +19,7 @@ shibei-napi-macros = { path = "../crates/shibei-napi-macros" }
 shibei-db = { path = "../crates/shibei-db" }
 shibei-sync = { path = "../crates/shibei-sync" }
 shibei-events = { path = "../crates/shibei-events" }
+shibei-mobile-lock = { path = "../crates/shibei-mobile-lock" }
 shibei-pairing = { path = "../crates/shibei-pairing" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,6 +28,10 @@ uuid = { version = "1", features = ["v4"] }
 tokio = { version = "1", default-features = false, features = ["rt", "rt-multi-thread", "time", "macros", "sync"] }
 rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
 base64 = "0.22"
+zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [build-dependencies]
 cc = "1"
