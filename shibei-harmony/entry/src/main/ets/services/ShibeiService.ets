@@ -48,6 +48,7 @@ import {
   lockPushUnwrappedMk as napiLockPushUnwrappedMk,
   lockRecoverWithE2ee as napiLockRecoverWithE2ee,
   lockGetMkForBioEnroll as napiLockGetMkForBioEnroll,
+  lockDeleteBioOnly as napiLockDeleteBioOnly,
   s3CredsWrite as napiS3CredsWrite,
   s3CredsRead as napiS3CredsRead,
   s3CredsClearLegacy as napiS3CredsClearLegacy,
@@ -212,6 +213,13 @@ export class ShibeiService {
   /// can HUKS-wrap the MK with the bio-gated key.
   lockGetMkForBioEnroll(): string {
     return napiLockGetMkForBioEnroll();
+  }
+
+  async lockDeleteBioOnly(): Promise<void> {
+    let result: string;
+    try { result = await napiLockDeleteBioOnly(); }
+    catch (rejected) { throw new ShibeiError(asErrorCode(rejected)); }
+    if (result !== 'ok') throw new ShibeiError(result);
   }
 
   // ── S3 creds secure storage (Phase 4, Task 7) ─────────────

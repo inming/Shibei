@@ -57,6 +57,7 @@ extern char* shibei_ffi_lock_get_bio_wrapped_mk(void);
 extern void shibei_ffi_lock_push_unwrapped_mk(const char* mk_b64, void* ctx);
 extern void shibei_ffi_lock_recover_with_e2ee(const char* password, const char* new_pin, void* ctx);
 extern char* shibei_ffi_lock_get_mk_for_bio_enroll(void);
+extern void shibei_ffi_lock_delete_bio_only(void* ctx);
 extern char* shibei_ffi_s3_creds_write(const char* wrapped_b64);
 extern char* shibei_ffi_s3_creds_read(void);
 extern char* shibei_ffi_s3_creds_clear_legacy(void);
@@ -735,6 +736,20 @@ static napi_value lock_get_mk_for_bio_enroll_wrap(napi_env env, napi_callback_in
     return result;
 }
 
+static napi_value lock_delete_bio_only_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 0;
+    napi_value* args = NULL;
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "lockDeleteBioOnly_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_lock_delete_bio_only(ctx);
+    return promise;
+}
+
 static napi_value s3_creds_write_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
@@ -828,6 +843,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"lockPushUnwrappedMk", NULL, lock_push_unwrapped_mk_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockRecoverWithE2ee", NULL, lock_recover_with_e2ee_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"lockGetMkForBioEnroll", NULL, lock_get_mk_for_bio_enroll_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"lockDeleteBioOnly", NULL, lock_delete_bio_only_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3CredsWrite", NULL, s3_creds_write_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3CredsRead", NULL, s3_creds_read_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3CredsClearLegacy", NULL, s3_creds_clear_legacy_wrap, NULL, NULL, NULL, napi_default, NULL},

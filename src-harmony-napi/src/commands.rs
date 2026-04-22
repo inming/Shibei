@@ -985,6 +985,11 @@ pub fn lock_get_mk_for_bio_enroll() -> String {
     crate::lock::get_mk_for_bio_enroll()
 }
 
+#[shibei_napi(async)]
+pub async fn lock_delete_bio_only() -> Result<String, String> {
+    crate::lock::delete_bio_only()
+}
+
 // ────────────────────────────────────────────────────────────
 // S3 credentials secure storage (Phase 4)
 // ────────────────────────────────────────────────────────────

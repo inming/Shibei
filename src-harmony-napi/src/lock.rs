@@ -294,3 +294,16 @@ pub fn get_mk_for_bio_enroll() -> String {
         None => String::new(),
     }
 }
+
+/// Turn off bio-only, keep PIN lock enabled. Wipes `mk_bio.blob` and clears
+/// the bioEnabled flag. HUKS bio key deletion happens ArkTS-side.
+pub fn delete_bio_only() -> Result<String, String> {
+    use crate::secure_store::SecureStore;
+    let app = state::get()?;
+    let store = FileStore::new(&app.data_dir).map_err(|e| format!("error.fsInit: {e}"))?;
+    store.delete("mk_bio")?;
+    let mut prefs = SecurityPrefs::load(&app.data_dir);
+    prefs.bio_enabled = false;
+    prefs.save(&app.data_dir)?;
+    Ok("ok".to_string())
+}
