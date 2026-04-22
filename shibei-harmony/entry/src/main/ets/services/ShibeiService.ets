@@ -53,6 +53,11 @@ export class ShibeiError extends Error {
 export class ShibeiService {
   private static _instance: ShibeiService | null = null;
 
+  // Subscribers notified after a syncMetadata run that actually pulled or
+  // applied something. Lets passive views (ResourceList, FolderDrawer) stay
+  // fresh without every sync trigger knowing about them.
+  private dataChangedListeners: Set<() => void> = new Set<() => void>();
+
   static get instance(): ShibeiService {
     if (!ShibeiService._instance) {
       ShibeiService._instance = new ShibeiService();
@@ -160,7 +165,28 @@ export class ShibeiService {
     } catch (rejected) {
       throw new ShibeiError(asErrorCode(rejected));
     }
-    return JSON.parse(raw) as SyncResult;
+    const result = JSON.parse(raw) as SyncResult;
+    if (result.kind === 'success' && (result.applied > 0 || result.downloaded > 0)) {
+      this.notifyDataChanged();
+    }
+    return result;
+  }
+
+  /// Subscribe to "remote changes landed" ticks — fires once after each
+  /// syncMetadata pass that pulled/applied anything. Passive UI (lists,
+  /// drawers) calls this in aboutToAppear to stay fresh without every
+  /// sync caller having to know who to poke.
+  onDataChanged(listener: () => void): () => void {
+    this.dataChangedListeners.add(listener);
+    return (): void => { this.dataChangedListeners.delete(listener); };
+  }
+
+  private notifyDataChanged(): void {
+    this.dataChangedListeners.forEach((l: () => void) => {
+      try { l(); } catch (e) {
+        hilog.warn(0x0000, 'shibei', 'dataChanged listener threw: %{public}s', (e as Error).message);
+      }
+    });
   }
 
   /// Subscribe to per-phase progress emitted by `syncMetadata`. The callback

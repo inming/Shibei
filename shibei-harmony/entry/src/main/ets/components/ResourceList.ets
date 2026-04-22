@@ -9,9 +9,18 @@ export struct ResourceList {
   @State resources: Resource[] = [];
   @State loading: boolean = false;
   @State error: string = '';
+  private unsubDataChanged?: () => void;
 
   aboutToAppear(): void {
     this.reload();
+    this.unsubDataChanged = ShibeiService.instance.onDataChanged(() => this.reload());
+  }
+
+  aboutToDisappear(): void {
+    if (this.unsubDataChanged) {
+      this.unsubDataChanged();
+      this.unsubDataChanged = undefined;
+    }
   }
 
   private onFolderChange(): void {
