@@ -43,7 +43,10 @@ export struct AnnotationPanel {
         Column() {
           ForEach(this.bundle.highlights, (h: Highlight) => {
             this.HighlightCard(h);
-          }, (h: Highlight) => h.id);
+          // Key includes color so in-place color edits (long-press swatch
+          // or remote sync) force a card re-render — otherwise ArkUI skips
+          // the diff and the left color strip stays stale.
+          }, (h: Highlight) => `${h.id}:${h.color}`);
 
           if (this.resourceComments().length > 0) {
             Text('笔记').fontSize(13)
