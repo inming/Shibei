@@ -39,7 +39,12 @@
       state.pdf = await pdfjs.getDocument({ url: 'shibei-pdf://resource/' + id }).promise;
       setStatus('rendering — ' + state.pdf.numPages + ' pages');
 
+      // ArkWeb sometimes reports a stale / default clientWidth before the
+      // Web component has finished its first layout pass — wait a frame
+      // so the real width lands before we compute scale.
+      await new Promise(function(r) { requestAnimationFrame(function() { r(null); }); });
       var containerWidth = pagesEl.clientWidth - 16;
+      console.log('pdf-shell initial width', pagesEl.clientWidth);
       // Page 1 sets the scale. Pages of different sizes still render
       // correctly — each gets its own per-page viewport in renderPage().
       var first = await state.pdf.getPage(1);
@@ -77,20 +82,25 @@
       }
 
       // Fold/unfold (Mate X5) and rotation change the container width.
-      // Re-render visible pages at the new fit-to-width scale so the PDF
-      // adapts instead of staying at the old device size.
+      // window.resize doesn't reliably fire inside ArkWeb when its
+      // host container reshapes, so use ResizeObserver directly on
+      // #pages — guaranteed to fire on any layout change.
       var resizeTimer = null;
       var lastWidth = pagesEl.clientWidth;
-      window.addEventListener('resize', function() {
-        if (resizeTimer) clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function() {
-          resizeTimer = null;
-          var newWidth = pagesEl.clientWidth;
-          if (Math.abs(newWidth - lastWidth) < 2) return;   // ignore sub-pixel noise
-          lastWidth = newWidth;
-          relayoutForNewWidth().catch(console.error);
-        }, 200);
-      });
+      if (typeof ResizeObserver !== 'undefined') {
+        var ro = new ResizeObserver(function() {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(function() {
+            resizeTimer = null;
+            var newWidth = pagesEl.clientWidth;
+            if (!newWidth || Math.abs(newWidth - lastWidth) < 2) return;
+            console.log('pdf-shell resize', lastWidth, '→', newWidth);
+            lastWidth = newWidth;
+            relayoutForNewWidth().catch(console.error);
+          }, 200);
+        });
+        ro.observe(pagesEl);
+      }
     } catch (err) {
       setStatus('error: ' + (err && err.message ? err.message : String(err)));
       console.error('pdf load fail', err);
@@ -189,11 +199,16 @@
     }
   }
 
-  // Small API for ArkTS to drive (scroll to a specific page by number).
+  // Small API for ArkTS to drive.
   window.__shibeiReader = {
     scrollToPage: function(n) {
       var div = state.pageDivs[n];
       if (div) div.scrollIntoView({ block: 'start' });
+    },
+    // Forceable entry point: ArkTS can call this on fold-state change
+    // when ResizeObserver didn't fire (e.g., ArkWeb swapped containers).
+    relayout: function() {
+      relayoutForNewWidth().catch(console.error);
     },
   };
 })();
