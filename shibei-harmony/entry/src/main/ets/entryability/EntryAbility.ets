@@ -1,6 +1,7 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { webview } from '@kit.ArkWeb';
 import { ShibeiService } from '../services/ShibeiService';
 import { loadTheme, applyTheme } from '../app/ThemeManager';
 import { FoldObserver } from '../app/FoldObserver';
@@ -22,6 +23,20 @@ import { FoldObserver } from '../app/FoldObserver';
 export default class EntryAbility extends UIAbility {
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'shibei', 'EntryAbility onCreate');
+    // Register the `shibei-pdf://` scheme BEFORE any Web component is
+    // created. ArkWeb's Chromium blocks fetches to unknown schemes at the
+    // network layer; without this registration, pdfjs XHRs to
+    // `shibei-pdf://resource/...` never reach onInterceptRequest and fail
+    // with "Unexpected server response (0)". Must be called exactly once
+    // per process — customizeSchemes is a static, process-wide call.
+    try {
+      webview.WebviewController.customizeSchemes([
+        { schemeName: 'shibei-pdf', isSupportCORS: true, isSupportFetch: true },
+      ]);
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'customizeSchemes failed: %{public}s',
+        (err as Error).message);
+    }
     // Start the fold observer before any page can render so components
     // relying on @StorageProp(KEY_FOLD_STATUS) get a valid initial value.
     FoldObserver.instance.start();
