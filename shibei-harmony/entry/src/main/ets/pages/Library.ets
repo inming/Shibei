@@ -79,9 +79,11 @@ struct Library {
       if (!this.initReady) {
         Column() {
           if (this.initError) {
-            Text(I18n.t($r('app.string.common_init_failed'), this.initError)).fontColor('#c00');
+            Text(I18n.t($r('app.string.common_init_failed'), this.initError))
+              .fontColor($r('app.color.accent_error_strong'));
           } else {
-            Text(I18n.t($r('app.string.common_initializing'))).fontColor('#888');
+            Text(I18n.t($r('app.string.common_initializing')))
+              .fontColor($r('app.color.text_tertiary'));
           }
         }
         .width('100%').height('100%')

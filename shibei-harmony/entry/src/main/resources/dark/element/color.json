@@ -1,0 +1,26 @@
+{
+  "color": [
+    { "name": "start_window_background", "value": "#1A1A1A" },
+
+    { "name": "bg_primary", "value": "#1A1A1A" },
+    { "name": "bg_secondary", "value": "#0F0F0F" },
+    { "name": "bg_button_neutral", "value": "#2A2A2A" },
+
+    { "name": "text_primary", "value": "#E8E8E8" },
+    { "name": "text_secondary", "value": "#A0A0A0" },
+    { "name": "text_tertiary", "value": "#777777" },
+    { "name": "text_subtle", "value": "#666666" },
+    { "name": "text_disabled", "value": "#555555" },
+    { "name": "text_pagenum", "value": "#666666" },
+
+    { "name": "accent_primary", "value": "#5B9DF9" },
+    { "name": "accent_primary_alt", "value": "#5B9DF9" },
+    { "name": "accent_success", "value": "#3FBC8A" },
+    { "name": "accent_danger", "value": "#E55757" },
+    { "name": "accent_error_strong", "value": "#FF6B6B" },
+
+    { "name": "border_divider", "value": "#333333" },
+    { "name": "shadow_default", "value": "#80000000" },
+    { "name": "surface_tap_invisible", "value": "#01FFFFFF" }
+  ]
+}
