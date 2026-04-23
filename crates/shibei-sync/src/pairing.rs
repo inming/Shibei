@@ -109,12 +109,23 @@ mod tests {
         assert!(matches!(err, PairError::CredentialsMissing));
     }
 
+    // Seed the SQLite legacy fallback path with test creds. Can't use
+    // `credentials::store_credentials` here because after the A+ migration
+    // that function hits the real OS keychain, which prompts for user
+    // interaction and dies in `cargo test`. The fallback path in
+    // `load_credentials` is exactly what `build_pairing_envelope` will
+    // read via the `credentials::load_credentials` call chain.
+    fn seed_legacy_creds(conn: &rusqlite::Connection, ak: &str, sk: &str) {
+        sync_state::set(conn, "config:s3_access_key", ak).unwrap();
+        sync_state::set(conn, "config:s3_secret_key", sk).unwrap();
+    }
+
     #[test]
     fn fails_on_invalid_pin() {
         let (_tmp, conn) = setup_db();
         sync_state::set(&conn, "config:s3_region", "us-east-1").unwrap();
         sync_state::set(&conn, "config:s3_bucket", "my-bucket").unwrap();
-        credentials::store_credentials(&conn, "AKIA...", "SECRET...").unwrap();
+        seed_legacy_creds(&conn, "AKIA...", "SECRET...");
         let err = build_pairing_envelope(&conn, "12345").unwrap_err();
         assert!(matches!(err, PairError::InvalidPin));
     }
@@ -125,7 +136,7 @@ mod tests {
         sync_state::set(&conn, "config:s3_endpoint", "https://s3.example.com").unwrap();
         sync_state::set(&conn, "config:s3_region", "us-east-1").unwrap();
         sync_state::set(&conn, "config:s3_bucket", "my-bucket").unwrap();
-        credentials::store_credentials(&conn, "AKIAEXAMPLE", "SecretExampleKey").unwrap();
+        seed_legacy_creds(&conn, "AKIAEXAMPLE", "SecretExampleKey");
 
         let envelope = build_pairing_envelope(&conn, "987654").unwrap();
         let plain = shibei_pairing::decrypt_payload("987654", &envelope).unwrap();

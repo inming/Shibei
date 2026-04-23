@@ -386,6 +386,34 @@ pub fn run() {
                     eprintln!("[shibei] HTTP server failed: {}", e);
                 }
             });
+            // One-shot migration of legacy SQLite-stored S3 credentials to
+            // the OS keychain. Best-effort: keystore failures leave the
+            // SQLite rows in place so sync still works via the fallback
+            // path in `load_credentials`. Next startup retries.
+            {
+                let mig_pool = shared_pool.clone();
+                std::thread::spawn(move || {
+                    let pool_guard = match mig_pool.read() {
+                        Ok(g) => g,
+                        Err(e) => {
+                            eprintln!("[shibei] pool lock poisoned at creds migration: {}", e);
+                            return;
+                        }
+                    };
+                    let conn = match pool_guard.get() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("[shibei] db conn for creds migration failed: {}", e);
+                            return;
+                        }
+                    };
+                    match sync::credentials::migrate_credentials_to_keystore(&conn) {
+                        Ok(true) => eprintln!("[shibei] S3 credentials migrated from SQLite to OS keychain"),
+                        Ok(false) => { /* nothing to migrate, or keystore busy */ }
+                        Err(e) => eprintln!("[shibei] creds migration db error: {}", e),
+                    }
+                });
+            }
             // Initialize FTS search index if not yet done
             {
                 std::thread::spawn(move || {

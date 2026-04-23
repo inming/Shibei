@@ -3,6 +3,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 const SERVICE: &str = "shibei";
 const ACCOUNT: &str = "encryption-master-key";
+const ACCOUNT_S3: &str = "s3-credentials";
 const KEY_LEN: usize = 32;
 
 #[derive(Error, Debug)]
@@ -61,6 +62,66 @@ pub fn delete_master_key() -> Result<(), KeystoreError> {
     }
 }
 
+/// Wire format for the S3 credentials entry — stored as a single blob so
+/// access + secret live or die together. Using the same entry name avoids a
+/// half-migrated state where a TOCTOU between two keychain writes leaves
+/// the user with mismatched AK/SK.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct S3CredsBlob {
+    access_key: String,
+    secret_key: String,
+}
+
+/// Store S3 access + secret keys as a single JSON blob in the OS keychain.
+/// Replaces any existing entry atomically. The blob is not zeroized on
+/// disk (the OS keychain does its own at-rest encryption) but the buffer
+/// we hand to the keyring crate is dropped right after the call.
+pub fn save_s3_credentials(access_key: &str, secret_key: &str) -> Result<(), KeystoreError> {
+    let blob = S3CredsBlob {
+        access_key: access_key.to_string(),
+        secret_key: secret_key.to_string(),
+    };
+    let json = serde_json::to_string(&blob)
+        .map_err(|e| KeystoreError::InvalidFormat(e.to_string()))?;
+    let entry = ::keyring::Entry::new(SERVICE, ACCOUNT_S3)
+        .map_err(|e| KeystoreError::PlatformError(e.to_string()))?;
+    entry
+        .set_secret(json.as_bytes())
+        .map_err(|e| KeystoreError::PlatformError(e.to_string()))
+}
+
+/// Load S3 credentials from the OS keychain.
+/// Returns `Ok(None)` if the entry doesn't exist (not an error — the caller
+/// is expected to fall back to the SQLite legacy path during migration).
+pub fn load_s3_credentials() -> Result<Option<(String, String)>, KeystoreError> {
+    let entry = ::keyring::Entry::new(SERVICE, ACCOUNT_S3)
+        .map_err(|e| KeystoreError::PlatformError(e.to_string()))?;
+    match entry.get_secret() {
+        Ok(mut secret) => {
+            let json = std::str::from_utf8(&secret)
+                .map_err(|e| KeystoreError::InvalidFormat(e.to_string()))?;
+            let blob: S3CredsBlob = serde_json::from_str(json)
+                .map_err(|e| KeystoreError::InvalidFormat(e.to_string()))?;
+            secret.zeroize();
+            Ok(Some((blob.access_key, blob.secret_key)))
+        }
+        Err(::keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(KeystoreError::PlatformError(e.to_string())),
+    }
+}
+
+/// Delete the S3 credentials entry from the OS keychain.
+/// Silently succeeds if no entry exists.
+pub fn delete_s3_credentials() -> Result<(), KeystoreError> {
+    let entry = ::keyring::Entry::new(SERVICE, ACCOUNT_S3)
+        .map_err(|e| KeystoreError::PlatformError(e.to_string()))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(::keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(KeystoreError::PlatformError(e.to_string())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +163,32 @@ mod tests {
         let _ = delete_master_key(); // ensure clean
         let result = delete_master_key();
         assert!(result.is_ok(), "delete of non-existent should succeed");
+    }
+
+    #[test]
+    #[ignore] // Requires interactive macOS Keychain access; run manually with --ignored
+    fn test_s3_credentials_roundtrip() {
+        let _ = delete_s3_credentials();
+
+        let ak = "AKIAEXAMPLE";
+        let sk = "SecretExampleKeyWithSymbols+/=";
+        save_s3_credentials(ak, sk).expect("save should succeed");
+
+        let loaded = load_s3_credentials().expect("load should succeed");
+        let (loaded_ak, loaded_sk) = loaded.expect("should find stored creds");
+        assert_eq!(loaded_ak, ak);
+        assert_eq!(loaded_sk, sk);
+
+        delete_s3_credentials().expect("delete should succeed");
+        let after = load_s3_credentials().expect("load should succeed");
+        assert!(after.is_none());
+    }
+
+    #[test]
+    #[ignore] // Touches the real OS keychain; run manually with --ignored
+    fn test_s3_credentials_load_returns_none_when_missing() {
+        let _ = delete_s3_credentials();
+        let result = load_s3_credentials().expect("load should succeed");
+        assert!(result.is_none());
     }
 }
