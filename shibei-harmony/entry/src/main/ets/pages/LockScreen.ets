@@ -102,7 +102,7 @@ struct LockScreen {
         // User cancel / wrong finger — silent, user can retry via button.
       } else {
         // HUKS service errors, etc. Surface so user isn't confused by silence.
-        this.errorMsg = I18n.t($r('app.string.lock_bio_failed'), code);
+        this.errorMsg = I18n.t($r('app.string.lock_bio_failed'), I18n.translateError(code));
       }
     }
   }
@@ -133,7 +133,7 @@ struct LockScreen {
       } else if (code === 'error.pinIncorrect') {
         this.errorMsg = I18n.t($r('app.string.lock_pin_error'));
       } else {
-        this.errorMsg = I18n.t($r('app.string.lock_unlock_failed'), code);
+        this.errorMsg = I18n.t($r('app.string.lock_unlock_failed'), I18n.translateError(code));
       }
     }
   }
@@ -161,7 +161,7 @@ struct LockScreen {
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
       promptAction.showToast({
-        message: I18n.t($r('app.string.lock_recovery_failed'), code),
+        message: I18n.t($r('app.string.lock_recovery_failed'), I18n.translateError(code)),
       });
       this.recoveryStep = 'password';
       this.recoveryPassword = '';

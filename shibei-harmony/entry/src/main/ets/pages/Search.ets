@@ -55,7 +55,7 @@ struct SearchPage {
       this.results = ShibeiService.instance.searchResources(this.query.trim());
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.errorMessage = I18n.t($r('app.string.search_failed'), code);
+      this.errorMessage = I18n.t($r('app.string.search_failed'), I18n.translateError(code));
       hilog.error(0x0000, 'shibei', 'search fail: %{public}s', code);
       this.results = [];
     }

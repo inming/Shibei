@@ -117,7 +117,7 @@ struct Onboard {
       this.scanInfo = I18n.t(
         $r('app.string.onboard_scan_success_info'), result.originalValue.length);
     } catch (err) {
-      this.scanInfo = I18n.t($r('app.string.onboard_scan_failed'), err.message);
+      this.scanInfo = I18n.t($r('app.string.onboard_scan_failed'), I18n.translateError(err.message));
       hilog.warn(0x0000, 'shibei', 'scan fail: %{public}s', err.message);
     }
   }
@@ -148,7 +148,7 @@ struct Onboard {
       });
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.scanInfo = I18n.t($r('app.string.onboard_decrypt_failed'), code);
+      this.scanInfo = I18n.t($r('app.string.onboard_decrypt_failed'), I18n.translateError(code));
     }
   }
 
@@ -171,7 +171,7 @@ struct Onboard {
       this.currentStep = 2;
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.configError = I18n.t($r('app.string.onboard_config_save_failed'), code);
+      this.configError = I18n.t($r('app.string.onboard_config_save_failed'), I18n.translateError(code));
     }
     this.savingConfig = false;
   }
@@ -191,7 +191,7 @@ struct Onboard {
       this.currentStep = 3;
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.unlockError = I18n.t($r('app.string.onboard_unlock_failed'), code);
+      this.unlockError = I18n.t($r('app.string.onboard_unlock_failed'), I18n.translateError(code));
     }
     this.unlocking = false;
   }
@@ -222,7 +222,7 @@ struct Onboard {
       }, 600);
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.syncError = I18n.t($r('app.string.onboard_sync_failed'), code);
+      this.syncError = I18n.t($r('app.string.onboard_sync_failed'), I18n.translateError(code));
       this.showProgress = false;
     }
     this.syncing = false;
@@ -277,7 +277,7 @@ struct Onboard {
       this.enterLibrary();
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
-      this.onboardPinError = I18n.t($r('app.string.onboard_lock_enroll_failed'), code);
+      this.onboardPinError = I18n.t($r('app.string.onboard_lock_enroll_failed'), I18n.translateError(code));
       this.onboardPinStep = 'enter';
       this.onboardPinInput = '';
       this.onboardPinConfirm = '';

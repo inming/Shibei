@@ -54,7 +54,7 @@ export struct ResourceList {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
       hilog.warn(0x0000, 'shibei', 'pull-to-refresh sync fail: %{public}s', code);
       promptAction.showToast({
-        message: I18n.t($r('app.string.sidebar_sync_failed'), code),
+        message: I18n.t($r('app.string.sidebar_sync_failed'), I18n.translateError(code)),
       });
     } finally {
       this.refreshing = false;

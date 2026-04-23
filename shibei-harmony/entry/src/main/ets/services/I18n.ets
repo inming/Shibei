@@ -56,4 +56,33 @@ export class I18n {
       return 'zh';
     }
   }
+
+  /// Map a NAPI / Rust error code (e.g. "error.notUnlocked") to a localized
+  /// message. Unknown codes pass through verbatim so we don't swallow info.
+  static translateError(code: string): string {
+    switch (code) {
+      case 'error.notUnlocked':
+        return I18n.t($r('app.string.error_notUnlocked'));
+      case 'error.encryptionNotUnlocked':
+        return I18n.t($r('app.string.error_encryptionNotUnlocked'));
+      case 'error.notInitialized':
+        return I18n.t($r('app.string.error_notInitialized'));
+      case 'error.notConfigured':
+        return I18n.t($r('app.string.error_notConfigured'));
+      case 'error.pinIncorrect':
+        return I18n.t($r('app.string.error_pinIncorrect'));
+      case 'error.wrongPassword':
+        return I18n.t($r('app.string.error_wrongPassword'));
+      case 'error.keyFileTampered':
+        return I18n.t($r('app.string.error_keyFileTampered'));
+      case 'error.credentialsNotPrimed':
+        return I18n.t($r('app.string.error_credentialsNotPrimed'));
+      case 'error.credentialsLockPoisoned':
+        return I18n.t($r('app.string.error_credentialsLockPoisoned'));
+      case 'error.pairingBadPin':
+        return I18n.t($r('app.string.error_pairingBadPin'));
+      default:
+        return code;
+    }
+  }
 }

@@ -114,7 +114,7 @@ struct Settings {
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
       promptAction.showToast({
-        message: I18n.t($r('app.string.settings_lock_enable_failed'), code),
+        message: I18n.t($r('app.string.settings_lock_enable_failed'), I18n.translateError(code)),
       });
     }
   }
@@ -134,7 +134,7 @@ struct Settings {
       this.pinInput = '';
       const message = code === 'error.pinIncorrect'
         ? I18n.t($r('app.string.settings_lock_pin_incorrect'))
-        : I18n.t($r('app.string.settings_lock_disable_failed'), code);
+        : I18n.t($r('app.string.settings_lock_disable_failed'), I18n.translateError(code));
       promptAction.showToast({ message });
     }
   }
@@ -158,7 +158,7 @@ struct Settings {
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
       promptAction.showToast({
-        message: I18n.t($r('app.string.settings_bio_toggle_failed'), code),
+        message: I18n.t($r('app.string.settings_bio_toggle_failed'), I18n.translateError(code)),
       });
       // Re-read live state so the toggle UI reflects reality
       this.bioEnabled = ShibeiService.instance.lockIsBioEnabled();
@@ -195,7 +195,7 @@ struct Settings {
       this.pinStep = 'enter';
       const message = code === 'error.pinIncorrect'
         ? I18n.t($r('app.string.settings_lock_old_pin_incorrect'))
-        : I18n.t($r('app.string.settings_lock_pin_change_failed'), code);
+        : I18n.t($r('app.string.settings_lock_pin_change_failed'), I18n.translateError(code));
       promptAction.showToast({ message });
     }
   }
@@ -232,7 +232,7 @@ struct Settings {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
       promptAction.showToast({
-        message: I18n.t($r('app.string.settings_sync_failed'), code),
+        message: I18n.t($r('app.string.settings_sync_failed'), I18n.translateError(code)),
       });
     } finally {
       unsub();
@@ -279,7 +279,7 @@ struct Settings {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
       promptAction.showToast({
-        message: I18n.t($r('app.string.settings_reset_cursors_failed'), code),
+        message: I18n.t($r('app.string.settings_reset_cursors_failed'), I18n.translateError(code)),
       });
     }
     this.resetCursorsBusy = false;
@@ -323,7 +323,7 @@ struct Settings {
       });
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.resetError = I18n.t($r('app.string.settings_reset_device_failed'), code);
+      this.resetError = I18n.t($r('app.string.settings_reset_device_failed'), I18n.translateError(code));
     }
     this.resetting = false;
   }

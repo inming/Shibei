@@ -58,7 +58,7 @@ export struct FolderDrawer {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
       promptAction.showToast({
-        message: I18n.t($r('app.string.sidebar_sync_failed'), code),
+        message: I18n.t($r('app.string.sidebar_sync_failed'), I18n.translateError(code)),
       });
     } finally {
       unsub();
