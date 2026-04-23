@@ -150,6 +150,16 @@ fn reset_device_inner() -> Result<(), String> {
             tx.execute(&format!(r#"DELETE FROM "{}""#, name), [])
                 .map_err(|e| format!("error.wipeTable({name}): {e}"))?;
         }
+        // Re-seed the `__root__` pseudo-folder that migration 001 inserts.
+        // Without it, the post-reset `ensure_inbox_folder` (on next
+        // `init`) fails with `FOREIGN KEY constraint failed` because
+        // `__inbox__.parent_id = '__root__'` points at a missing row.
+        tx.execute(
+            "INSERT INTO folders (id, name, parent_id, sort_order, created_at, updated_at) \
+             VALUES ('__root__', 'root', '__root__', 0, datetime('now'), datetime('now'))",
+            [],
+        )
+        .map_err(|e| format!("error.reseedRoot: {e}"))?;
         tx.commit().map_err(|e| format!("error.txCommit: {e}"))?;
     }
 

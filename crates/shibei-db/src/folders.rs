@@ -391,6 +391,16 @@ pub fn ensure_inbox_folder(
     let now = now_iso8601();
     let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
 
+    // Self-heal the `__root__` pseudo-folder. Migration 001 inserts it on
+    // fresh DBs, but a past reset_device may have wiped all folder rows
+    // including this one. Inserting __inbox__ with parent_id='__root__'
+    // would then fail FK. `INSERT OR IGNORE` is a no-op in the happy path.
+    conn.execute(
+        "INSERT OR IGNORE INTO folders (id, name, parent_id, sort_order, created_at, updated_at) \
+         VALUES ('__root__', 'root', '__root__', 0, ?1, ?1)",
+        params![now],
+    )?;
+
     conn.execute(
         "INSERT OR IGNORE INTO folders (id, name, parent_id, sort_order, created_at, updated_at, hlc)
          VALUES (?1, '收件箱', '__root__', 0, ?2, ?3, ?4)",
