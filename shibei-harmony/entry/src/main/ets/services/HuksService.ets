@@ -28,6 +28,11 @@ const BIO_ALIAS = 'shibei_bio_kek_v1';
 const IV_LEN = 12;   // HUKS AES-GCM requires 12-byte IV
 const TAG_LEN = 16;  // HUKS AES-GCM tag (split off outData on decrypt)
 
+/// Fixed AAD for AES-GCM. HUKS's AES/GCM/NoPadding mode requires the
+/// HUKS_TAG_ASSOCIATED_DATA param even if unused; a zero-length blob
+/// isn't accepted by all ROMs, so use a short fixed byte string.
+const AAD = new Uint8Array([0x73, 0x68, 0x69, 0x62, 0x65, 0x69]); // "shibei"
+
 /// Concat [iv | body]. Returns a fresh Uint8Array.
 function concatIvBody(iv: Uint8Array, body: Uint8Array): Uint8Array {
   const out = new Uint8Array(iv.byteLength + body.byteLength);
@@ -83,14 +88,17 @@ export class HuksService {
     const encoder = new util.Base64Helper();
     const pt = encoder.decodeSync(plainB64);
     const iv = this.randomIv();
+    // Match the official HUKS AES/GCM/NoPadding sample verbatim:
+    // NONCE (not IV), ASSOCIATED_DATA required, no DIGEST. Same props
+    // array is passed to both initSession and finishSession.
     const props: huks.HuksParam[] = [
       { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
       { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
       { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
+      { tag: huks.HuksTag.HUKS_TAG_ASSOCIATED_DATA, value: AAD },
     ];
     const handle = await huks.initSession(DEVICE_ALIAS, { properties: props });
     const finished = await huks.finishSession(handle.handle, { properties: props, inData: pt });
@@ -103,21 +111,20 @@ export class HuksService {
     const encoder = new util.Base64Helper();
     const blobBytes = encoder.decodeSync(outerB64);
     const parts = splitIvCtTag(blobBytes);
-    const initProps: huks.HuksParam[] = [
+    // Decrypt props include AE_TAG in the SAME shared array (per official
+    // sample). Pass same props to both init and finish.
+    const props: huks.HuksParam[] = [
       { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
       { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
       { tag: huks.HuksTag.HUKS_TAG_NONCE, value: parts.iv },
-    ];
-    const handle = await huks.initSession(DEVICE_ALIAS, { properties: initProps });
-    // AE_TAG only goes on finishSession for GCM decrypt; on init it triggers -30.
-    const finishProps: huks.HuksParam[] = [...initProps,
+      { tag: huks.HuksTag.HUKS_TAG_ASSOCIATED_DATA, value: AAD },
       { tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: parts.tag },
     ];
-    const finished = await huks.finishSession(handle.handle, { properties: finishProps, inData: parts.ctBody });
+    const handle = await huks.initSession(DEVICE_ALIAS, { properties: props });
+    const finished = await huks.finishSession(handle.handle, { properties: props, inData: parts.ctBody });
     const pt = finished.outData ?? new Uint8Array();
     return encoder.encodeToStringSync(pt);
   }
@@ -211,21 +218,24 @@ export class HuksService {
         iv.byteLength, inData.byteLength, tag.byteLength);
     }
 
-    // initSession props — do NOT include AE_TAG here. AE_TAG only belongs on
-    // finishSession for decrypt; passing it to init triggers HUKS -30
-    // (HKS_ERROR_PARAM_NOT_FOUND, surfaced as "The parameter does not exist.")
-    const initProps: huks.HuksParam[] = [
+    // Match the official HUKS AES/GCM sample — shared props for init+finish.
+    // NONCE (not IV), ASSOCIATED_DATA required, no DIGEST. AE_TAG included
+    // on decrypt.
+    const props: huks.HuksParam[] = [
       { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
       { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: purpose },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
       { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
+      { tag: huks.HuksTag.HUKS_TAG_ASSOCIATED_DATA, value: AAD },
     ];
+    if (!isEncrypt && tag) {
+      props.push({ tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: tag });
+    }
 
     hilog.info(0x0000, 'shibei', 'bioCipher: calling initSession');
-    const handle = await huks.initSession(BIO_ALIAS, { properties: initProps });
+    const handle = await huks.initSession(BIO_ALIAS, { properties: props });
     hilog.info(0x0000, 'shibei', 'bioCipher: initSession ok handle=%{public}d', handle.handle);
     const hukschallenge: Uint8Array = handle.challenge ?? new Uint8Array();
     if (hukschallenge.byteLength === 0) {
@@ -238,13 +248,10 @@ export class HuksService {
     const authToken = await requestBioAuthForChallenge(hukschallenge);
     hilog.info(0x0000, 'shibei', 'bioCipher: auth ok token=%{public}d', authToken.byteLength);
 
-    // Step 4: finishSession — AUTH_TOKEN always, AE_TAG only on decrypt.
-    const finishProps: huks.HuksParam[] = [...initProps,
+    // finishSession adds AUTH_TOKEN on top of the same shared props.
+    const finishProps: huks.HuksParam[] = [...props,
       { tag: huks.HuksTag.HUKS_TAG_AUTH_TOKEN, value: authToken },
     ];
-    if (!isEncrypt && tag) {
-      finishProps.push({ tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: tag });
-    }
     const finished = await huks.finishSession(handle.handle, { properties: finishProps, inData });
     hilog.info(0x0000, 'shibei', 'bioCipher: finishSession ok out=%{public}d',
       finished.outData?.byteLength ?? 0);
