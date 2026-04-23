@@ -414,13 +414,22 @@ async fn build_sync_engine() -> Result<shibei_sync::engine::SyncEngine, String> 
     // callback doesn't reach back into the OnceLock every time.
     let cache = app.cache.clone();
     let base_dir = app.data_dir.clone();
+    let pool = app.db_pool.clone();
     let on_saved: shibei_sync::engine::SnapshotSavedCallback = Arc::new(move |id, _rtype, bytes| {
+        let mut evicted: Vec<String> = Vec::new();
         if let Ok(mut guard) = cache.lock() {
             guard.put(id, bytes);
-            let _ = guard.evict_if_over_limit(&base_dir);
+            evicted = guard.evict_if_over_limit(&base_dir);
             if let Err(e) = guard.flush(&base_dir) {
                 eprintln!("[cache] flush after put failed: {e}");
             }
+        }
+        // §7.5: when LRU drops a snapshot from disk, also drop its
+        // `body_text` so FTS stops returning stale matches the user can't
+        // click through to. Title/URL/highlight-text columns stay — the
+        // user can still find + re-cache the resource by name.
+        if !evicted.is_empty() {
+            clear_body_text_for(&pool, &evicted);
         }
     });
 
@@ -642,6 +651,18 @@ fn touch_cache(id: &str) {
     }
     if let Err(e) = guard.flush(&app.data_dir) {
         eprintln!("[cache] flush after touch failed: {e}");
+    }
+}
+
+/// Clear `body_text` for the given resource ids and rebuild their FTS
+/// entries. Used by §7.5: every time an LRU eviction drops a snapshot
+/// from disk we also strip body_text so search stops matching content
+/// the user can't open. Desktop doesn't use this (all snapshots stay).
+fn clear_body_text_for(pool: &shibei_db::SharedPool, ids: &[String]) {
+    let Ok(pool_read) = pool.read() else { return };
+    let Ok(conn) = pool_read.get() else { return };
+    for id in ids {
+        let _ = shibei_db::resources::set_plain_text(&conn, id, "");
     }
 }
 
@@ -971,16 +992,18 @@ pub fn cache_clear() -> String {
     let Ok(app) = state::get() else {
         return "0".to_string();
     };
-    let removed = match app.cache.lock() {
+    let (removed, cleared_ids) = match app.cache.lock() {
         Ok(mut g) => {
             let ids = g.clear_all(&app.data_dir);
             if let Err(e) = g.flush(&app.data_dir) {
                 eprintln!("[cache] flush after clear failed: {e}");
             }
-            ids.len()
+            (ids.len(), ids)
         }
-        Err(_) => 0,
+        Err(_) => (0, Vec::new()),
     };
+    // §7.5: strip body_text for every dropped id.
+    clear_body_text_for(&app.db_pool, &cleared_ids);
     // Sweep any orphan `storage/*` dirs that were never tracked in the
     // cache index. Safe to wipe wholesale because the index clear above
     // already accounts for every cached id, and the DB does not require
@@ -1003,16 +1026,17 @@ pub fn cache_evict() -> String {
     let Ok(app) = state::get() else {
         return "0".to_string();
     };
-    let n = match app.cache.lock() {
+    let (n, evicted_ids) = match app.cache.lock() {
         Ok(mut g) => {
             let ids = g.evict_if_over_limit(&app.data_dir);
             if let Err(e) = g.flush(&app.data_dir) {
                 eprintln!("[cache] flush after evict failed: {e}");
             }
-            ids.len()
+            (ids.len(), ids)
         }
-        Err(_) => 0,
+        Err(_) => (0, Vec::new()),
     };
+    clear_body_text_for(&app.db_pool, &evicted_ids);
     n.to_string()
 }
 
@@ -1024,15 +1048,19 @@ pub fn cache_set_limit(limit_bytes: i64) -> String {
         return "error.notInitialized".to_string();
     };
     let bytes = if limit_bytes < 1 { 1 } else { limit_bytes as u64 };
-    let Ok(mut guard) = app.cache.lock() else {
-        return "error.cacheLockPoisoned".to_string();
-    };
-    guard.set_limit(bytes);
-    let _ = guard.evict_if_over_limit(&app.data_dir);
-    if let Err(e) = guard.flush(&app.data_dir) {
-        eprintln!("[cache] flush after set_limit failed: {e}");
-        return format!("error.cacheFlush: {e}");
+    let evicted_ids: Vec<String>;
+    {
+        let Ok(mut guard) = app.cache.lock() else {
+            return "error.cacheLockPoisoned".to_string();
+        };
+        guard.set_limit(bytes);
+        evicted_ids = guard.evict_if_over_limit(&app.data_dir);
+        if let Err(e) = guard.flush(&app.data_dir) {
+            eprintln!("[cache] flush after set_limit failed: {e}");
+            return format!("error.cacheFlush: {e}");
+        }
     }
+    clear_body_text_for(&app.db_pool, &evicted_ids);
     "ok".to_string()
 }
 

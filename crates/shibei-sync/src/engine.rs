@@ -1593,13 +1593,20 @@ impl SyncEngine {
         let state_key = format!("snapshot:{}", resource_id);
         sync_state::set(&conn, &state_key, "synced")?;
 
-        // Extract and store plain text for HTML snapshots (best-effort)
-        if resource_type != "pdf" {
-            if let Ok(html_str) = std::str::from_utf8(&data) {
-                let text = shibei_storage::plain_text::extract_plain_text(html_str);
-                if !text.is_empty() {
-                    let _ = shibei_db::resources::set_plain_text(&conn, resource_id, &text);
-                }
+        // Extract and store plain text (best-effort). `set_plain_text`
+        // also rebuilds the FTS body_text column, so mobile's local FTS
+        // lights up as soon as a snapshot is on disk (§7.5). Both HTML
+        // (scraper) and PDF (pdf-extract) paths mirror the desktop
+        // `backfill_plain_text` behavior.
+        if resource_type == "pdf" {
+            let text = shibei_storage::pdf_text::extract_plain_text(&data);
+            if !text.is_empty() {
+                let _ = shibei_db::resources::set_plain_text(&conn, resource_id, &text);
+            }
+        } else if let Ok(html_str) = std::str::from_utf8(&data) {
+            let text = shibei_storage::plain_text::extract_plain_text(html_str);
+            if !text.is_empty() {
+                let _ = shibei_db::resources::set_plain_text(&conn, resource_id, &text);
             }
         }
 
