@@ -4,16 +4,16 @@ import { I18n } from '../services/I18n';
 // Four-color palette — same order as Reader.ets so the "change color" swatch
 // in the long-press menu reads left-to-right in the familiar sequence.
 //
-// `value` is the CSS color used as annotation data key; `nameKey` is an i18n
-// resource for future accessibility / tooltip use. Current UI only paints
-// circles, so the label is not rendered — but the key stays so grep-sweeps
-// for hardcoded CJK stay clean.
-interface HlColorOption { value: string; nameKey: Resource; }
+// `value` is the CSS color used as annotation data key — cross-device
+// annotation storage, do not change. No label field: the menu only
+// renders colored circles. Future a11y/tooltip can look up
+// reader_hl_color_{yellow,green,blue,pink} via I18n.t.
+interface HlColorOption { value: string; }
 const HL_COLORS: HlColorOption[] = [
-  { value: '#ffeb3b', nameKey: $r('app.string.reader_hl_color_yellow') },
-  { value: '#81c784', nameKey: $r('app.string.reader_hl_color_green') },
-  { value: '#64b5f6', nameKey: $r('app.string.reader_hl_color_blue') },
-  { value: '#f48fb1', nameKey: $r('app.string.reader_hl_color_pink') },
+  { value: '#ffeb3b' },
+  { value: '#81c784' },
+  { value: '#64b5f6' },
+  { value: '#f48fb1' },
 ];
 
 @Component

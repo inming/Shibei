@@ -36,15 +36,15 @@ interface ReaderParams { resourceId?: string; }
 //
 // `value` is the CSS color used both as paint and as data key for
 // createHighlight — it MUST NOT change without coordinating with desktop
-// annotation storage. `nameKey` is an i18n lookup for accessibility /
-// future tooltips; the palette itself only renders color circles so
-// the label is not currently shown in UI.
-interface HlColor { value: string; nameKey: Resource; }
+// annotation storage. The palette only renders colored circles, so no
+// label field is needed; if a future tooltip/a11y pass needs one,
+// look up reader_hl_color_{yellow,green,blue,pink} via I18n.t.
+interface HlColor { value: string; }
 const HL_COLORS: HlColor[] = [
-  { value: '#ffeb3b', nameKey: $r('app.string.reader_hl_color_yellow') },
-  { value: '#81c784', nameKey: $r('app.string.reader_hl_color_green') },
-  { value: '#64b5f6', nameKey: $r('app.string.reader_hl_color_blue') },
-  { value: '#f48fb1', nameKey: $r('app.string.reader_hl_color_pink') },
+  { value: '#ffeb3b' },
+  { value: '#81c784' },
+  { value: '#64b5f6' },
+  { value: '#f48fb1' },
 ];
 
 // Header row shape for WebResourceResponse.setResponseHeader. ArkTS strict
