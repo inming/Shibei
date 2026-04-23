@@ -11,6 +11,7 @@ import {
   SelectionPayload,
   ClickPayload,
   ReadyPayload,
+  ZoomPayload,
 } from '../components/AnnotationBridge';
 import { AnnotationPanel } from '../components/AnnotationPanel';
 import { AnnotationsBundle } from '../services/ShibeiService';
@@ -79,6 +80,7 @@ struct Reader {
     onSelection: (p: SelectionPayload) => this.handleSelection(p),
     onClick: (p: ClickPayload) => this.handleClick(p),
     onReady: (p: ReadyPayload) => this.handleReady(p),
+    onZoom: (p: ZoomPayload) => this.handleZoom(p),
   });
   private unsubscribe: (() => void) | null = null;
   // Debounce scroll persistence — onScroll fires continuously during a
@@ -262,6 +264,19 @@ struct Reader {
       return;
     }
     this.panelOpen = true;
+  }
+
+  // Shell-driven zoom settle — fired after pinch gestures resolve OR after
+  // our own applyPdfZoom → setZoom round-trip. In both cases we mirror the
+  // value into @State so the toolbar percentage stays truthful, and debounce
+  // a prefs save. The runJavaScript path is NOT invoked here (shell already
+  // has the state); would cause a redundant rebuild.
+  private handleZoom(p: ZoomPayload): void {
+    if (typeof p.zoom !== 'number') return;
+    const z = clampZoom(p.zoom);
+    if (Math.abs(z - this.pdfZoom) < 0.001) return;
+    this.pdfZoom = z;
+    this.scheduleZoomSave();
   }
 
   private handleReady(_: ReadyPayload): void {
@@ -657,6 +672,13 @@ struct Reader {
           })
             .domStorageAccess(true)
             .javaScriptAccess(true)
+            // Disable ArkWeb's native pinch-to-zoom so our own touchmove
+            // handler in main.js gets the gesture cleanly and can drive
+            // pdfjs to re-render at the new scale. ArkWeb's native zoom
+            // does a CSS transform scale — fine for HTML but blurs the
+            // PDF canvas since pdfjs would still be rendering at the old
+            // scale underneath.
+            .zoomAccess(false)
             .onControllerAttached(() => {
               // Same bridge contract as HTML — pdf-annotator-mobile.js
               // speaks the identical SelectionPayload / ClickPayload /

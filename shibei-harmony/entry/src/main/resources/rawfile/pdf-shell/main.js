@@ -294,7 +294,94 @@
     state.scale = state.baseFitScale * state.zoomFactor;
     await rebuildAllPages();
     restoreScrollState(prior);
+    if (window.shibeiBridge) {
+      try { window.shibeiBridge.emit('zoom', JSON.stringify({ zoom: z })); } catch (_) {}
+    }
   }
+
+  // ── Pinch-to-zoom ─────────────────────────────────────────────────────
+  //
+  // Two-phase zoom so the user gets live feedback without paying for a full
+  // pdfjs re-render every frame:
+  //
+  //   1. touchmove (2 fingers): apply a cheap CSS `transform: scale(k)` on
+  //      #pages. This blurs the canvas proportionally to k but holds the
+  //      user's fingers "stuck" to the content in real time.
+  //   2. touchend: strip the transform, call applyZoom(finalZoom) which
+  //      does the real pdfjs re-render at the new scale. Canvas snaps back
+  //      to crisp. The momentary blur-then-sharpen is the standard pattern
+  //      for WebView pinch; same trick Safari iOS uses for its own zoom.
+  //
+  // We attach to document (not #pages) because touch events bubble from any
+  // descendant, and using passive:false lets us preventDefault to keep
+  // ArkWeb's default gesture handling (scroll, native zoom) from fighting.
+
+  var pinch = {
+    active: false,
+    initialDistance: 0,
+    initialZoom: 1.0,
+    liveZoom: 1.0,
+    // Midpoint between the two fingers in viewport coordinates at
+    // pinch-start. Used as the CSS transform-origin so the pinch feels
+    // anchored where the fingers are, not at the top-left of #pages.
+    originX: 0,
+    originY: 0,
+  };
+
+  function pinchDistance(t1, t2) {
+    var dx = t1.clientX - t2.clientX;
+    var dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  document.addEventListener('touchstart', function(ev) {
+    if (ev.touches.length !== 2) return;
+    pinch.active = true;
+    pinch.initialDistance = pinchDistance(ev.touches[0], ev.touches[1]);
+    pinch.initialZoom = state.zoomFactor;
+    pinch.liveZoom = state.zoomFactor;
+    var midX = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
+    var midY = (ev.touches[0].clientY + ev.touches[1].clientY) / 2;
+    // transform-origin is relative to the element's own box, not the
+    // viewport — convert by subtracting the element's offset.
+    var rect = pagesEl.getBoundingClientRect();
+    pinch.originX = midX - rect.left;
+    pinch.originY = midY - rect.top;
+    pagesEl.style.transformOrigin = pinch.originX + 'px ' + pinch.originY + 'px';
+    // Kill the transition briefly so scale changes track fingers without lag.
+    pagesEl.style.transition = 'none';
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(ev) {
+    if (!pinch.active || ev.touches.length !== 2) return;
+    // preventDefault cancels native ArkWeb pinch-zoom on the page (we
+    // still need zoomAccess(false) from ArkTS too, this is belt-and-suspenders).
+    if (ev.cancelable) ev.preventDefault();
+    var d = pinchDistance(ev.touches[0], ev.touches[1]);
+    if (pinch.initialDistance <= 0) return;
+    var raw = pinch.initialZoom * (d / pinch.initialDistance);
+    pinch.liveZoom = clampZoom(raw);
+    // Live preview via CSS transform — cheap, but the canvas goes blurry
+    // until touchend triggers the real re-render.
+    var k = pinch.liveZoom / pinch.initialZoom;
+    pagesEl.style.transform = 'scale(' + k + ')';
+  }, { passive: false });
+
+  function endPinch() {
+    if (!pinch.active) return;
+    pinch.active = false;
+    var finalZoom = pinch.liveZoom;
+    pagesEl.style.transition = '';
+    pagesEl.style.transform = '';
+    pagesEl.style.transformOrigin = '';
+    // Only re-render if the zoom actually changed — prevents a pinch that
+    // ended back at the starting scale (user cancelled) from rebuilding.
+    if (Math.abs(finalZoom - pinch.initialZoom) > 0.005) {
+      applyZoom(finalZoom).catch(console.error);
+    }
+  }
+  document.addEventListener('touchend', endPinch, { passive: true });
+  document.addEventListener('touchcancel', endPinch, { passive: true });
 
   // Small API for ArkTS to drive.
   window.__shibeiReader = {

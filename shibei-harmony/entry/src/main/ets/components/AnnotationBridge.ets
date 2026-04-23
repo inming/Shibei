@@ -26,10 +26,18 @@ export interface ReadyPayload {
   resourceId?: string;
 }
 
+// Emitted by pdf-shell main.js after applyZoom() settles — either from a
+// touch-end pinch gesture resolving or from ArkTS driving setZoom(). Lets
+// the ArkTS host mirror the shell's zoomFactor into its @State + prefs.
+export interface ZoomPayload {
+  zoom?: number;
+}
+
 export interface BridgeHandlers {
   onSelection: (p: SelectionPayload) => void;
   onClick: (p: ClickPayload) => void;
   onReady: (p: ReadyPayload) => void;
+  onZoom: (p: ZoomPayload) => void;
 }
 
 /// The object that gets wired into the WebView via registerJavaScriptProxy.
@@ -51,6 +59,8 @@ export class AnnotationBridge {
         this.handlers.onClick(payload as ClickPayload);
       } else if (type === 'ready') {
         this.handlers.onReady(payload as ReadyPayload);
+      } else if (type === 'zoom') {
+        this.handlers.onZoom(payload as ZoomPayload);
       } else {
         hilog.warn(0x0000, 'shibei', 'bridge unknown type=%{public}s', type);
       }
