@@ -137,29 +137,21 @@ export class LockService {
   }
 
   async unlockWithBio(): Promise<void> {
-    hilog.info(0x0000, 'shibei', 'unlockWithBio: entry');
     const svc = ShibeiService.instance;
     const huks = HuksService.instance;
-    hilog.info(0x0000, 'shibei', 'unlockWithBio: calling lockGetBioWrappedMk');
     const wrapped = svc.lockGetBioWrappedMk();
-    hilog.info(0x0000, 'shibei', 'unlockWithBio: wrapped len=%{public}d', wrapped.length);
     if (!wrapped) throw new ShibeiError('error.bioNotEnabled');
     let mkB64: string;
     try {
-      hilog.info(0x0000, 'shibei', 'unlockWithBio: calling huks.unwrapBio');
       mkB64 = await huks.unwrapBio(wrapped);
-      hilog.info(0x0000, 'shibei', 'unlockWithBio: unwrapBio ok, mk len=%{public}d', mkB64.length);
     } catch (e) {
       // Force-cast to string via conversion — some ArkTS runtime builds
-      // return a message value where `.startsWith` is undefined, producing
-      // a confusing "undefined is not callable" cascade that masks the
-      // real HUKS error.
+      // leave `.message` without `startsWith`, which masks the real HUKS
+      // error as a confusing "undefined is not callable" at the catch site.
       const raw = (e as Error).message;
       const msg: string = (typeof raw === 'string') ? raw : String(raw);
-      hilog.warn(0x0000, 'shibei', 'unwrapBio threw: %{public}s', msg);
       throw new ShibeiError(msg);
     }
-    hilog.info(0x0000, 'shibei', 'unlockWithBio: pushing mk');
     await svc.lockPushUnwrappedMk(mkB64);
     this.setState(LockState.Unlocked);
   }
