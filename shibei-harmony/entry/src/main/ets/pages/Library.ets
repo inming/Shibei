@@ -24,12 +24,17 @@ struct Library {
   @State initError: string = '';
   @State drawerOpen: boolean = false;
   @State selectedFolderId: string = INBOX_FOLDER_ID;
-  @State selectedFolderLabel: string = '收件箱';
+  @State selectedFolderLabel: string = '';
   // Kept in sync with FoldObserver; updates here trigger an automatic
   // re-layout between Embed / Overlay without reopening the page.
   @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
 
   async aboutToAppear(): Promise<void> {
+    // I18n is wired in EntryAbility.onWindowStageCreate before any page
+    // renders, so lookup here is safe. Do it before init so the first
+    // frame already has the localized inbox label.
+    this.selectedFolderLabel = I18n.t($r('app.string.sidebar_inbox'));
+
     // init is idempotent — EntryAbility also calls it on cold start.
     try {
       const ctx = getContext(this) as common.UIAbilityContext;
@@ -46,9 +51,11 @@ struct Library {
     this.selectedFolderId = id;
     // Derive a display label; the folder name comes from ShibeiService
     // only for non-virtual folders. Cheap lookup for MVP.
-    if (id === '__all__') this.selectedFolderLabel = '所有资料';
-    else if (id === INBOX_FOLDER_ID) this.selectedFolderLabel = '收件箱';
-    else {
+    if (id === '__all__') {
+      this.selectedFolderLabel = I18n.t($r('app.string.sidebar_all_resources'));
+    } else if (id === INBOX_FOLDER_ID) {
+      this.selectedFolderLabel = I18n.t($r('app.string.sidebar_inbox'));
+    } else {
       const folders = ShibeiService.instance.listFolders();
       const found = folders.find(f => f.id === id);
       this.selectedFolderLabel = found ? found.name : id;
@@ -161,7 +168,7 @@ struct Library {
             if (this.foldStatus === FoldStatus.FOLDED && this.drawerOpen) {
               Column()
                 .width('100%').height('100%')
-                .backgroundColor('#01000000')
+                .backgroundColor($r('app.color.surface_tap_invisible'))
                 .onClick(() => { this.drawerOpen = false; });
             }
           }

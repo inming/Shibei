@@ -148,6 +148,43 @@
     { "name": "annotation_note_add", "value": "+ Note" },
     { "name": "annotation_comment_add", "value": "+ Comment" },
     { "name": "annotation_empty_hint", "value": "Long-press text to create a highlight" },
-    { "name": "annotation_copy_link", "value": "Copy Link" }
+    { "name": "annotation_copy_link", "value": "Copy Link" },
+
+    { "name": "lock_title", "value": "Locked" },
+    { "name": "lock_use_biometric", "value": "Use Biometric" },
+    { "name": "lock_throttle_seconds", "value": "Retry in %1$d sec" },
+    { "name": "lock_throttle_too_many", "value": "Too many failures. Retry in %1$d sec." },
+    { "name": "lock_pin_error", "value": "Incorrect PIN" },
+    { "name": "lock_unlock_failed", "value": "Unlock failed: %1$s" },
+    { "name": "lock_bio_revoked", "value": "Biometric set changed. Unlock with PIN, then re-enable biometric in Settings." },
+    { "name": "lock_bio_failed", "value": "Biometric failed: %1$s" },
+    { "name": "lock_forgot_pin", "value": "Forgot PIN?" },
+    { "name": "lock_recovery_password_step", "value": "Enter E2EE Password" },
+    { "name": "lock_recovery_pin_step", "value": "Set New PIN" },
+    { "name": "lock_recovery_password_placeholder", "value": "E2EE password" },
+    { "name": "lock_recovery_new_pin_placeholder", "value": "4-digit new PIN" },
+    { "name": "lock_recovery_pin_invalid", "value": "New PIN must be 4 digits" },
+    { "name": "lock_recovery_failed", "value": "Recovery failed: %1$s" },
+
+    { "name": "search_placeholder", "value": "Search resources, annotations, body…" },
+    { "name": "search_failed", "value": "Search failed: %1$s" },
+    { "name": "search_empty_prompt", "value": "Enter keywords to search" },
+    { "name": "search_no_match", "value": "No matches" },
+    { "name": "search_match_label_highlights", "value": "annotations" },
+    { "name": "search_match_label_comments", "value": "comments" },
+    { "name": "search_match_label_title", "value": "title" },
+    { "name": "search_match_label_description", "value": "description" },
+    { "name": "search_match_label_body", "value": "body" },
+    { "name": "search_match_suffix", "value": "matched %1$s" },
+
+    { "name": "sidebar_inbox", "value": "Inbox" },
+    { "name": "sidebar_all_resources", "value": "All Resources" },
+    { "name": "sidebar_folders_label", "value": "Folders" },
+    { "name": "sidebar_sync_skipped", "value": "Sync skipped" },
+    { "name": "sidebar_sync_failed", "value": "Sync failed: %1$s" },
+
+    { "name": "resource_list_empty", "value": "No items in this folder" },
+    { "name": "resource_list_empty_hint", "value": "(No import entry in Phase 2; check back after sync)" },
+    { "name": "resource_list_error", "value": "err: %1$s" }
   ]
 }

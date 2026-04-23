@@ -3,6 +3,7 @@ import { router, promptAction } from '@kit.ArkUI';
 // `focusControl` is a global ArkTS namespace (not a Kit export) — use it directly.
 import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { LockService } from '../services/LockService';
+import { I18n } from '../services/I18n';
 
 const PIN_INPUT_ID = 'lockScreenPinInput';
 
@@ -95,13 +96,13 @@ struct LockScreen {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
       hilog.warn(0x0000, 'shibei', 'tryBio failed: %{public}s', code);
       if (code === 'error.bioRevoked') {
-        this.errorMsg = '指纹库已变更,请用 PIN 解锁后在设置里重新启用生物识别';
+        this.errorMsg = I18n.t($r('app.string.lock_bio_revoked'));
         this.bioAvailable = false;
       } else if (code === 'error.bioAuthFailed' || code.startsWith('error.bioAuthFailed:')) {
         // User cancel / wrong finger — silent, user can retry via button.
       } else {
         // HUKS service errors, etc. Surface so user isn't confused by silence.
-        this.errorMsg = `生物识别失败: ${code}`;
+        this.errorMsg = I18n.t($r('app.string.lock_bio_failed'), code);
       }
     }
   }
@@ -124,15 +125,15 @@ struct LockScreen {
         const secs = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
         this.throttleSecs = secs;
         if (secs > 0) {
-          this.errorMsg = `连续错误,${secs} 秒后再试`;
+          this.errorMsg = I18n.t($r('app.string.lock_throttle_too_many'), secs);
           this.startThrottleCountdown();
         } else {
-          this.errorMsg = 'PIN 错误';
+          this.errorMsg = I18n.t($r('app.string.lock_pin_error'));
         }
       } else if (code === 'error.pinIncorrect') {
-        this.errorMsg = 'PIN 错误';
+        this.errorMsg = I18n.t($r('app.string.lock_pin_error'));
       } else {
-        this.errorMsg = `解锁失败: ${code}`;
+        this.errorMsg = I18n.t($r('app.string.lock_unlock_failed'), code);
       }
     }
   }
@@ -144,7 +145,9 @@ struct LockScreen {
       return;
     }
     if (!/^\d{4}$/.test(this.recoveryNewPin)) {
-      promptAction.showToast({ message: '新 PIN 必须是 4 位数字' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.lock_recovery_pin_invalid')),
+      });
       return;
     }
     this.recovering = true;
@@ -157,7 +160,9 @@ struct LockScreen {
       });
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
-      promptAction.showToast({ message: `恢复失败: ${code}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.lock_recovery_failed'), code),
+      });
       this.recoveryStep = 'password';
       this.recoveryPassword = '';
     }
@@ -182,7 +187,8 @@ struct LockScreen {
   build() {
     Column() {
       if (!this.showRecovery) {
-        Text('已锁定').fontSize(28).fontWeight(FontWeight.Bold)
+        Text(I18n.t($r('app.string.lock_title')))
+          .fontSize(28).fontWeight(FontWeight.Bold)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .margin({ top: 80, bottom: 32 });
 
@@ -210,13 +216,14 @@ struct LockScreen {
         }
 
         if (this.throttleSecs > 0) {
-          Text(`${this.throttleSecs} 秒后可重试`).fontSize(12)
+          Text(I18n.t($r('app.string.lock_throttle_seconds'), this.throttleSecs))
+            .fontSize(12)
             .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
             .margin({ top: 8 });
         }
 
         if (this.bioAvailable && this.throttleSecs <= 0) {
-          Button('使用生物识别')
+          Button(I18n.t($r('app.string.lock_use_biometric')))
             .backgroundColor(Color.Transparent)
             .fontColor($r('sys.color.ohos_id_color_emphasize'))
             .margin({ top: 48 })
@@ -225,7 +232,7 @@ struct LockScreen {
 
         Blank().layoutWeight(1);
 
-        Text('忘记 PIN?').fontSize(12)
+        Text(I18n.t($r('app.string.lock_forgot_pin'))).fontSize(12)
           .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
           .margin({ bottom: 32 })
           .onClick(() => {
@@ -237,19 +244,27 @@ struct LockScreen {
           });
       } else {
         // Recovery: E2EE password → new PIN
-        Text(this.recoveryStep === 'password' ? '输入 E2EE 密码' : '设置新 PIN')
+        Text(this.recoveryStep === 'password'
+          ? I18n.t($r('app.string.lock_recovery_password_step'))
+          : I18n.t($r('app.string.lock_recovery_pin_step')))
           .fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .margin({ top: 80, bottom: 32 });
 
         if (this.recoveryStep === 'password') {
-          TextInput({ placeholder: 'E2EE 密码', text: this.recoveryPassword })
+          TextInput({
+            placeholder: I18n.t($r('app.string.lock_recovery_password_placeholder')),
+            text: this.recoveryPassword,
+          })
             .type(InputType.Password)
             .width('80%')
             .enabled(!this.recovering)
             .onChange((v: string) => { this.recoveryPassword = v; });
         } else {
-          TextInput({ placeholder: '4 位数字新 PIN', text: this.recoveryNewPin })
+          TextInput({
+            placeholder: I18n.t($r('app.string.lock_recovery_new_pin_placeholder')),
+            text: this.recoveryNewPin,
+          })
             .type(InputType.Number)
             .maxLength(4)
             .width('80%')
@@ -260,14 +275,16 @@ struct LockScreen {
         }
 
         Button(this.recovering
-          ? '处理中…'
-          : (this.recoveryStep === 'password' ? '下一步' : '完成'))
+          ? I18n.t($r('app.string.common_processing'))
+          : (this.recoveryStep === 'password'
+            ? I18n.t($r('app.string.common_next_step'))
+            : I18n.t($r('app.string.common_done'))))
           .width('80%').height(44)
           .enabled(!this.recovering)
           .margin({ top: 24 })
           .onClick(() => this.submitRecovery());
 
-        Button('取消')
+        Button(I18n.t($r('app.string.common_cancel')))
           .backgroundColor(Color.Transparent)
           .fontColor($r('sys.color.ohos_id_color_text_secondary'))
           .enabled(!this.recovering)

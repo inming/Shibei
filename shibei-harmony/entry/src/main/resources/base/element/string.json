@@ -153,6 +153,43 @@
     { "name": "annotation_note_add", "value": "+ 笔记" },
     { "name": "annotation_comment_add", "value": "+ 评论" },
     { "name": "annotation_empty_hint", "value": "长按页面文字创建高亮" },
-    { "name": "annotation_copy_link", "value": "复制链接" }
+    { "name": "annotation_copy_link", "value": "复制链接" },
+
+    { "name": "lock_title", "value": "已锁定" },
+    { "name": "lock_use_biometric", "value": "使用生物识别" },
+    { "name": "lock_throttle_seconds", "value": "%1$d 秒后可重试" },
+    { "name": "lock_throttle_too_many", "value": "连续错误，%1$d 秒后再试" },
+    { "name": "lock_pin_error", "value": "PIN 错误" },
+    { "name": "lock_unlock_failed", "value": "解锁失败：%1$s" },
+    { "name": "lock_bio_revoked", "value": "指纹库已变更，请用 PIN 解锁后在设置里重新启用生物识别" },
+    { "name": "lock_bio_failed", "value": "生物识别失败：%1$s" },
+    { "name": "lock_forgot_pin", "value": "忘记 PIN？" },
+    { "name": "lock_recovery_password_step", "value": "输入 E2EE 密码" },
+    { "name": "lock_recovery_pin_step", "value": "设置新 PIN" },
+    { "name": "lock_recovery_password_placeholder", "value": "E2EE 密码" },
+    { "name": "lock_recovery_new_pin_placeholder", "value": "4 位数字新 PIN" },
+    { "name": "lock_recovery_pin_invalid", "value": "新 PIN 必须是 4 位数字" },
+    { "name": "lock_recovery_failed", "value": "恢复失败：%1$s" },
+
+    { "name": "search_placeholder", "value": "搜索资料、标注、正文…" },
+    { "name": "search_failed", "value": "搜索失败：%1$s" },
+    { "name": "search_empty_prompt", "value": "输入关键字搜索" },
+    { "name": "search_no_match", "value": "没有匹配项" },
+    { "name": "search_match_label_highlights", "value": "标注" },
+    { "name": "search_match_label_comments", "value": "评论" },
+    { "name": "search_match_label_title", "value": "标题" },
+    { "name": "search_match_label_description", "value": "摘要" },
+    { "name": "search_match_label_body", "value": "正文" },
+    { "name": "search_match_suffix", "value": "%1$s 匹配" },
+
+    { "name": "sidebar_inbox", "value": "收件箱" },
+    { "name": "sidebar_all_resources", "value": "所有资料" },
+    { "name": "sidebar_folders_label", "value": "文件夹" },
+    { "name": "sidebar_sync_skipped", "value": "同步跳过" },
+    { "name": "sidebar_sync_failed", "value": "同步失败：%1$s" },
+
+    { "name": "resource_list_empty", "value": "当前文件夹没有资料" },
+    { "name": "resource_list_empty_hint", "value": "（Phase 2 阶段暂无导入入口，等同步完成后再看）" },
+    { "name": "resource_list_error", "value": "err: %1$s" }
   ]
 }

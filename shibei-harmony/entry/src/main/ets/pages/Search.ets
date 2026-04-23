@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router } from '@kit.ArkUI';
 import { ShibeiService, ShibeiError, SearchResult } from '../services/ShibeiService';
+import { I18n } from '../services/I18n';
 
 // Track E — full-text search over resources (title / url / description /
 // highlights / comments / body). Runs against the local FTS5 virtual
@@ -54,7 +55,7 @@ struct SearchPage {
       this.results = ShibeiService.instance.searchResources(this.query.trim());
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.errorMessage = `搜索失败: ${code}`;
+      this.errorMessage = I18n.t($r('app.string.search_failed'), code);
       hilog.error(0x0000, 'shibei', 'search fail: %{public}s', code);
       this.results = [];
     }
@@ -71,27 +72,28 @@ struct SearchPage {
   }
 
   // Render every matched field, not just the first. Ordering puts the
-  // "more specific" matches (标注 / 评论 / 标题) ahead of body, because
-  // body almost always matches any query the user types and would
+  // "more specific" matches (highlights / comments / title) ahead of body,
+  // because body almost always matches any query the user types and would
   // otherwise hide the signal that e.g. an annotation also matched.
   // Capped at 3 labels to keep the row short on narrow screens.
   private matchLabel(fields: string[]): string {
     if (!fields || fields.length === 0) return '';
-    const order: string[][] = [
-      ['highlights', '标注'],
-      ['comments', '评论'],
-      ['title', '标题'],
-      ['description', '摘要'],
-      ['url', 'URL'],
-      ['body', '正文'],
+    interface FieldPair { key: string; label: string; }
+    const order: FieldPair[] = [
+      { key: 'highlights', label: I18n.t($r('app.string.search_match_label_highlights')) },
+      { key: 'comments',   label: I18n.t($r('app.string.search_match_label_comments')) },
+      { key: 'title',      label: I18n.t($r('app.string.search_match_label_title')) },
+      { key: 'description',label: I18n.t($r('app.string.search_match_label_description')) },
+      { key: 'url',        label: 'URL' },
+      { key: 'body',       label: I18n.t($r('app.string.search_match_label_body')) },
     ];
     const hits: string[] = [];
     for (const pair of order) {
-      if (fields.includes(pair[0])) hits.push(pair[1]);
+      if (fields.includes(pair.key)) hits.push(pair.label);
     }
     if (hits.length === 0) return '';
     const shown = hits.length > 3 ? hits.slice(0, 3) : hits;
-    return `${shown.join(' · ')} 匹配`;
+    return I18n.t($r('app.string.search_match_suffix'), shown.join(' · '));
   }
 
   build() {
@@ -102,11 +104,14 @@ struct SearchPage {
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .width(44).height(44).textAlign(TextAlign.Center)
           .onClick(() => router.back());
-        TextInput({ placeholder: '搜索资料、标注、正文…', text: this.query })
+        TextInput({
+          placeholder: I18n.t($r('app.string.search_placeholder')),
+          text: this.query,
+        })
           .layoutWeight(1)
           .onChange((v: string) => this.onQueryChange(v));
         if (this.query) {
-          Text('取消').fontSize(14)
+          Text(I18n.t($r('app.string.common_cancel'))).fontSize(14)
             .fontColor($r('sys.color.ohos_id_color_emphasize'))
             .width(50).height(44).textAlign(TextAlign.Center)
             .onClick(() => {
@@ -126,13 +131,13 @@ struct SearchPage {
 
       if (!this.query.trim()) {
         Column() {
-          Text('输入关键字搜索').fontSize(14)
+          Text(I18n.t($r('app.string.search_empty_prompt'))).fontSize(14)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .margin({ top: 80 });
         }.width('100%').layoutWeight(1).alignItems(HorizontalAlign.Center);
       } else if (this.results.length === 0 && !this.searching) {
         Column() {
-          Text('没有匹配项').fontSize(14)
+          Text(I18n.t($r('app.string.search_no_match'))).fontSize(14)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .margin({ top: 80 });
         }.width('100%').layoutWeight(1).alignItems(HorizontalAlign.Center);
@@ -141,7 +146,8 @@ struct SearchPage {
           ForEach(this.results, (r: SearchResult) => {
             ListItem() {
               Column() {
-                Text(r.title || '(无标题)').fontSize(15).fontWeight(FontWeight.Medium)
+                Text(r.title || I18n.t($r('app.string.common_no_title')))
+                  .fontSize(15).fontWeight(FontWeight.Medium)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
                   .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
                 Text(r.url).fontSize(11)
