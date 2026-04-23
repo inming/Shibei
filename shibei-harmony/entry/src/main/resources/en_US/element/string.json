@@ -200,6 +200,11 @@
     { "name": "error_credentialsLockPoisoned", "value": "Credentials lock corrupted, please restart the app" },
     { "name": "error_pairingBadPin", "value": "Pairing PIN incorrect" },
     { "name": "error_unknown", "value": "%1$s" },
+    { "name": "error_downloadFailed", "value": "Download failed (%1$s)" },
+    { "name": "error_snapshotNotFound", "value": "Snapshot not available — check your network and retry." },
+    { "name": "error_resourceNotFound", "value": "Item was deleted or hasn't synced to this device yet." },
+    { "name": "error_missingResourceId", "value": "Missing resource id" },
+    { "name": "error_invalidAutoSyncMode", "value": "Invalid auto-sync mode" },
 
     { "name": "cache_header_title", "value": "Cache" },
     { "name": "cache_header_total", "value": "%1$s / %2$s" },
@@ -234,6 +239,16 @@
     { "name": "sync_auto_row_title", "value": "Auto sync" },
     { "name": "sync_auto_title", "value": "Auto sync" },
     { "name": "sync_auto_on_open", "value": "On open" },
-    { "name": "sync_auto_manual", "value": "Manual" }
+    { "name": "sync_auto_manual", "value": "Manual" },
+
+    { "name": "unlock_e2ee_card_title", "value": "Encryption locked" },
+    { "name": "unlock_e2ee_card_hint", "value": "Enter your encryption password to sync and open new items." },
+    { "name": "unlock_e2ee_button", "value": "Unlock" },
+    { "name": "unlock_e2ee_prompt", "value": "Enter encryption password" },
+    { "name": "unlock_e2ee_placeholder", "value": "Encryption password" },
+    { "name": "unlock_e2ee_submit", "value": "Unlock" },
+    { "name": "unlock_e2ee_submitting", "value": "Unlocking…" },
+    { "name": "unlock_e2ee_empty", "value": "Password required" },
+    { "name": "unlock_e2ee_toast_ok", "value": "Encryption unlocked" }
   ]
 }

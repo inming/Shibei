@@ -42,6 +42,15 @@ struct Settings {
   // Sync settings (§7.3)
   @State autoSyncMode: AutoSyncMode = 'on_open';
   @State lastSyncAt: string = '';
+  // E2EE unlock (§7.7): surfaces a recovery card at the top of Settings
+  // when the vault has an S3 keyring but this session's MK is not loaded.
+  // Happens after `reset_device` + re-onboard on devices without App Lock,
+  // or after HUKS key loss — design doc's "回退 输 E2EE 密码" fallback.
+  @State e2eeLocked: boolean = false;
+  @State showUnlockE2ee: boolean = false;
+  @State e2eePwdInput: string = '';
+  @State e2eeUnlocking: boolean = false;
+  @State e2eeUnlockError: string = '';
 
   async aboutToAppear(): Promise<void> {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -51,6 +60,43 @@ struct Settings {
     this.bioAvailable = await HuksService.instance.isBioAvailable();
     this.reloadCache();
     this.reloadSyncSettings();
+    this.refreshE2eeLockState();
+  }
+
+  /// Update `e2eeLocked`. True when the app knows it's onboarded (has S3
+  /// config) but no Master Key is in memory — typical after a cold start
+  /// on a device without App Lock. The card appears at the top of Settings
+  /// so the user has a clear path back to a working sync.
+  private refreshE2eeLockState(): void {
+    try {
+      this.e2eeLocked = ShibeiService.instance.hasSavedConfig()
+        && !ShibeiService.instance.isUnlocked();
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'refreshE2eeLockState fail: %{public}s', (err as Error).message);
+    }
+  }
+
+  private async submitUnlockE2ee(): Promise<void> {
+    if (this.e2eeUnlocking) return;
+    if (!this.e2eePwdInput) {
+      this.e2eeUnlockError = I18n.t($r('app.string.unlock_e2ee_empty'));
+      return;
+    }
+    this.e2eeUnlocking = true;
+    this.e2eeUnlockError = '';
+    try {
+      await ShibeiService.instance.setE2eePassword(this.e2eePwdInput);
+      this.showUnlockE2ee = false;
+      this.e2eePwdInput = '';
+      this.refreshE2eeLockState();
+      promptAction.showToast({ message: I18n.t($r('app.string.unlock_e2ee_toast_ok')) });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      this.e2eeUnlockError = I18n.translateError(code);
+      hilog.warn(0x0000, 'shibei', 'unlock e2ee fail: %{public}s', code);
+    } finally {
+      this.e2eeUnlocking = false;
+    }
   }
 
   private reloadSyncSettings(): void {
@@ -513,6 +559,74 @@ struct Settings {
 
       Scroll() {
         Column() {
+          // ── E2EE unlock recovery card (§7.7) ───────────────
+          // Shown only when hasSavedConfig && !isUnlocked. After tapping
+          // "解锁" the inline dialog below takes the password and calls
+          // setE2eePassword. On success the card disappears + a toast
+          // confirms the MK is loaded. Failures stay inline so the user
+          // can correct the password without losing their input.
+          if (this.e2eeLocked) {
+            Column() {
+              if (!this.showUnlockE2ee) {
+                Row() {
+                  Column() {
+                    Text(I18n.t($r('app.string.unlock_e2ee_card_title')))
+                      .fontSize(14)
+                      .fontColor($r('app.color.accent_danger'))
+                      .fontWeight(FontWeight.Medium);
+                    Text(I18n.t($r('app.string.unlock_e2ee_card_hint')))
+                      .fontSize(12).fontColor($r('app.color.text_secondary'))
+                      .margin({ top: 2 });
+                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+                  Button(I18n.t($r('app.string.unlock_e2ee_button')))
+                    .height(32).fontSize(13)
+                    .onClick(() => {
+                      this.showUnlockE2ee = true;
+                      this.e2eeUnlockError = '';
+                      this.e2eePwdInput = '';
+                    });
+                }.width('100%').padding(12);
+              } else {
+                Column() {
+                  Text(I18n.t($r('app.string.unlock_e2ee_prompt')))
+                    .fontSize(14).margin({ top: 4 });
+                  TextInput({ placeholder: I18n.t($r('app.string.unlock_e2ee_placeholder')), text: this.e2eePwdInput })
+                    .type(InputType.Password)
+                    .width('100%').margin({ top: 10 })
+                    .onChange((v: string) => {
+                      this.e2eePwdInput = v;
+                      this.e2eeUnlockError = '';
+                    })
+                    .onSubmit(() => this.submitUnlockE2ee());
+                  if (this.e2eeUnlockError) {
+                    Text(this.e2eeUnlockError).fontSize(12)
+                      .fontColor($r('app.color.accent_danger'))
+                      .margin({ top: 6 });
+                  }
+                  Row() {
+                    Button(I18n.t($r('app.string.common_cancel')))
+                      .backgroundColor(Color.Transparent)
+                      .fontColor($r('app.color.text_secondary'))
+                      .layoutWeight(1)
+                      .onClick(() => {
+                        this.showUnlockE2ee = false;
+                        this.e2eePwdInput = '';
+                        this.e2eeUnlockError = '';
+                      });
+                    Button(this.e2eeUnlocking
+                      ? I18n.t($r('app.string.unlock_e2ee_submitting'))
+                      : I18n.t($r('app.string.unlock_e2ee_submit')))
+                      .layoutWeight(1).margin({ left: 8 })
+                      .enabled(!this.e2eeUnlocking)
+                      .onClick(() => this.submitUnlockE2ee());
+                  }.margin({ top: 12 });
+                }.padding(12);
+              }
+            }
+            .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
+            .margin({ top: 16, left: 12, right: 12 });
+          }
+
           // ── 外观 ─────────────────────────────────────────
           Text(I18n.t($r('app.string.settings_section_appearance'))).fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))

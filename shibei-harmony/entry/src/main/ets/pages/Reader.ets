@@ -240,6 +240,18 @@ struct Reader {
     }
   }
 
+  /// Retry handler for the HTML error card. Clears error + resets
+  /// loading flag so the Stack returns to the spinner branch, then
+  /// re-runs ensureHtmlReady. No-op if resource failed to load at all
+  /// (e.g. bad route params) — the retry button still shows but the
+  /// subsequent attempt will re-raise the same error.
+  private retryHtmlLoad(): void {
+    if (!this.resource) return;
+    this.loadError = '';
+    this.loading = true;
+    this.ensureHtmlReady(this.resource.id);
+  }
+
   // Ensure the PDF is on local disk. Fast path (file exists) resolves
   // immediately; slow path pulls via shibei-sync's download_snapshot and
   // the UI sits on the "正在下载 PDF…" panel during the RPC. On any error
@@ -435,8 +447,13 @@ struct Reader {
         }.width('100%').height('100%').justifyContent(FlexAlign.Center);
       } else if (this.loadError) {
         Column() {
-          Text(I18n.t($r('app.string.common_load_failed'), this.loadError))
+          Text(I18n.t($r('app.string.common_load_failed'), I18n.translateError(this.loadError)))
             .fontColor($r('sys.color.ohos_id_color_warning'));
+          // Retry only makes sense for transient failures (network /
+          // snapshot missing). Terminal ones like resourceNotFound still
+          // show the button — a second try is cheap and harmless.
+          Button(I18n.t($r('app.string.common_retry'))).margin({ top: 12 })
+            .onClick(() => this.retryHtmlLoad());
         }.width('100%').height('100%').justifyContent(FlexAlign.Center);
       } else {
         SideBarContainer(SideBarContainerType.Overlay) {
@@ -700,7 +717,7 @@ struct Reader {
           }.width('100%').height('100%').justifyContent(FlexAlign.Center);
         } else if (this.pdfError) {
           Column() {
-            Text(I18n.t($r('app.string.reader_pdf_download_failed'), this.pdfError))
+            Text(I18n.t($r('app.string.reader_pdf_download_failed'), I18n.translateError(this.pdfError)))
               .fontColor($r('sys.color.ohos_id_color_warning'));
             Button(I18n.t($r('app.string.common_retry'))).margin({ top: 12 })
               .onClick(() => {

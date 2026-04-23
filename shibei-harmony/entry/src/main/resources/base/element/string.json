@@ -205,6 +205,11 @@
     { "name": "error_credentialsLockPoisoned", "value": "凭据锁状态异常，请重启应用" },
     { "name": "error_pairingBadPin", "value": "配对 PIN 错误" },
     { "name": "error_unknown", "value": "%1$s" },
+    { "name": "error_downloadFailed", "value": "下载失败（%1$s）" },
+    { "name": "error_snapshotNotFound", "value": "快照不存在，请检查网络后重试" },
+    { "name": "error_resourceNotFound", "value": "资料已被删除或未同步到本机" },
+    { "name": "error_missingResourceId", "value": "缺少资料 ID" },
+    { "name": "error_invalidAutoSyncMode", "value": "无效的自动同步模式" },
 
     { "name": "cache_header_title", "value": "缓存管理" },
     { "name": "cache_header_total", "value": "%1$s / %2$s" },
@@ -239,6 +244,16 @@
     { "name": "sync_auto_row_title", "value": "自动同步" },
     { "name": "sync_auto_title", "value": "自动同步" },
     { "name": "sync_auto_on_open", "value": "打开时" },
-    { "name": "sync_auto_manual", "value": "手动" }
+    { "name": "sync_auto_manual", "value": "手动" },
+
+    { "name": "unlock_e2ee_card_title", "value": "加密未解锁" },
+    { "name": "unlock_e2ee_card_hint", "value": "输入加密密码后才能同步和打开新资料" },
+    { "name": "unlock_e2ee_button", "value": "解锁" },
+    { "name": "unlock_e2ee_prompt", "value": "输入加密密码" },
+    { "name": "unlock_e2ee_placeholder", "value": "加密密码" },
+    { "name": "unlock_e2ee_submit", "value": "解锁" },
+    { "name": "unlock_e2ee_submitting", "value": "解锁中…" },
+    { "name": "unlock_e2ee_empty", "value": "请输入密码" },
+    { "name": "unlock_e2ee_toast_ok", "value": "加密已解锁" }
   ]
 }
