@@ -23,7 +23,10 @@ struct Library {
   @State initReady: boolean = false;
   @State initError: string = '';
   @State drawerOpen: boolean = false;
-  @State selectedFolderId: string = INBOX_FOLDER_ID;
+  // Default landing = "所有资料" (virtual __all__). Users mostly want to
+  // see everything synced; Inbox stays available in the drawer but isn't
+  // the first view anymore.
+  @State selectedFolderId: string = '__all__';
   @State selectedFolderLabel: string = '';
   // Kept in sync with FoldObserver; updates here trigger an automatic
   // re-layout between Embed / Overlay without reopening the page.
@@ -32,8 +35,8 @@ struct Library {
   async aboutToAppear(): Promise<void> {
     // I18n is wired in EntryAbility.onWindowStageCreate before any page
     // renders, so lookup here is safe. Do it before init so the first
-    // frame already has the localized inbox label.
-    this.selectedFolderLabel = I18n.t($r('app.string.sidebar_inbox'));
+    // frame already has the localized landing label.
+    this.selectedFolderLabel = I18n.t($r('app.string.sidebar_all_resources'));
 
     // init is idempotent — EntryAbility also calls it on cold start.
     try {
