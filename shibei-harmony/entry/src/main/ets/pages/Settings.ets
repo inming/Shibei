@@ -5,12 +5,15 @@ import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { loadTheme, applyTheme, ThemeMode } from '../app/ThemeManager';
 import { LockService } from '../services/LockService';
 import { HuksService } from '../services/HuksService';
+import { I18n } from '../services/I18n';
 
 // Track F — Phase 2 Settings (精简).
 //
-// Sections: 外观(深色模式) / 安全(立即锁定) / 数据(重置设备).
-// Language toggle was scoped out per design decision — mobile i18n infra
-// doesn't exist yet in Phase 2.
+// Sections: 外观 / 同步 / 安全 / 数据. All user-visible text flows through
+// I18n.t($r('app.string.settings_*')); theme-aware colors use either
+// $r('sys.color.ohos_id_color_*') system tokens or $r('app.color.*') app
+// tokens (accent_primary / accent_danger / text_secondary / accent_primary_alt)
+// for dialog buttons where the SDK expects an explicit color argument.
 
 @Entry
 @Component
@@ -63,7 +66,9 @@ struct Settings {
   private async submitSetupLock(): Promise<void> {
     if (this.pinStep === 'enter') {
       if (!/^\d{4}$/.test(this.pinInput)) {
-        promptAction.showToast({ message: 'PIN 必须是 4 位数字' });
+        promptAction.showToast({
+          message: I18n.t($r('app.string.settings_pin_must_be_4_digits')),
+        });
         return;
       }
       this.pinStep = 'confirm';
@@ -71,7 +76,9 @@ struct Settings {
       return;
     }
     if (this.pinConfirm !== this.pinInput) {
-      promptAction.showToast({ message: '两次输入不一致' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_pin_mismatch')),
+      });
       this.pinStep = 'enter';
       this.pinInput = '';
       return;
@@ -80,11 +87,17 @@ struct Settings {
       let wantBio = false;
       if (this.bioAvailable) {
         const dlg = await promptAction.showDialog({
-          title: '启用生物识别?',
-          message: '指纹或面部识别可以让日常解锁更快。',
+          title: I18n.t($r('app.string.settings_bio_enroll_title')),
+          message: I18n.t($r('app.string.settings_bio_enroll_message')),
           buttons: [
-            { text: '只用 PIN', color: '#666' },
-            { text: '启用生物识别', color: '#2b7de9' },
+            {
+              text: I18n.t($r('app.string.settings_bio_enroll_pin_only')),
+              color: $r('app.color.text_secondary'),
+            },
+            {
+              text: I18n.t($r('app.string.settings_bio_enroll_yes')),
+              color: $r('app.color.accent_primary'),
+            },
           ],
         });
         wantBio = dlg.index === 1;
@@ -95,10 +108,14 @@ struct Settings {
       this.showSetupLock = false;
       this.pinInput = '';
       this.pinConfirm = '';
-      promptAction.showToast({ message: 'App 锁已启用' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_lock_enabled_toast')),
+      });
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
-      promptAction.showToast({ message: `启用失败: ${code}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_lock_enable_failed'), code),
+      });
     }
   }
 
@@ -109,13 +126,16 @@ struct Settings {
       this.bioEnabled = false;
       this.showDisableLock = false;
       this.pinInput = '';
-      promptAction.showToast({ message: 'App 锁已停用' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_lock_disabled_toast')),
+      });
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
       this.pinInput = '';
-      promptAction.showToast({
-        message: code === 'error.pinIncorrect' ? 'PIN 错误' : `停用失败: ${code}`,
-      });
+      const message = code === 'error.pinIncorrect'
+        ? I18n.t($r('app.string.settings_lock_pin_incorrect'))
+        : I18n.t($r('app.string.settings_lock_disable_failed'), code);
+      promptAction.showToast({ message });
     }
   }
 
@@ -124,16 +144,22 @@ struct Settings {
       if (target) {
         await LockService.instance.enableBio();
         this.bioEnabled = true;
-        promptAction.showToast({ message: '生物识别已启用' });
+        promptAction.showToast({
+          message: I18n.t($r('app.string.settings_bio_enabled_toast')),
+        });
       } else {
         await HuksService.instance.deleteBioKey();
         await ShibeiService.instance.lockDeleteBioOnly();
         this.bioEnabled = false;
-        promptAction.showToast({ message: '生物识别已停用' });
+        promptAction.showToast({
+          message: I18n.t($r('app.string.settings_bio_disabled_toast')),
+        });
       }
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
-      promptAction.showToast({ message: `切换失败: ${code}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_bio_toggle_failed'), code),
+      });
       // Re-read live state so the toggle UI reflects reality
       this.bioEnabled = ShibeiService.instance.lockIsBioEnabled();
     }
@@ -143,7 +169,9 @@ struct Settings {
     if (this.oldPinInput.length !== 4) return;
     if (this.pinInput.length !== 4) return;
     if (this.pinConfirm !== this.pinInput) {
-      promptAction.showToast({ message: '新 PIN 两次输入不一致' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_pin_new_mismatch')),
+      });
       this.pinStep = 'enter';
       this.pinInput = '';
       this.pinConfirm = '';
@@ -156,16 +184,19 @@ struct Settings {
       this.oldPinInput = '';
       this.pinInput = '';
       this.pinConfirm = '';
-      promptAction.showToast({ message: 'PIN 已修改' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_lock_pin_changed')),
+      });
     } catch (e) {
       const code: string = e instanceof ShibeiError ? e.code : (e as Error).message;
       this.oldPinInput = '';
       this.pinInput = '';
       this.pinConfirm = '';
       this.pinStep = 'enter';
-      promptAction.showToast({
-        message: code === 'error.pinIncorrect' ? '旧 PIN 错误' : `修改失败: ${code}`,
-      });
+      const message = code === 'error.pinIncorrect'
+        ? I18n.t($r('app.string.settings_lock_old_pin_incorrect'))
+        : I18n.t($r('app.string.settings_lock_pin_change_failed'), code);
+      promptAction.showToast({ message });
     }
   }
 
@@ -175,7 +206,7 @@ struct Settings {
   private async syncNow(): Promise<void> {
     if (this.syncing) return;
     this.syncing = true;
-    this.syncStatus = '准备中…';
+    this.syncStatus = I18n.t($r('app.string.settings_sync_preparing'));
     const unsub = ShibeiService.instance.onSyncProgress((ev) => {
       if (ev.total > 0) {
         this.syncStatus = `${ev.phase} ${ev.current}/${ev.total}`;
@@ -187,14 +218,22 @@ struct Settings {
       const result = await ShibeiService.instance.syncMetadata();
       if (result.kind === 'success') {
         promptAction.showToast({
-          message: `同步完成 ↑${result.uploaded} ↓${result.downloaded}`,
+          message: I18n.t(
+            $r('app.string.settings_sync_complete'),
+            result.uploaded,
+            result.downloaded,
+          ),
         });
       } else {
-        promptAction.showToast({ message: '同步跳过' });
+        promptAction.showToast({
+          message: I18n.t($r('app.string.settings_sync_skipped')),
+        });
       }
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
-      promptAction.showToast({ message: `同步失败: ${code}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_sync_failed'), code),
+      });
     } finally {
       unsub();
       this.syncing = false;
@@ -210,11 +249,17 @@ struct Settings {
     let confirmed = false;
     try {
       const res = await promptAction.showDialog({
-        title: '修复同步游标',
-        message: '这会清除「已同步到哪里」的记录,下次同步时全量拉取 S3 上的 snapshot 和增量日志补齐本地缺失。\n\n本地数据和云端数据都不会被删除。如果发现本机比其他设备少了资料,用这个修复。',
+        title: I18n.t($r('app.string.settings_reset_cursors')),
+        message: I18n.t($r('app.string.settings_reset_cursors_body')),
         buttons: [
-          { text: '取消', color: '#666' },
-          { text: '确认修复', color: '#007DFF' },
+          {
+            text: I18n.t($r('app.string.common_cancel')),
+            color: $r('app.color.text_secondary'),
+          },
+          {
+            text: I18n.t($r('app.string.settings_reset_cursors_confirm')),
+            color: $r('app.color.accent_primary_alt'),
+          },
         ],
       });
       confirmed = res.index === 1;
@@ -228,10 +273,14 @@ struct Settings {
     this.resetCursorsBusy = true;
     try {
       const n = ShibeiService.instance.resetSyncCursors();
-      promptAction.showToast({ message: `已清除 ${n} 条游标,点击"立即同步"重新拉取` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_reset_cursors_success'), n),
+      });
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
-      promptAction.showToast({ message: `修复失败: ${code}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.settings_reset_cursors_failed'), code),
+      });
     }
     this.resetCursorsBusy = false;
   }
@@ -243,11 +292,17 @@ struct Settings {
     let confirmed = false;
     try {
       const res = await promptAction.showDialog({
-        title: '重置设备',
-        message: '这会清除本地全部资料和凭据,下次启动需要重新配对云端。\n\n(云端数据不受影响,同步后会重新拉回)',
+        title: I18n.t($r('app.string.settings_reset_device')),
+        message: I18n.t($r('app.string.settings_reset_device_body')),
         buttons: [
-          { text: '取消', color: '#666' },
-          { text: '确认重置', color: '#d33' },
+          {
+            text: I18n.t($r('app.string.common_cancel')),
+            color: $r('app.color.text_secondary'),
+          },
+          {
+            text: I18n.t($r('app.string.settings_reset_device_confirm')),
+            color: $r('app.color.accent_danger'),
+          },
         ],
       });
       confirmed = res.index === 1;
@@ -268,7 +323,7 @@ struct Settings {
       });
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
-      this.resetError = `重置失败: ${code}`;
+      this.resetError = I18n.t($r('app.string.settings_reset_device_failed'), code);
     }
     this.resetting = false;
   }
@@ -294,7 +349,8 @@ struct Settings {
         Text('‹').fontSize(26).fontColor($r('sys.color.ohos_id_color_text_primary'))
           .width(44).height(44).textAlign(TextAlign.Center)
           .onClick(() => router.back());
-        Text('设置').fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
+        Text(I18n.t($r('app.string.settings_page_title')))
+          .fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .textAlign(TextAlign.Center);
         Text('').width(44);
@@ -305,27 +361,29 @@ struct Settings {
       Scroll() {
         Column() {
           // ── 外观 ─────────────────────────────────────────
-          Text('外观').fontSize(13)
+          Text(I18n.t($r('app.string.settings_section_appearance'))).fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .margin({ top: 16, left: 16, bottom: 4 });
           Column() {
-            this.ThemeOption('跟随系统', 'system');
+            this.ThemeOption(I18n.t($r('app.string.settings_theme_system')), 'system');
             Divider().color($r('sys.color.ohos_id_color_list_separator'));
-            this.ThemeOption('浅色', 'light');
+            this.ThemeOption(I18n.t($r('app.string.settings_theme_light')), 'light');
             Divider().color($r('sys.color.ohos_id_color_list_separator'));
-            this.ThemeOption('深色', 'dark');
+            this.ThemeOption(I18n.t($r('app.string.settings_theme_dark')), 'dark');
           }
           .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
           .margin({ left: 12, right: 12 });
 
           // ── 同步 ─────────────────────────────────────────
-          Text('同步').fontSize(13)
+          Text(I18n.t($r('app.string.settings_section_sync'))).fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .margin({ top: 24, left: 16, bottom: 4 });
           Column() {
             Row() {
               Column() {
-                Text(this.syncing ? '同步中…' : '立即同步').fontSize(15)
+                Text(this.syncing
+                  ? I18n.t($r('app.string.settings_sync_in_progress'))
+                  : I18n.t($r('app.string.settings_sync_now'))).fontSize(15)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'));
                 if (this.syncing && this.syncStatus) {
                   Text(this.syncStatus).fontSize(12)
@@ -343,10 +401,12 @@ struct Settings {
 
             Row() {
               Column() {
-                Text(this.resetCursorsBusy ? '修复中…' : '修复同步游标')
+                Text(this.resetCursorsBusy
+                  ? I18n.t($r('app.string.settings_reset_cursors_busy'))
+                  : I18n.t($r('app.string.settings_reset_cursors')))
                   .fontSize(15)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'));
-                Text('本机比其他设备少资料时用此修复')
+                Text(I18n.t($r('app.string.settings_reset_cursors_help')))
                   .fontSize(11)
                   .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
                   .margin({ top: 2 });
@@ -361,12 +421,12 @@ struct Settings {
           .margin({ left: 12, right: 12 });
 
           // ── 安全 ─────────────────────────────────────────
-          Text('安全').fontSize(13)
+          Text(I18n.t($r('app.string.settings_section_security'))).fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .margin({ top: 24, left: 16, bottom: 4 });
           Column() {
             Row() {
-              Text('启用 App 锁').fontSize(15).layoutWeight(1)
+              Text(I18n.t($r('app.string.settings_lock_enable'))).fontSize(15).layoutWeight(1)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'));
               Toggle({ type: ToggleType.Switch, isOn: this.lockEnabled })
                 .onChange((isOn: boolean) => {
@@ -383,10 +443,10 @@ struct Settings {
               Divider().color($r('sys.color.ohos_id_color_list_separator'));
               Row() {
                 Column() {
-                  Text('生物识别解锁').fontSize(15)
+                  Text(I18n.t($r('app.string.settings_bio_unlock'))).fontSize(15)
                     .fontColor($r('sys.color.ohos_id_color_text_primary'));
                   if (!this.bioAvailable) {
-                    Text('请先在系统设置中添加指纹或面部').fontSize(11)
+                    Text(I18n.t($r('app.string.settings_bio_hint_no_enroll'))).fontSize(11)
                       .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
                   }
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1);
@@ -399,7 +459,7 @@ struct Settings {
 
               Divider().color($r('sys.color.ohos_id_color_list_separator'));
               Row() {
-                Text('修改 PIN').fontSize(15).layoutWeight(1)
+                Text(I18n.t($r('app.string.settings_change_pin'))).fontSize(15).layoutWeight(1)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'));
                 Text('›').fontSize(18)
                   .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
@@ -417,7 +477,7 @@ struct Settings {
 
             // 立即锁定 — always shown (pre-existing behavior)
             Row() {
-              Text('立即锁定').fontSize(15).layoutWeight(1)
+              Text(I18n.t($r('app.string.settings_lock_now'))).fontSize(15).layoutWeight(1)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'));
               Text('›').fontSize(18)
                 .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
@@ -430,7 +490,9 @@ struct Settings {
           // Setup PIN dialog (inline, shown when toggle enabled)
           if (this.showSetupLock) {
             Column() {
-              Text(this.pinStep === 'enter' ? '设置 PIN(4 位数字)' : '再输入一次确认')
+              Text(this.pinStep === 'enter'
+                ? I18n.t($r('app.string.settings_pin_set_prompt_enter'))
+                : I18n.t($r('app.string.settings_pin_set_prompt_confirm')))
                 .fontSize(14).margin({ top: 16 });
               TextInput({
                 placeholder: '',
@@ -447,7 +509,8 @@ struct Settings {
                   }
                   if (d.length === 4) this.submitSetupLock();
                 });
-              Button('取消').backgroundColor(Color.Transparent)
+              Button(I18n.t($r('app.string.common_cancel')))
+                .backgroundColor(Color.Transparent)
                 .fontColor($r('sys.color.ohos_id_color_text_secondary'))
                 .margin({ top: 12 })
                 .onClick(() => {
@@ -461,15 +524,20 @@ struct Settings {
           // Disable PIN dialog
           if (this.showDisableLock) {
             Column() {
-              Text('输入当前 PIN 以停用').fontSize(14).margin({ top: 16 });
-              TextInput({ placeholder: '4 位 PIN', text: this.pinInput })
+              Text(I18n.t($r('app.string.settings_pin_disable_prompt')))
+                .fontSize(14).margin({ top: 16 });
+              TextInput({
+                placeholder: I18n.t($r('app.string.settings_pin_placeholder_4')),
+                text: this.pinInput,
+              })
                 .type(InputType.Number).maxLength(4).width('60%').margin({ top: 12 })
                 .onChange((v: string) => {
                   const d = v.replace(/\D/g, '').slice(0, 4);
                   this.pinInput = d;
                   if (d.length === 4) this.submitDisableLock();
                 });
-              Button('取消').backgroundColor(Color.Transparent)
+              Button(I18n.t($r('app.string.common_cancel')))
+                .backgroundColor(Color.Transparent)
                 .fontColor($r('sys.color.ohos_id_color_text_secondary'))
                 .margin({ top: 12 })
                 .onClick(() => {
@@ -482,16 +550,22 @@ struct Settings {
           // Change PIN dialog
           if (this.showChangePin) {
             Column() {
-              Text('输入旧 PIN').fontSize(14).margin({ top: 16 });
-              TextInput({ placeholder: '旧 4 位 PIN', text: this.oldPinInput })
+              Text(I18n.t($r('app.string.settings_pin_old_prompt')))
+                .fontSize(14).margin({ top: 16 });
+              TextInput({
+                placeholder: I18n.t($r('app.string.settings_pin_placeholder_old')),
+                text: this.oldPinInput,
+              })
                 .type(InputType.Number).maxLength(4).width('60%').margin({ top: 8 })
                 .onChange((v: string) => {
                   this.oldPinInput = v.replace(/\D/g, '').slice(0, 4);
                 });
-              Text(this.pinStep === 'enter' ? '输入新 PIN' : '再输入一次确认')
+              Text(this.pinStep === 'enter'
+                ? I18n.t($r('app.string.settings_pin_new_prompt'))
+                : I18n.t($r('app.string.settings_pin_set_prompt_confirm')))
                 .fontSize(14).margin({ top: 16 });
               TextInput({
-                placeholder: '新 4 位 PIN',
+                placeholder: I18n.t($r('app.string.settings_pin_placeholder_new')),
                 text: this.pinStep === 'enter' ? this.pinInput : this.pinConfirm,
               })
                 .type(InputType.Number).maxLength(4).width('60%').margin({ top: 8 })
@@ -505,7 +579,8 @@ struct Settings {
                     if (d.length === 4) this.submitChangePin();
                   }
                 });
-              Button('取消').backgroundColor(Color.Transparent)
+              Button(I18n.t($r('app.string.common_cancel')))
+                .backgroundColor(Color.Transparent)
                 .fontColor($r('sys.color.ohos_id_color_text_secondary'))
                 .margin({ top: 12 })
                 .onClick(() => {
@@ -518,12 +593,14 @@ struct Settings {
           }
 
           // ── 数据 ─────────────────────────────────────────
-          Text('数据').fontSize(13)
+          Text(I18n.t($r('app.string.settings_section_data'))).fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .margin({ top: 24, left: 16, bottom: 4 });
           Column() {
             Row() {
-              Text(this.resetting ? '重置中…' : '重置设备').fontSize(15)
+              Text(this.resetting
+                ? I18n.t($r('app.string.settings_reset_device_busy'))
+                : I18n.t($r('app.string.settings_reset_device'))).fontSize(15)
                 .fontColor($r('sys.color.ohos_id_color_warning'))
                 .layoutWeight(1);
               Text('›').fontSize(18)
@@ -541,7 +618,7 @@ struct Settings {
               .margin({ top: 8, left: 16, right: 16 });
           }
 
-          Text('云端数据永不会被这些操作删除。').fontSize(11)
+          Text(I18n.t($r('app.string.settings_data_disclaimer'))).fontSize(11)
             .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
             .margin({ top: 24, left: 16, right: 16, bottom: 32 });
         }
