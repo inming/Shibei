@@ -88,17 +88,19 @@ export class HuksService {
     const encoder = new util.Base64Helper();
     const pt = encoder.decodeSync(plainB64);
     const iv = this.randomIv();
-    // Match the official HUKS AES/GCM/NoPadding sample verbatim:
-    // NONCE (not IV), ASSOCIATED_DATA required, no DIGEST. Same props
-    // array is passed to both initSession and finishSession.
+    // Match the HUKS AES/GCM unit-test pattern (security_huks repo,
+    // hks_access_control_test_common.cpp g_authtokenAesParams):
+    // ALGORITHM, KEY_SIZE, PURPOSE, PADDING, DIGEST=NONE, BLOCK_MODE=GCM,
+    // ASSOCIATED_DATA, NONCE. Same props are reused for init + finish.
     const props: huks.HuksParam[] = [
       { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
       { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_ENCRYPT },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
+      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
       { tag: huks.HuksTag.HUKS_TAG_ASSOCIATED_DATA, value: AAD },
+      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
     ];
     const handle = await huks.initSession(DEVICE_ALIAS, { properties: props });
     const finished = await huks.finishSession(handle.handle, { properties: props, inData: pt });
@@ -111,16 +113,16 @@ export class HuksService {
     const encoder = new util.Base64Helper();
     const blobBytes = encoder.decodeSync(outerB64);
     const parts = splitIvCtTag(blobBytes);
-    // Decrypt props include AE_TAG in the SAME shared array (per official
-    // sample). Pass same props to both init and finish.
+    // Decrypt side: same base as encrypt + AE_TAG at the end.
     const props: huks.HuksParam[] = [
       { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
       { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: huks.HuksKeyPurpose.HUKS_KEY_PURPOSE_DECRYPT },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
+      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: parts.iv },
       { tag: huks.HuksTag.HUKS_TAG_ASSOCIATED_DATA, value: AAD },
+      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: parts.iv },
       { tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: parts.tag },
     ];
     const handle = await huks.initSession(DEVICE_ALIAS, { properties: props });
@@ -218,17 +220,18 @@ export class HuksService {
         iv.byteLength, inData.byteLength, tag.byteLength);
     }
 
-    // Match the official HUKS AES/GCM sample — shared props for init+finish.
-    // NONCE (not IV), ASSOCIATED_DATA required, no DIGEST. AE_TAG included
-    // on decrypt.
+    // HUKS AES/GCM param set — matches security_huks unit test pattern
+    // (g_authtokenAesParams). Shared between init+finish. AE_TAG appended
+    // on decrypt. AUTH_TOKEN is added in a separate finishProps below.
     const props: huks.HuksParam[] = [
       { tag: huks.HuksTag.HUKS_TAG_ALGORITHM, value: huks.HuksKeyAlg.HUKS_ALG_AES },
       { tag: huks.HuksTag.HUKS_TAG_KEY_SIZE, value: huks.HuksKeySize.HUKS_AES_KEY_SIZE_256 },
       { tag: huks.HuksTag.HUKS_TAG_PURPOSE, value: purpose },
       { tag: huks.HuksTag.HUKS_TAG_PADDING, value: huks.HuksKeyPadding.HUKS_PADDING_NONE },
+      { tag: huks.HuksTag.HUKS_TAG_DIGEST, value: huks.HuksKeyDigest.HUKS_DIGEST_NONE },
       { tag: huks.HuksTag.HUKS_TAG_BLOCK_MODE, value: huks.HuksCipherMode.HUKS_MODE_GCM },
-      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
       { tag: huks.HuksTag.HUKS_TAG_ASSOCIATED_DATA, value: AAD },
+      { tag: huks.HuksTag.HUKS_TAG_NONCE, value: iv },
     ];
     if (!isEncrypt && tag) {
       props.push({ tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: tag });
