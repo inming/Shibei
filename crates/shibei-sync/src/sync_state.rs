@@ -38,6 +38,23 @@ pub fn list_by_prefix(conn: &Connection, prefix: &str) -> Result<Vec<(String, St
     Ok(results)
 }
 
+/// Clear all sync cursors so the next sync re-runs the full snapshot-import
+/// pass. Used to recover from a historical bug where `maybe_import_snapshot`
+/// advanced `remote:*:last_seq` past JSONL that weren't covered by the
+/// snapshot — see `engine::maybe_import_snapshot` comments.
+///
+/// Clears: `remote:*:last_seq`, `last_sync_at`. Leaves S3 config,
+/// credentials, keyring, encryption flags, and snapshot presence markers
+/// untouched — next sync will re-apply everything from S3 and LWW handles
+/// dedup against local state.
+pub fn reset_sync_cursors(conn: &Connection) -> Result<usize, DbError> {
+    let removed = conn.execute(
+        "DELETE FROM sync_state WHERE key LIKE 'remote:%:last_seq' OR key = 'last_sync_at'",
+        [],
+    )?;
+    Ok(removed)
+}
+
 /// Return all resource IDs that have pending snapshot downloads.
 pub fn get_pending_snapshot_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
     let mut stmt = conn.prepare(
@@ -92,5 +109,24 @@ mod tests {
         let results = list_by_prefix(&conn, "config:").unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0], ("config:a".to_string(), "1".to_string()));
+    }
+
+    #[test]
+    fn test_reset_sync_cursors_clears_only_cursors() {
+        let conn = test_db();
+        set(&conn, "remote:dev-a:last_seq", "20260101T000000000Z.jsonl").unwrap();
+        set(&conn, "remote:dev-b:last_seq", "20260102T000000000Z.jsonl").unwrap();
+        set(&conn, "last_sync_at", "2026-01-01T00:00:00Z").unwrap();
+        set(&conn, "config:s3_bucket", "keepme").unwrap();
+        set(&conn, "snapshot:res-1", "synced").unwrap();
+
+        let removed = reset_sync_cursors(&conn).unwrap();
+        assert_eq!(removed, 3);
+        assert_eq!(get(&conn, "remote:dev-a:last_seq").unwrap(), None);
+        assert_eq!(get(&conn, "remote:dev-b:last_seq").unwrap(), None);
+        assert_eq!(get(&conn, "last_sync_at").unwrap(), None);
+        // Config + snapshot markers preserved
+        assert_eq!(get(&conn, "config:s3_bucket").unwrap(), Some("keepme".to_string()));
+        assert_eq!(get(&conn, "snapshot:res-1").unwrap(), Some("synced".to_string()));
     }
 }

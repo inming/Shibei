@@ -283,6 +283,7 @@ pub fn run() {
             commands::cmd_get_auth_token,
             commands::cmd_debug_log,
             commands::cmd_sync_now,
+            commands::cmd_reset_sync_cursors,
             commands::cmd_force_compact,
             commands::cmd_list_orphan_snapshots,
             commands::cmd_purge_orphan_snapshots,

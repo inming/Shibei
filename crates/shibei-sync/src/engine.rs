@@ -73,6 +73,20 @@ fn snapshot_filename(resource_type: &str) -> &str {
     if resource_type == "pdf" { "snapshot.pdf" } else { "snapshot.html" }
 }
 
+/// Convert a snapshot's `timestamp` (RFC3339) into the JSONL filename format
+/// used by Phase 1 uploads (`%Y%m%dT%H%M%S%3fZ.jsonl`). Returns "" on parse
+/// failure so the resulting cursor doesn't filter any JSONL out — any JSONL
+/// > "" always matches, and apply_entries LWW handles duplication safely.
+fn jsonl_cursor_from_snapshot_timestamp(rfc3339: &str) -> String {
+    match chrono::DateTime::parse_from_rfc3339(rfc3339) {
+        Ok(dt) => dt
+            .with_timezone(&chrono::Utc)
+            .format("%Y%m%dT%H%M%S%3fZ.jsonl")
+            .to_string(),
+        Err(_) => String::new(),
+    }
+}
+
 impl SyncEngine {
     pub fn new(
         pool: SharedPool,
@@ -624,32 +638,27 @@ impl SyncEngine {
         // Re-enable FK checks
         conn.execute_batch("PRAGMA foreign_keys = ON")?;
 
-        // If we imported snapshots from other devices, mark all existing JSONL files
-        // as "already processed" so Phase 3 won't re-apply old entries that are
-        // already covered by the snapshots. Without this, old INSERT/DELETE entries
-        // would override the snapshot state (e.g. resurrecting purged resources,
-        // or re-deleting restored resources).
+        // For each imported snapshot, set last_seq to the JSONL filename that
+        // corresponds to the snapshot's `timestamp`. Phase 2 will then pull
+        // JSONL files strictly newer than the snapshot — exactly the window
+        // the snapshot doesn't cover.
+        //
+        // The previous implementation pushed last_seq to the *latest* JSONL,
+        // which dropped any entries written between the snapshot's T0 and the
+        // latest JSONL upload (fresh devices lost all writes in that window).
         if imported_foreign_snapshot {
-            let jsonl_objects = self.backend.list("sync/").await?;
-            let mut device_latest: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-            for obj in &jsonl_objects {
-                let parts: Vec<&str> = obj.key.split('/').collect();
-                if parts.len() >= 3 && parts[2].ends_with(".jsonl") {
-                    let device_id = parts[1].to_string();
-                    let fname = parts[2].to_string();
-                    let entry = device_latest.entry(device_id).or_default();
-                    if fname > *entry {
-                        *entry = fname;
-                    }
-                }
-            }
             let seq_conn = self.conn()?;
-            for (device_id, latest_fname) in &device_latest {
-                if device_id != &self.device_id {
-                    let key = format!("remote:{}:last_seq", device_id);
-                    sync_state::set(&seq_conn, &key, latest_fname)?;
-                    eprintln!("[sync] Marked device {} JSONL as processed up to {}", device_id, latest_fname);
+            for (device_id, (_key, snapshot)) in &latest_per_device {
+                if device_id == &self.device_id {
+                    continue;
                 }
+                let cursor = jsonl_cursor_from_snapshot_timestamp(&snapshot.timestamp);
+                let state_key = format!("remote:{}:last_seq", device_id);
+                sync_state::set(&seq_conn, &state_key, &cursor)?;
+                eprintln!(
+                    "[sync] Device {} cursor set to {} (snapshot t={})",
+                    device_id, cursor, snapshot.timestamp
+                );
             }
         }
 
@@ -1626,6 +1635,18 @@ mod tests {
     use super::*;
     use crate::backend::mock::MockBackend;
 
+    #[test]
+    fn jsonl_cursor_from_snapshot_timestamp_matches_jsonl_format() {
+        // JSONL format: "%Y%m%dT%H%M%S%3fZ.jsonl"
+        let got = jsonl_cursor_from_snapshot_timestamp("2026-04-22T11:55:10.462+00:00");
+        assert_eq!(got, "20260422T115510462Z.jsonl");
+        // Non-UTC offset must be normalized.
+        let got = jsonl_cursor_from_snapshot_timestamp("2026-04-22T19:55:10.462+08:00");
+        assert_eq!(got, "20260422T115510462Z.jsonl");
+        // Parse failure → empty string cursor (apply everything, let LWW dedup).
+        assert_eq!(jsonl_cursor_from_snapshot_timestamp("not-a-date"), "");
+    }
+
     fn test_pool() -> (tempfile::TempDir, SharedPool) {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("test.db");
@@ -2268,5 +2289,88 @@ mod tests {
 
         // Verify: running again is a no-op (idempotent)
         engine.migrate_snapshots_to_gzip().await.unwrap();
+    }
+
+    /// Regression for the snapshot-cursor bug: a fresh device's first sync used
+    /// to push `remote:<device>:last_seq` to the *latest* JSONL, which silently
+    /// dropped any entries written between the snapshot's T0 and that latest
+    /// JSONL. The fix is to derive the cursor from the snapshot's `timestamp`
+    /// so Phase 2 picks up JSONL > T0.
+    #[tokio::test]
+    async fn test_fresh_device_applies_jsonl_newer_than_snapshot() {
+        use shibei_db::resources::{create_resource, CreateResourceInput};
+        use shibei_db::SyncContext;
+
+        let backend = Arc::new(MockBackend::new());
+
+        // ── Device A: insert r1 → first sync (snapshot covers r1) ────
+        let dir_a = tempfile::tempdir().unwrap();
+        let (_db_dir_a, pool_a) = test_pool();
+        let clock_a = Arc::new(HlcClock::new("dev-a".to_string()));
+        let engine_a = SyncEngine::new(
+            pool_a.clone(),
+            backend.clone(),
+            "dev-a".to_string(),
+            clock_a.clone(),
+            dir_a.path().to_path_buf(),
+        );
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let ctx = SyncContext { clock: &clock_a, device_id: "dev-a" };
+            create_resource(
+                &conn,
+                CreateResourceInput {
+                    id: Some("r1".to_string()),
+                    title: "First".to_string(),
+                    url: "https://example.com/1".to_string(),
+                    domain: None, author: None, description: None,
+                    folder_id: "__root__".to_string(),
+                    resource_type: "webpage".to_string(),
+                    file_path: "r1/snapshot.html".to_string(),
+                    captured_at: "2026-04-01T00:00:00Z".to_string(),
+                    selection_meta: None,
+                },
+                Some(&ctx),
+            ).unwrap();
+        }
+        engine_a.sync(None).await.unwrap();
+
+        // Ensure the next JSONL gets a strictly-newer filename (ms precision).
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+
+        // ── Device A: insert r2 → second sync (JSONL only, no new snapshot) ─
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let ctx = SyncContext { clock: &clock_a, device_id: "dev-a" };
+            create_resource(
+                &conn,
+                CreateResourceInput {
+                    id: Some("r2".to_string()),
+                    title: "Second".to_string(),
+                    url: "https://example.com/2".to_string(),
+                    domain: None, author: None, description: None,
+                    folder_id: "__root__".to_string(),
+                    resource_type: "webpage".to_string(),
+                    file_path: "r2/snapshot.html".to_string(),
+                    captured_at: "2026-04-02T00:00:00Z".to_string(),
+                    selection_meta: None,
+                },
+                Some(&ctx),
+            ).unwrap();
+        }
+        engine_a.sync(None).await.unwrap();
+
+        // ── Device B: fresh sync — must end up with BOTH r1 and r2 ────────
+        let dir_b = tempfile::tempdir().unwrap();
+        let (_db_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", dir_b.path().to_path_buf());
+        engine_b.sync(None).await.unwrap();
+
+        let conn = pool_b.read().unwrap().get().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM resources WHERE deleted_at IS NULL",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 2, "fresh device must apply JSONL newer than the snapshot");
     }
 }

@@ -20,6 +20,7 @@ struct Settings {
   @State resetError: string = '';
   @State syncing: boolean = false;
   @State syncStatus: string = '';
+  @State resetCursorsBusy: boolean = false;
   @State lockEnabled: boolean = false;
   @State bioEnabled: boolean = false;
   @State bioAvailable: boolean = false;
@@ -201,6 +202,40 @@ struct Settings {
     }
   }
 
+  // Recovery for the historical snapshot-cursor bug. Clears
+  // `remote:*:last_seq` + `last_sync_at` so the next sync re-runs the
+  // snapshot-import pass. Not destructive — S3 data + local data untouched.
+  private async resetSyncCursors(): Promise<void> {
+    if (this.resetCursorsBusy) return;
+    let confirmed = false;
+    try {
+      const res = await promptAction.showDialog({
+        title: '修复同步游标',
+        message: '这会清除「已同步到哪里」的记录,下次同步时全量拉取 S3 上的 snapshot 和增量日志补齐本地缺失。\n\n本地数据和云端数据都不会被删除。如果发现本机比其他设备少了资料,用这个修复。',
+        buttons: [
+          { text: '取消', color: '#666' },
+          { text: '确认修复', color: '#007DFF' },
+        ],
+      });
+      confirmed = res.index === 1;
+    } catch (err) {
+      hilog.info(0x0000, 'shibei', 'resetSyncCursors dialog dismissed: %{public}s',
+        (err as Error).message);
+      return;
+    }
+    if (!confirmed) return;
+
+    this.resetCursorsBusy = true;
+    try {
+      const n = ShibeiService.instance.resetSyncCursors();
+      promptAction.showToast({ message: `已清除 ${n} 条游标,点击"立即同步"重新拉取` });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      promptAction.showToast({ message: `修复失败: ${code}` });
+    }
+    this.resetCursorsBusy = false;
+  }
+
   // Two-tap confirmation: native dialog first (hard confirm), then the
   // call itself. `promptAction.showDialog` returns the index of the
   // pressed button — 1 means user tapped the destructive confirm.
@@ -303,6 +338,24 @@ struct Settings {
             }
             .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
             .onClick(() => this.syncNow());
+
+            Divider().color($r('sys.color.ohos_id_color_list_separator'));
+
+            Row() {
+              Column() {
+                Text(this.resetCursorsBusy ? '修复中…' : '修复同步游标')
+                  .fontSize(15)
+                  .fontColor($r('sys.color.ohos_id_color_text_primary'));
+                Text('本机比其他设备少资料时用此修复')
+                  .fontSize(11)
+                  .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+                  .margin({ top: 2 });
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+              Text('›').fontSize(18)
+                .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
+            }
+            .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
+            .onClick(() => this.resetSyncCursors());
           }
           .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
           .margin({ left: 12, right: 12 });

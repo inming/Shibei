@@ -148,6 +148,11 @@ pub unsafe extern "C" fn shibei_ffi_subscribe_sync_progress_unsubscribe(token: *
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_reset_sync_cursors() -> i32 {
+    crate::commands::reset_sync_cursors()
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_list_folders() -> *mut c_char {
     let s = crate::commands::list_folders();
     leak_cstring(s)

@@ -603,6 +603,20 @@ pub async fn cmd_force_compact(
     }
 }
 
+/// Clear `remote:*:last_seq` + `last_sync_at` so the next sync re-runs the
+/// snapshot-import pass. Recovery for the snapshot-cursor bug where a fresh
+/// device silently dropped JSONL entries written between the snapshot's T0
+/// and the latest JSONL at first-sync time.
+#[tauri::command]
+pub async fn cmd_reset_sync_cursors(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<usize, CommandError> {
+    let conn = state.conn()?;
+    let removed = crate::sync::sync_state::reset_sync_cursors(&conn)
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    Ok(removed)
+}
+
 #[tauri::command]
 pub async fn cmd_list_orphan_snapshots(
     state: tauri::State<'_, Arc<AppState>>,

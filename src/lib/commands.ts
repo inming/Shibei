@@ -217,6 +217,10 @@ export function forceCompact(): Promise<string> {
   return invoke("cmd_force_compact");
 }
 
+export function resetSyncCursors(): Promise<number> {
+  return invoke("cmd_reset_sync_cursors");
+}
+
 export interface OrphanItem {
   resource_id: string;
   size: number;

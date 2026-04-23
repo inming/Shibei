@@ -12,6 +12,7 @@ export const setS3Config: (configJson: string) => string;
 export const setE2eePassword: (password: string) => Promise<string>;
 export const syncMetadata: () => Promise<string>;
 export const subscribeSyncProgress: (cb: (payload: string) => void) => () => void;
+export const resetSyncCursors: () => number;
 export const listFolders: () => string;
 export const listResources: (folderId: string, tagIdsJson: string, sortJson: string) => string;
 export const searchResources: (query: string, tagIdsJson: string) => string;

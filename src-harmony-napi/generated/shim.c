@@ -23,6 +23,7 @@ extern void shibei_ffi_set_e2ee_password(const char* password, void* ctx);
 extern void shibei_ffi_sync_metadata(void* ctx);
 extern void* shibei_ffi_subscribe_sync_progress(void* ctx);
 extern void shibei_ffi_subscribe_sync_progress_unsubscribe(void* token);
+extern int32_t shibei_ffi_reset_sync_cursors(void);
 extern char* shibei_ffi_list_folders(void);
 extern char* shibei_ffi_list_resources(const char* folder_id, const char* tag_ids_json, const char* sort_json);
 extern char* shibei_ffi_search_resources(const char* query, const char* tag_ids_json);
@@ -286,6 +287,14 @@ static napi_value subscribe_sync_progress_unsubscribe_wrap(napi_env env, napi_ca
         napi_release_threadsafe_function(ctx->tsfn, napi_tsfn_release);
     }
     napi_value undef = NULL; napi_get_undefined(env, &undef); return undef;
+}
+
+static napi_value reset_sync_cursors_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    int32_t ret = shibei_ffi_reset_sync_cursors();
+    napi_create_int32(env, ret, &result);
+    return result;
 }
 
 static napi_value list_folders_wrap(napi_env env, napi_callback_info info) {
@@ -810,6 +819,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"setE2eePassword", NULL, set_e2ee_password_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"syncMetadata", NULL, sync_metadata_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"subscribeSyncProgress", NULL, subscribe_sync_progress_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"resetSyncCursors", NULL, reset_sync_cursors_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listFolders", NULL, list_folders_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listResources", NULL, list_resources_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"searchResources", NULL, search_resources_wrap, NULL, NULL, NULL, napi_default, NULL},

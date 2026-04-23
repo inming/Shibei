@@ -53,6 +53,7 @@ import {
   s3CredsRead as napiS3CredsRead,
   s3CredsClearLegacy as napiS3CredsClearLegacy,
   setS3CredsOnly as napiSetS3CredsOnly,
+  resetSyncCursors as napiResetSyncCursors,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -345,6 +346,19 @@ export class ShibeiService {
       this.notifyDataChanged();
     }
     return result;
+  }
+
+  /// Clear `remote:*:last_seq` + `last_sync_at` so the next sync re-runs
+  /// the snapshot-import pass. Use this when the device has fewer resources
+  /// than other devices (the old maybe_import_snapshot pushed the cursor
+  /// past JSONL that snapshots didn't cover). Safe to call at any time —
+  /// LWW handles dedup. Returns the number of rows removed.
+  resetSyncCursors(): number {
+    const n = napiResetSyncCursors();
+    if (n < 0) {
+      throw new ShibeiError('error.resetSyncCursorsFailed');
+    }
+    return n;
   }
 
   /// Subscribe to "remote changes landed" ticks — fires once after each

@@ -37,6 +37,8 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [compacting, setCompacting] = useState(false);
+  const [resettingCursors, setResettingCursors] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [interval, setInterval_] = useState(intervalMinutes);
 
   // Orphan cleanup state
@@ -123,6 +125,19 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
       toast.error(t('scanFailed', { error: formatError(err) }));
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function handleResetCursors() {
+    setResettingCursors(true);
+    try {
+      const removed = await cmd.resetSyncCursors();
+      toast.success(t('resetCursorsSuccess', { count: removed }));
+      setShowResetConfirm(false);
+    } catch (err) {
+      toast.error(t('resetCursorsFailed', { error: formatError(err) }));
+    } finally {
+      setResettingCursors(false);
     }
   }
 
@@ -288,7 +303,16 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
             >
               {scanning ? t('scanning') : t('cleanOrphans')}
             </button>
+            <button
+              className={styles.secondary}
+              onClick={() => setShowResetConfirm(true)}
+              disabled={resettingCursors}
+              title={t('resetCursorsTooltip')}
+            >
+              {resettingCursors ? t('resettingCursors') : t('resetCursors')}
+            </button>
           </div>
+          <p className={styles.lastSync}>{t('resetCursorsHelp')}</p>
 
           {/* Scan result panel */}
           {scanResult && (
@@ -375,6 +399,32 @@ export function SyncPage({ intervalMinutes, onIntervalChange }: SyncPageProps) {
               onClick={handlePurgeOrphans}
             >
               {purging ? t('purging') : t('permanentDelete')}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showResetConfirm && (
+        <Modal
+          title={t('resetCursorsTitle')}
+          onClose={() => setShowResetConfirm(false)}
+        >
+          <p style={{ margin: "0 0 var(--spacing-md)", fontSize: "var(--font-size-sm)" }}>
+            {t('resetCursorsConfirmBody')}
+          </p>
+          <div className={styles.modalActions}>
+            <button
+              className={styles.secondary}
+              onClick={() => setShowResetConfirm(false)}
+            >
+              {t('cancel')}
+            </button>
+            <button
+              className={styles.primary}
+              disabled={resettingCursors}
+              onClick={handleResetCursors}
+            >
+              {resettingCursors ? t('resettingCursors') : t('resetCursorsConfirm')}
             </button>
           </div>
         </Modal>

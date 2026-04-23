@@ -293,6 +293,20 @@ pub fn subscribe_sync_progress(cb: ThreadsafeCallback<String>) -> Subscription {
     Subscription::new()
 }
 
+/// Clear `remote:*:last_seq` + `last_sync_at` so the next sync re-runs the
+/// snapshot-import pass. Recovery for the snapshot-cursor bug where a fresh
+/// device silently dropped JSONL entries written between the snapshot's T0
+/// and the latest JSONL at first-sync time. Safe to call at any time — the
+/// worst case is the next sync re-downloads state that's already present
+/// (LWW handles dedup). Returns the number of rows removed.
+#[shibei_napi]
+pub fn reset_sync_cursors() -> i32 {
+    match with_conn(shibei_sync::sync_state::reset_sync_cursors) {
+        Ok(n) => n as i32,
+        Err(_) => -1,
+    }
+}
+
 /// Phase 4: expose for lock.rs recovery flow.
 pub(crate) fn build_raw_backend_pub() -> Result<shibei_sync::backend::S3Backend, String> {
     build_raw_backend()
