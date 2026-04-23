@@ -190,6 +190,8 @@
 
     { "name": "resource_list_empty", "value": "当前文件夹没有资料" },
     { "name": "resource_list_empty_hint", "value": "（Phase 2 阶段暂无导入入口，等同步完成后再看）" },
-    { "name": "resource_list_error", "value": "err: %1$s" }
+    { "name": "resource_list_error", "value": "err: %1$s" },
+
+    { "name": "huks_auth_title", "value": "验证身份以解锁拾贝" }
   ]
 }

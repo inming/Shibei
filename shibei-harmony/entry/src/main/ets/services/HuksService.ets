@@ -22,6 +22,7 @@ import { huks } from '@kit.UniversalKeystoreKit';
 import { userAuth } from '@kit.UserAuthenticationKit';
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { I18n } from './I18n';
 
 const DEVICE_ALIAS = 'shibei_device_bound_v1';
 const BIO_ALIAS = 'shibei_bio_kek_v1';
@@ -324,7 +325,7 @@ export async function requestBioAuthForChallenge(challenge: Uint8Array): Promise
     authTrustLevel: userAuth.AuthTrustLevel.ATL2,
   };
   const widgetParam: userAuth.WidgetParam = {
-    title: '验证身份以解锁拾贝',
+    title: I18n.t($r('app.string.huks_auth_title')),
   };
   const auth = userAuth.getUserAuthInstance(authParam, widgetParam);
   return new Promise<Uint8Array>((resolve, reject) => {

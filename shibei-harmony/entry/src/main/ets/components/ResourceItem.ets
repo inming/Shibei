@@ -1,4 +1,5 @@
 import { Resource } from '../services/ShibeiService';
+import { I18n } from '../services/I18n';
 
 // Trims https?:// + trailing / from a URL for compact display.
 function prettyHost(url: string): string {
@@ -24,15 +25,17 @@ export struct ResourceItem {
 
   build() {
     Column() {
-      Text(this.resource.title || '(无标题)')
+      Text(this.resource.title || I18n.t($r('app.string.common_no_title')))
         .fontSize(15)
         .fontWeight(FontWeight.Medium)
         .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis });
       Row() {
-        Text(prettyHost(this.resource.url)).fontSize(12).fontColor('#666').layoutWeight(1)
+        Text(prettyHost(this.resource.url))
+          .fontSize(12).fontColor($r('app.color.text_secondary')).layoutWeight(1)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
-        Text(shortDate(this.resource.created_at)).fontSize(12).fontColor('#999');
+        Text(shortDate(this.resource.created_at))
+          .fontSize(12).fontColor($r('app.color.text_subtle'));
       }.margin({ top: 4 }).width('100%');
     }
     .alignItems(HorizontalAlign.Start)

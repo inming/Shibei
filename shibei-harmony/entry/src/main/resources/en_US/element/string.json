@@ -185,6 +185,8 @@
 
     { "name": "resource_list_empty", "value": "No items in this folder" },
     { "name": "resource_list_empty_hint", "value": "(No import entry in Phase 2; check back after sync)" },
-    { "name": "resource_list_error", "value": "err: %1$s" }
+    { "name": "resource_list_error", "value": "err: %1$s" },
+
+    { "name": "huks_auth_title", "value": "Authenticate to unlock Shibei" }
   ]
 }

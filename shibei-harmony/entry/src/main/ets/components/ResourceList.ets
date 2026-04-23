@@ -2,6 +2,7 @@ import { ShibeiService, ShibeiError, Resource } from '../services/ShibeiService'
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction } from '@kit.ArkUI';
 import { ResourceItem } from './ResourceItem';
+import { I18n } from '../services/I18n';
 
 @Component
 export struct ResourceList {
@@ -52,7 +53,9 @@ export struct ResourceList {
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
       hilog.warn(0x0000, 'shibei', 'pull-to-refresh sync fail: %{public}s', code);
-      promptAction.showToast({ message: `同步失败: ${code}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.sidebar_sync_failed'), code),
+      });
     } finally {
       this.refreshing = false;
     }
@@ -63,13 +66,18 @@ export struct ResourceList {
       Column() {
         if (this.error) {
           Column() {
-            Text(`err: ${this.error}`).fontSize(13).fontColor('#c00');
-            Button('retry').margin({ top: 8 }).onClick(() => this.reload());
+            Text(I18n.t($r('app.string.resource_list_error'), this.error))
+              .fontSize(13).fontColor($r('app.color.accent_error_strong'));
+            Button(I18n.t($r('app.string.common_retry')))
+              .margin({ top: 8 }).onClick(() => this.reload());
           }.padding(24).alignItems(HorizontalAlign.Center).width('100%');
         } else if (this.resources.length === 0 && !this.loading) {
           Column() {
-            Text('当前文件夹没有资料').fontSize(14).fontColor('#999');
-            Text('(Phase 2 阶段暂无导入入口,等同步完成后再看)').fontSize(11).fontColor('#bbb').margin({ top: 4 });
+            Text(I18n.t($r('app.string.resource_list_empty')))
+              .fontSize(14).fontColor($r('app.color.text_subtle'));
+            Text(I18n.t($r('app.string.resource_list_empty_hint')))
+              .fontSize(11).fontColor($r('app.color.text_disabled'))
+              .margin({ top: 4 });
           }.padding(40).alignItems(HorizontalAlign.Center).width('100%');
         } else {
           List({ space: 0 }) {
@@ -84,7 +92,12 @@ export struct ResourceList {
           }
           .width('100%')
           .layoutWeight(1)
-          .divider({ strokeWidth: 0.5, color: '#EEE', startMargin: 16, endMargin: 16 });
+          .divider({
+            strokeWidth: 0.5,
+            color: $r('app.color.border_divider'),
+            startMargin: 16,
+            endMargin: 16,
+          });
         }
       }
       .width('100%')

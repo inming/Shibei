@@ -1,6 +1,7 @@
 import { ShibeiService, ShibeiError, Folder, SyncProgressEvent, SyncResult } from '../services/ShibeiService';
 import { promptAction } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { I18n } from '../services/I18n';
 
 // Virtual folder ids mirrored from desktop src/types/index.ts.
 export const INBOX_FOLDER_ID = '__inbox__';
@@ -36,7 +37,7 @@ export struct FolderDrawer {
   private async syncNow(): Promise<void> {
     if (this.syncing) return;
     this.syncing = true;
-    this.syncStatus = '准备中…';
+    this.syncStatus = I18n.t($r('app.string.settings_sync_preparing'));
     const unsub = ShibeiService.instance.onSyncProgress((ev: SyncProgressEvent) => {
       this.syncStatus = ev.total > 0 ? `${ev.phase} ${ev.current}/${ev.total}` : ev.phase;
     });
@@ -44,16 +45,21 @@ export struct FolderDrawer {
       const result: SyncResult = await ShibeiService.instance.syncMetadata();
       if (result.kind === 'success') {
         promptAction.showToast({
-          message: `同步完成 ↑${result.uploaded} ↓${result.downloaded}`,
+          message: I18n.t(
+            $r('app.string.settings_sync_complete'), result.uploaded, result.downloaded),
         });
         // Folder list may have changed — reload after a successful pull.
         this.reload();
       } else {
-        promptAction.showToast({ message: '同步跳过' });
+        promptAction.showToast({
+          message: I18n.t($r('app.string.sidebar_sync_skipped')),
+        });
       }
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
-      promptAction.showToast({ message: `同步失败: ${code}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.sidebar_sync_failed'), code),
+      });
     } finally {
       unsub();
       this.syncing = false;
@@ -74,8 +80,20 @@ export struct FolderDrawer {
 
   private buildItems(): DrawerItem[] {
     const items: DrawerItem[] = [
-      { id: ALL_RESOURCES_ID, label: '所有资料', icon: '📚', isVirtual: true, depth: 0 },
-      { id: INBOX_FOLDER_ID, label: '收件箱', icon: '📥', isVirtual: true, depth: 0 },
+      {
+        id: ALL_RESOURCES_ID,
+        label: I18n.t($r('app.string.sidebar_all_resources')),
+        icon: '📚',
+        isVirtual: true,
+        depth: 0,
+      },
+      {
+        id: INBOX_FOLDER_ID,
+        label: I18n.t($r('app.string.sidebar_inbox')),
+        icon: '📥',
+        isVirtual: true,
+        depth: 0,
+      },
     ];
     // Group the remaining folders by parent_id so the recursion can look up
     // children cheaply. The __inbox__ seed is in the virtual section above
@@ -115,13 +133,16 @@ export struct FolderDrawer {
 
   build() {
     Column() {
-      Text('文件夹').fontSize(14).fontColor($r('sys.color.ohos_id_color_text_secondary'))
+      Text(I18n.t($r('app.string.sidebar_folders_label')))
+        .fontSize(14).fontColor($r('sys.color.ohos_id_color_text_secondary'))
         .margin({ top: 16, bottom: 8, left: 16 });
 
       if (this.error) {
-        Text(`err: ${this.error}`).fontSize(12).fontColor($r('sys.color.ohos_id_color_warning'))
+        Text(I18n.t($r('app.string.resource_list_error'), this.error))
+          .fontSize(12).fontColor($r('sys.color.ohos_id_color_warning'))
           .margin({ left: 16, right: 16 });
-        Button('retry').width('90%').margin({ top: 8 }).onClick(() => this.reload());
+        Button(I18n.t($r('app.string.common_retry')))
+          .width('90%').margin({ top: 8 }).onClick(() => this.reload());
       }
 
       List() {
@@ -157,7 +178,9 @@ export struct FolderDrawer {
         Row() {
           Text('⟳').fontSize(16).margin({ right: 8 })
             .fontColor($r('sys.color.ohos_id_color_emphasize'));
-          Text(this.syncing ? '同步中…' : '立即同步')
+          Text(this.syncing
+            ? I18n.t($r('app.string.settings_sync_in_progress'))
+            : I18n.t($r('app.string.settings_sync_now')))
             .fontSize(15)
             .fontColor($r('sys.color.ohos_id_color_text_primary'));
         }
