@@ -8,10 +8,18 @@ description = "Shibei filesystem storage for HTML/PDF snapshots and plain-text e
 [lib]
 name = "shibei_storage"
 
+[features]
+default = []
+# Enables the LRU snapshot cache index (used by the mobile build).
+# Desktop builds leave it off so all snapshot files stay on disk.
+mobile-cache = ["dep:serde", "dep:serde_json"]
+
 [dependencies]
 thiserror = "2"
 scraper = "0.22"
 pdf-extract = "0.7"
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

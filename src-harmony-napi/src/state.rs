@@ -23,9 +23,10 @@
 //!     this cache is gone until next HUKS unwrap.
 
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use shibei_db::{init_pool, SharedPool};
+use shibei_storage::cache::CacheIndex;
 use shibei_sync::EncryptionState;
 
 pub struct AppState {
@@ -35,6 +36,11 @@ pub struct AppState {
     pub device_id: String,
     pub clock: shibei_db::hlc::HlcClock,
     pub s3_creds: Arc<RwLock<Option<(String, String)>>>,
+    /// LRU snapshot cache index (§7.2). Wrapped in `Mutex` because put/touch
+    /// happen from many threads (NAPI commands + tokio tasks) but all mutate
+    /// the same in-memory BTreeMap. Contention is trivial — each op is
+    /// microseconds + one file rename for the cache-index.json flush.
+    pub cache: Arc<Mutex<CacheIndex>>,
 }
 
 impl AppState {
@@ -77,6 +83,7 @@ pub fn init(data_dir: PathBuf, ca_bundle_path: PathBuf) -> Result<(), String> {
     std::env::set_var("SSL_CERT_FILE", &ca_bundle_path);
 
     let clock = shibei_db::hlc::HlcClock::new(device_id.clone());
+    let cache = CacheIndex::load(&data_dir);
     let state = AppState {
         data_dir,
         db_pool: shared_pool,
@@ -84,6 +91,7 @@ pub fn init(data_dir: PathBuf, ca_bundle_path: PathBuf) -> Result<(), String> {
         device_id,
         clock,
         s3_creds: Arc::new(RwLock::new(None)),
+        cache: Arc::new(Mutex::new(cache)),
     };
 
     // If two threads race into init at the same time we pick one winner; the

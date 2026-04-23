@@ -18,6 +18,7 @@ name = "shibei_core"
 shibei-napi-macros = { path = "../crates/shibei-napi-macros" }
 shibei-db = { path = "../crates/shibei-db" }
 shibei-sync = { path = "../crates/shibei-sync" }
+shibei-storage = { path = "../crates/shibei-storage", features = ["mobile-cache"] }
 shibei-events = { path = "../crates/shibei-events" }
 shibei-mobile-lock = { path = "../crates/shibei-mobile-lock" }
 shibei-pairing = { path = "../crates/shibei-pairing" }

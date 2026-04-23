@@ -131,6 +131,43 @@ export struct FolderDrawer {
     if (this.onPick) this.onPick(id);
   }
 
+  /// Long-press on a folder row: confirm + batch preload the folder's
+  /// snapshots. The row includes both real folders and `__inbox__`; we
+  /// disable the menu for `__all__` because preloading "everything" is
+  /// almost never what the user means.
+  private onLongPressFolder(item: DrawerItem): void {
+    if (item.id === ALL_RESOURCES_ID) return;
+    const folderId = item.id;
+    const folderLabel = item.label;
+    promptAction.showDialog({
+      title: I18n.t($r('app.string.cache_folder_confirm_title')),
+      message: I18n.t($r('app.string.cache_folder_confirm_body'), folderLabel),
+      buttons: [
+        { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+        { text: I18n.t($r('app.string.cache_folder_confirm_ok')), color: $r('app.color.accent_primary') },
+      ],
+    }).then(async (r) => {
+      if (r.index !== 1) return;
+      promptAction.showToast({ message: I18n.t($r('app.string.cache_toast_folder_started')) });
+      try {
+        const summary = await ShibeiService.instance.preloadFolder(folderId);
+        promptAction.showToast({
+          message: I18n.t(
+            $r('app.string.cache_toast_folder_done'),
+            summary.ok, summary.failed, summary.skipped,
+          ),
+        });
+      } catch (err) {
+        const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+        promptAction.showToast({
+          message: I18n.t($r('app.string.cache_toast_folder_failed'), I18n.translateError(code)),
+        });
+      }
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'folder cache dialog dismissed: %{public}s', err.message);
+    });
+  }
+
   build() {
     Column() {
       Text(I18n.t($r('app.string.sidebar_folders_label')))
@@ -165,7 +202,11 @@ export struct FolderDrawer {
                 ? $r('sys.color.ohos_id_color_component_normal')
                 : Color.Transparent
             )
-            .onClick(() => this.pick(item.id));
+            .onClick(() => this.pick(item.id))
+            .gesture(
+              LongPressGesture({ repeat: false, duration: 500 })
+                .onAction(() => this.onLongPressFolder(item))
+            );
           }
         }, (item: DrawerItem) => item.id);
       }

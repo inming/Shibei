@@ -221,6 +221,102 @@ pub unsafe extern "C" fn shibei_ffi_ensure_pdf_downloaded(id: *const c_char, ctx
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_ensure_html_downloaded(id: *const c_char, ctx: *mut c_void) {
+    let id = cstr_to_string(id);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::ensure_html_downloaded(id).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_cache_stats() -> *mut c_char {
+    let s = crate::commands::cache_stats();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_cache_list() -> *mut c_char {
+    let s = crate::commands::cache_list();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_cached_ids(ids_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::cached_ids(cstr_to_string(ids_json));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_cache_clear() -> *mut c_char {
+    let s = crate::commands::cache_clear();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_cache_evict() -> *mut c_char {
+    let s = crate::commands::cache_evict();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_cache_set_limit(limit_bytes: i64) -> *mut c_char {
+    let s = crate::commands::cache_set_limit(limit_bytes);
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_preload_resource(id: *const c_char, ctx: *mut c_void) {
+    let id = cstr_to_string(id);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::preload_resource(id).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_preload_folder(folder_id: *const c_char, ctx: *mut c_void) {
+    let folder_id = cstr_to_string(folder_id);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::preload_folder(folder_id).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_list_annotations(resource_id: *const c_char) -> *mut c_char {
     let s = crate::commands::list_annotations(cstr_to_string(resource_id));
     leak_cstring(s)

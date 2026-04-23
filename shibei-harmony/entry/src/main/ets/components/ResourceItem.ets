@@ -20,16 +20,22 @@ function shortDate(iso: string): string {
 
 @Component
 export struct ResourceItem {
-  resource!: Resource;
+  // Caching-badge rendering is owned by ResourceList (via a Stack overlay);
+  // this component stays cache-agnostic so its reactivity story is simple.
+  @Prop resource: Resource;
   onTap?: (id: string) => void;
+  onLongPress?: (id: string) => void;
 
   build() {
     Column() {
-      Text(this.resource.title || I18n.t($r('app.string.common_no_title')))
-        .fontSize(15)
-        .fontWeight(FontWeight.Medium)
-        .maxLines(2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis });
+      Row() {
+        Text(this.resource.title || I18n.t($r('app.string.common_no_title')))
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1);
+      }.width('100%');
       Row() {
         Text(prettyHost(this.resource.url))
           .fontSize(12).fontColor($r('app.color.text_secondary')).layoutWeight(1)
@@ -41,6 +47,10 @@ export struct ResourceItem {
     .alignItems(HorizontalAlign.Start)
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
-    .onClick(() => { if (this.onTap) this.onTap(this.resource.id); });
+    .onClick(() => { if (this.onTap) this.onTap(this.resource.id); })
+    .gesture(
+      LongPressGesture({ repeat: false, duration: 500 })
+        .onAction(() => { if (this.onLongPress) this.onLongPress(this.resource.id); })
+    );
   }
 }

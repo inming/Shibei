@@ -199,6 +199,31 @@
     { "name": "error_credentialsNotPrimed", "value": "Credentials not primed, please retry" },
     { "name": "error_credentialsLockPoisoned", "value": "Credentials lock corrupted, please restart the app" },
     { "name": "error_pairingBadPin", "value": "Pairing PIN incorrect" },
-    { "name": "error_unknown", "value": "%1$s" }
+    { "name": "error_unknown", "value": "%1$s" },
+
+    { "name": "cache_header_title", "value": "Cache" },
+    { "name": "cache_header_total", "value": "%1$s / %2$s" },
+    { "name": "cache_header_entry_count", "value": "%1$d cached" },
+    { "name": "cache_expand_list", "value": "Show list" },
+    { "name": "cache_collapse_list", "value": "Hide" },
+    { "name": "cache_list_empty", "value": "Nothing cached yet." },
+    { "name": "cache_clear_button", "value": "Clear cache" },
+    { "name": "cache_clear_busy", "value": "Clearing…" },
+    { "name": "cache_clear_confirm_title", "value": "Clear cache" },
+    { "name": "cache_clear_confirm_body", "value": "All downloaded web and PDF snapshots will be deleted. Titles, highlights, and notes stay intact — snapshots will re-download on demand." },
+    { "name": "cache_clear_confirm_ok", "value": "Clear" },
+    { "name": "cache_clear_toast_ok", "value": "Cleared %1$d items" },
+    { "name": "cache_clear_toast_failed", "value": "Clear failed: %1$s" },
+    { "name": "cache_menu_title", "value": "Cache" },
+    { "name": "cache_action_this_resource", "value": "Cache this item" },
+    { "name": "cache_action_this_folder", "value": "Cache this folder" },
+    { "name": "cache_toast_one_ok", "value": "Cached" },
+    { "name": "cache_toast_one_failed", "value": "Cache failed: %1$s" },
+    { "name": "cache_toast_folder_started", "value": "Caching folder…" },
+    { "name": "cache_toast_folder_done", "value": "Cached %1$d · skipped %3$d · failed %2$d" },
+    { "name": "cache_toast_folder_failed", "value": "Folder cache failed: %1$s" },
+    { "name": "cache_folder_confirm_title", "value": "Cache folder" },
+    { "name": "cache_folder_confirm_body", "value": "Download all uncached items in \"%1$s\". Wi-Fi recommended." },
+    { "name": "cache_folder_confirm_ok", "value": "Start" }
   ]
 }

@@ -160,6 +160,17 @@ fn reset_device_inner() -> Result<(), String> {
         std::fs::remove_dir_all(&storage_dir)
             .map_err(|e| format!("error.wipeStorage: {e}"))?;
     }
+
+    // 4) Reset the LRU cache index — both the in-memory BTreeMap and the
+    // on-disk cache-index.json. Keep the configured limit across resets.
+    if let Ok(mut guard) = app.cache.lock() {
+        let limit = guard.limit_bytes();
+        *guard = shibei_storage::cache::CacheIndex::default();
+        guard.set_limit(limit);
+        if let Err(e) = guard.flush(&app.data_dir) {
+            eprintln!("[cache] flush after reset failed: {e}");
+        }
+    }
     Ok(())
 }
 
@@ -359,6 +370,7 @@ fn build_raw_backend() -> Result<shibei_sync::backend::S3Backend, String> {
 
 async fn build_sync_engine() -> Result<shibei_sync::engine::SyncEngine, String> {
     use shibei_sync::backend::SyncBackend;
+    use shibei_sync::engine::SyncOptions;
     use std::sync::Arc;
 
     let raw = build_raw_backend()?;
@@ -388,12 +400,32 @@ async fn build_sync_engine() -> Result<shibei_sync::engine::SyncEngine, String> 
 
     let clock = Arc::new(shibei_db::hlc::HlcClock::new(app.device_id.clone()));
 
-    Ok(shibei_sync::engine::SyncEngine::new(
+    // Mobile LRU cache wiring (§7.2). Capture just the pieces we need so the
+    // callback doesn't reach back into the OnceLock every time.
+    let cache = app.cache.clone();
+    let base_dir = app.data_dir.clone();
+    let on_saved: shibei_sync::engine::SnapshotSavedCallback = Arc::new(move |id, _rtype, bytes| {
+        if let Ok(mut guard) = cache.lock() {
+            guard.put(id, bytes);
+            let _ = guard.evict_if_over_limit(&base_dir);
+            if let Err(e) = guard.flush(&base_dir) {
+                eprintln!("[cache] flush after put failed: {e}");
+            }
+        }
+    });
+
+    let options = SyncOptions {
+        skip_proactive_snapshot_download: true,
+        on_snapshot_saved: Some(on_saved),
+    };
+
+    Ok(shibei_sync::engine::SyncEngine::with_options(
         app.db_pool.clone(),
         backend,
         app.device_id.clone(),
         clock,
         app.data_dir.clone(),
+        options,
     ))
 }
 
@@ -576,8 +608,48 @@ pub fn get_resource_html(id: String) -> String {
         Ok(s) => s,
         Err(e) => return format!("error.snapshotNotFound: {e}"),
     };
+    touch_cache(&id);
     // Strip page scripts, then inject the annotator.
     strip_scripts_and_inject(&html)
+}
+
+/// Bump the LRU entry's last_access timestamp + flush index. Best-effort —
+/// any failure is logged but swallowed so reads never fail on cache I/O.
+fn touch_cache(id: &str) {
+    let Ok(app) = state::get() else { return };
+    let Ok(mut guard) = app.cache.lock() else { return };
+    if !guard.contains(id) {
+        // Snapshot exists on disk but we never put()-ed it (e.g. written
+        // before §7.2 landed, or by a non-sync path). Register it now using
+        // the actual file size so LRU accounting stays honest.
+        let storage_dir = app.data_dir.join("storage").join(id);
+        let bytes = snapshot_bytes_in_dir(&storage_dir);
+        if bytes > 0 {
+            guard.put(id, bytes);
+        }
+    } else {
+        guard.touch(id);
+    }
+    if let Err(e) = guard.flush(&app.data_dir) {
+        eprintln!("[cache] flush after touch failed: {e}");
+    }
+}
+
+/// Return the total size of snapshot.* files in a resource dir. Used when
+/// we need to retrofit an entry that wasn't registered at download time.
+fn snapshot_bytes_in_dir(dir: &std::path::Path) -> u64 {
+    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    let mut total: u64 = 0;
+    for entry in rd.flatten() {
+        let name = entry.file_name();
+        let s = name.to_string_lossy();
+        if s.starts_with("snapshot.") {
+            if let Ok(meta) = entry.metadata() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
 }
 
 fn strip_scripts_and_inject(html: &str) -> String {
@@ -705,7 +777,10 @@ pub fn get_pdf_bytes(id: String) -> String {
         .join(&id)
         .join("snapshot.pdf");
     match std::fs::read(&pdf_path) {
-        Ok(bytes) => base64::engine::general_purpose::STANDARD.encode(&bytes),
+        Ok(bytes) => {
+            touch_cache(&id);
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        }
         Err(e) => {
             eprintln!("get_pdf_bytes: read failed {}: {e}", pdf_path.display());
             String::new()
@@ -731,6 +806,7 @@ pub async fn ensure_pdf_downloaded(id: String) -> Result<String, String> {
         .join(&id)
         .join("snapshot.pdf");
     if pdf_path.exists() {
+        touch_cache(&id);
         return Ok("ok".to_string());
     }
     let engine = build_sync_engine().await?;
@@ -739,6 +815,311 @@ pub async fn ensure_pdf_downloaded(id: String) -> Result<String, String> {
         .await
         .map_err(|e| format!("error.downloadFailed: {e}"))?;
     Ok("ok".to_string())
+}
+
+/// Ensure the local snapshot.html is present, pulling from S3 if missing.
+/// Symmetric to `ensure_pdf_downloaded`. Returns `"ok"` or `error.*`.
+///
+/// Mobile uses this as the gate before `get_resource_html` so the Reader can
+/// lazily download HTML without the sync engine eagerly pulling everything.
+#[shibei_napi(async)]
+pub async fn ensure_html_downloaded(id: String) -> Result<String, String> {
+    let app = state::get()?;
+    let html_path = app
+        .data_dir
+        .join("storage")
+        .join(&id)
+        .join("snapshot.html");
+    if html_path.exists() {
+        touch_cache(&id);
+        return Ok("ok".to_string());
+    }
+    let engine = build_sync_engine().await?;
+    engine
+        .download_snapshot(&id, "html")
+        .await
+        .map_err(|e| format!("error.downloadFailed: {e}"))?;
+    Ok("ok".to_string())
+}
+
+// ────────────────────────────────────────────────────────────
+// Cache management (§7.2)
+// ────────────────────────────────────────────────────────────
+
+/// `{ "totalBytes": u64, "limitBytes": u64, "entryCount": u64 }` JSON.
+/// ArkTS uses this to drive the cache progress bar in Settings → 数据.
+#[shibei_napi]
+pub fn cache_stats() -> String {
+    let Ok(app) = state::get() else {
+        return r#"{"totalBytes":0,"limitBytes":0,"entryCount":0}"#.to_string();
+    };
+    let Ok(guard) = app.cache.lock() else {
+        return r#"{"totalBytes":0,"limitBytes":0,"entryCount":0}"#.to_string();
+    };
+    let s = guard.stats();
+    format!(
+        r#"{{"totalBytes":{},"limitBytes":{},"entryCount":{}}}"#,
+        s.total_bytes, s.limit_bytes, s.entry_count
+    )
+}
+
+/// Return cached entries joined with resource metadata (title/url/type) so
+/// the Settings 缓存管理 list can show human-readable rows. Sorted MRU-first.
+/// Entries whose resource row has been hard-deleted are filtered out
+/// (compaction can leave behind orphan snapshot files; LRU eventually
+/// reclaims them). JSON shape:
+///   [{ "resourceId":"..","title":"..","url":"..","resourceType":"pdf",
+///      "bytes":12345,"lastAccessMs":17... }]
+#[shibei_napi]
+pub fn cache_list() -> String {
+    let Ok(app) = state::get() else {
+        return "[]".to_string();
+    };
+    let entries = match app.cache.lock() {
+        Ok(g) => g.list(),
+        Err(_) => return "[]".to_string(),
+    };
+    let pool = match app.db_pool.read() {
+        Ok(p) => p,
+        Err(_) => return "[]".to_string(),
+    };
+    let conn = match pool.get() {
+        Ok(c) => c,
+        Err(_) => return "[]".to_string(),
+    };
+    #[derive(serde::Serialize)]
+    struct Row {
+        #[serde(rename = "resourceId")]
+        resource_id: String,
+        title: String,
+        url: String,
+        #[serde(rename = "resourceType")]
+        resource_type: String,
+        bytes: u64,
+        #[serde(rename = "lastAccessMs")]
+        last_access_ms: i64,
+    }
+    let mut out: Vec<Row> = Vec::with_capacity(entries.len());
+    let mut stmt = match conn.prepare(
+        "SELECT title, url, resource_type FROM resources \
+         WHERE id = ?1 AND deleted_at IS NULL",
+    ) {
+        Ok(s) => s,
+        Err(_) => return "[]".to_string(),
+    };
+    for e in entries {
+        let row = stmt.query_row(rusqlite::params![&e.resource_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        });
+        if let Ok((title, url, rtype)) = row {
+            out.push(Row {
+                resource_id: e.resource_id,
+                title,
+                url,
+                resource_type: rtype,
+                bytes: e.bytes,
+                last_access_ms: e.last_access_ms,
+            });
+        }
+    }
+    to_json(&out)
+}
+
+/// Batch membership check: given a JSON array of resource ids, return the
+/// subset that currently has a snapshot in cache. Used by ResourceList to
+/// render the "已缓存" badge in one round-trip.
+#[shibei_napi]
+pub fn cached_ids(ids_json: String) -> String {
+    let Ok(ids): Result<Vec<String>, _> = serde_json::from_str(&ids_json) else {
+        return "[]".to_string();
+    };
+    let Ok(app) = state::get() else {
+        return "[]".to_string();
+    };
+    let Ok(guard) = app.cache.lock() else {
+        return "[]".to_string();
+    };
+    let cached = guard.cached_ids(ids);
+    to_json(&cached)
+}
+
+/// Nuke every cached snapshot on disk + drop the in-memory index. Does NOT
+/// touch the DB rows — titles/tags/annotations survive; the user simply has
+/// to re-download a snapshot before reading. Returns the count of entries
+/// cleared as a decimal string (so ArkTS can show a toast like "已清 N 条").
+///
+/// Orphan snapshot directories (written by pre-§7.2 builds that did eager
+/// sync downloads without ever touching cache-index.json) get swept here
+/// too — we honor the "all downloaded snapshots" wording of the confirm
+/// dialog even when the cache index lost track of some files.
+#[shibei_napi]
+pub fn cache_clear() -> String {
+    let Ok(app) = state::get() else {
+        return "0".to_string();
+    };
+    let removed = match app.cache.lock() {
+        Ok(mut g) => {
+            let ids = g.clear_all(&app.data_dir);
+            if let Err(e) = g.flush(&app.data_dir) {
+                eprintln!("[cache] flush after clear failed: {e}");
+            }
+            ids.len()
+        }
+        Err(_) => 0,
+    };
+    // Sweep any orphan `storage/*` dirs that were never tracked in the
+    // cache index. Safe to wipe wholesale because the index clear above
+    // already accounts for every cached id, and the DB does not require
+    // these files (only the Reader does — it'll re-download on next open).
+    let storage_dir = app.data_dir.join("storage");
+    if storage_dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&storage_dir) {
+            eprintln!("[cache] sweep orphan storage/ failed: {e}");
+        }
+    }
+    removed.to_string()
+}
+
+/// Force an eviction pass against the current limit. Returns the evicted id
+/// count. ArkTS typically doesn't call this directly — eviction happens
+/// automatically inside `on_snapshot_saved` — but it's useful when the limit
+/// was lowered via `cache_set_limit`.
+#[shibei_napi]
+pub fn cache_evict() -> String {
+    let Ok(app) = state::get() else {
+        return "0".to_string();
+    };
+    let n = match app.cache.lock() {
+        Ok(mut g) => {
+            let ids = g.evict_if_over_limit(&app.data_dir);
+            if let Err(e) = g.flush(&app.data_dir) {
+                eprintln!("[cache] flush after evict failed: {e}");
+            }
+            ids.len()
+        }
+        Err(_) => 0,
+    };
+    n.to_string()
+}
+
+/// Update the cache size ceiling (bytes). Values < 1 are clamped to 1. If the
+/// new limit is below current usage, an eviction pass runs immediately.
+#[shibei_napi]
+pub fn cache_set_limit(limit_bytes: i64) -> String {
+    let Ok(app) = state::get() else {
+        return "error.notInitialized".to_string();
+    };
+    let bytes = if limit_bytes < 1 { 1 } else { limit_bytes as u64 };
+    let Ok(mut guard) = app.cache.lock() else {
+        return "error.cacheLockPoisoned".to_string();
+    };
+    guard.set_limit(bytes);
+    let _ = guard.evict_if_over_limit(&app.data_dir);
+    if let Err(e) = guard.flush(&app.data_dir) {
+        eprintln!("[cache] flush after set_limit failed: {e}");
+        return format!("error.cacheFlush: {e}");
+    }
+    "ok".to_string()
+}
+
+/// Preload a single resource's snapshot (HTML or PDF auto-detected from
+/// `resources.resource_type`). Returns `"ok"` (fast path when already
+/// present) or `error.*`. Used by ResourceList/FolderDrawer 右键 「缓存到
+/// 本地」 and by the batch preload in `preload_folder`.
+#[shibei_napi(async)]
+pub async fn preload_resource(id: String) -> Result<String, String> {
+    let rtype = with_conn(|conn| {
+        conn.query_row(
+            "SELECT resource_type FROM resources WHERE id = ?1 AND deleted_at IS NULL",
+            rusqlite::params![&id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(shibei_db::DbError::from)
+    })?;
+    if rtype == "pdf" {
+        ensure_pdf_downloaded(id).await
+    } else {
+        ensure_html_downloaded(id).await
+    }
+}
+
+/// Preload every non-deleted resource in a folder. Returns JSON
+/// `{"ok":N,"failed":M,"skipped":K}` — skipped = already cached, ok = newly
+/// downloaded, failed = each individual error. Failures don't abort the run
+/// (user on spotty WiFi shouldn't lose 9/10 successful downloads to one bad
+/// one). `folder_id` may be `"__inbox__"`.
+#[shibei_napi(async)]
+pub async fn preload_folder(folder_id: String) -> Result<String, String> {
+    let ids: Vec<(String, String)> = with_conn(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, resource_type FROM resources \
+             WHERE folder_id = ?1 AND deleted_at IS NULL",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![&folder_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })?;
+
+    let app = state::get()?;
+    let base = app.data_dir.clone();
+
+    let mut ok: u32 = 0;
+    let mut failed: u32 = 0;
+    let mut skipped: u32 = 0;
+
+    // Build the engine lazily — if every resource is already on disk we can
+    // skip the MK precondition entirely. Initial state: None; first missing
+    // snapshot triggers construction. If construction fails (MK not loaded)
+    // we surface one error and let the loop count the rest as failed.
+    let mut engine: Option<shibei_sync::engine::SyncEngine> = None;
+    let mut engine_err: Option<String> = None;
+
+    for (rid, rtype) in ids {
+        let filename = if rtype == "pdf" { "snapshot.pdf" } else { "snapshot.html" };
+        let path = base.join("storage").join(&rid).join(filename);
+        if path.exists() {
+            // Already on disk from a previous sync — touch cache so the
+            // row badge shows up. Without this, pre-existing snapshots
+            // stay silently off-cache-index and the user has no way to
+            // see they already have the file.
+            touch_cache(&rid);
+            skipped += 1;
+            continue;
+        }
+        // Lazy engine construction. If MK isn't loaded we can't download
+        // anything — surface that as each remaining failure so the user
+        // sees "ok N / failed M / skipped K" and knows what gap remains.
+        if engine.is_none() && engine_err.is_none() {
+            match build_sync_engine().await {
+                Ok(e) => engine = Some(e),
+                Err(e) => engine_err = Some(e),
+            }
+        }
+        if let Some(err) = engine_err.as_ref() {
+            eprintln!("[preload] {} skipped (engine unavailable): {err}", rid);
+            failed += 1;
+            continue;
+        }
+        match engine.as_ref().unwrap().download_snapshot(&rid, &rtype).await {
+            Ok(()) => ok += 1,
+            Err(e) => {
+                eprintln!("[preload] {} failed: {e}", rid);
+                failed += 1;
+            }
+        }
+    }
+
+    Ok(format!(
+        r#"{{"ok":{},"failed":{},"skipped":{}}}"#,
+        ok, failed, skipped
+    ))
 }
 
 // ────────────────────────────────────────────────────────────

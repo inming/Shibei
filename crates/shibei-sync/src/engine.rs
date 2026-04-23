@@ -56,11 +56,32 @@ pub struct SyncEngine {
     clock: Arc<HlcClock>,
     lock: tokio::sync::Mutex<()>,
     base_dir: PathBuf,
+    options: SyncOptions,
 }
 
 /// Callback for reporting sync progress to the UI.
 /// Arguments: (phase, current, total)
 pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
+
+/// Invoked after a snapshot file is successfully written to disk by
+/// `download_snapshot`. Mobile wires this into its LRU cache index
+/// (`cache.put` + `evict_if_over_limit`); desktop leaves it None.
+/// Arguments: (resource_id, resource_type, bytes_on_disk).
+pub type SnapshotSavedCallback = Arc<dyn Fn(&str, &str, u64) + Send + Sync>;
+
+/// Per-construction tuning for SyncEngine. Desktop uses `SyncOptions::default()`
+/// (no behavior change from the original engine); mobile opts out of
+/// proactive snapshot download and hooks into every snapshot write.
+#[derive(Default, Clone)]
+pub struct SyncOptions {
+    /// When true, skip Phase 4 (`download_pending_snapshots`). Mobile relies
+    /// on per-resource on-demand download (`ensure_{html,pdf}_downloaded`)
+    /// gated by LRU cache, so it must not have sync pull everything eagerly.
+    pub skip_proactive_snapshot_download: bool,
+    /// Fires once per successful snapshot download (HTML or PDF). Used by
+    /// mobile to account bytes into the LRU cache index.
+    pub on_snapshot_saved: Option<SnapshotSavedCallback>,
+}
 
 /// Determine the S3 key for a resource's snapshot, based on resource_type.
 fn snapshot_s3_key(resource_id: &str, resource_type: &str) -> String {
@@ -95,6 +116,17 @@ impl SyncEngine {
         clock: Arc<HlcClock>,
         base_dir: PathBuf,
     ) -> Self {
+        Self::with_options(pool, backend, device_id, clock, base_dir, SyncOptions::default())
+    }
+
+    pub fn with_options(
+        pool: SharedPool,
+        backend: Arc<dyn SyncBackend>,
+        device_id: String,
+        clock: Arc<HlcClock>,
+        base_dir: PathBuf,
+        options: SyncOptions,
+    ) -> Self {
         Self {
             pool,
             backend,
@@ -102,6 +134,7 @@ impl SyncEngine {
             clock,
             lock: tokio::sync::Mutex::new(()),
             base_dir,
+            options,
         }
     }
 
@@ -159,7 +192,10 @@ impl SyncEngine {
         }
 
         // Phase 4: Download pending resource snapshots
-        self.download_pending_snapshots(on_progress).await;
+        // Mobile opts out (on-demand + LRU); desktop keeps the original eager fetch.
+        if !self.options.skip_proactive_snapshot_download {
+            self.download_pending_snapshots(on_progress).await;
+        }
 
         // Phase 5: Compaction check
         if let Err(e) = self.maybe_compact().await {
@@ -1565,6 +1601,14 @@ impl SyncEngine {
                     let _ = shibei_db::resources::set_plain_text(&conn, resource_id, &text);
                 }
             }
+        }
+
+        // Notify mobile LRU cache (desktop leaves `on_snapshot_saved` None).
+        // Use the on-disk size rather than `data.len()` so the accounting
+        // matches what `rm -rf` actually reclaims.
+        if let Some(cb) = self.options.on_snapshot_saved.clone() {
+            let bytes_on_disk = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(data.len() as u64);
+            cb(resource_id, resource_type, bytes_on_disk);
         }
 
         Ok(())

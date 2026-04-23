@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 import { router, promptAction } from '@kit.ArkUI';
-import { ShibeiService, ShibeiError } from '../services/ShibeiService';
+import { ShibeiService, ShibeiError, CacheStats, CacheListRow } from '../services/ShibeiService';
 import { loadTheme, applyTheme, ThemeMode } from '../app/ThemeManager';
 import { LockService } from '../services/LockService';
 import { HuksService } from '../services/HuksService';
@@ -34,6 +34,11 @@ struct Settings {
   @State pinConfirm: string = '';
   @State pinStep: 'enter' | 'confirm' = 'enter';
   @State oldPinInput: string = '';
+  // ── Cache management state (§7.2) ──
+  @State cacheStats: CacheStats = { totalBytes: 0, limitBytes: 0, entryCount: 0 };
+  @State cacheList: CacheListRow[] = [];
+  @State showCacheList: boolean = false;
+  @State cacheBusy: boolean = false;
 
   async aboutToAppear(): Promise<void> {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -41,6 +46,69 @@ struct Settings {
     this.lockEnabled = ShibeiService.instance.lockIsConfigured();
     this.bioEnabled = ShibeiService.instance.lockIsBioEnabled();
     this.bioAvailable = await HuksService.instance.isBioAvailable();
+    this.reloadCache();
+  }
+
+  private reloadCache(): void {
+    try {
+      this.cacheStats = ShibeiService.instance.getCacheStats();
+      if (this.showCacheList) {
+        this.cacheList = ShibeiService.instance.getCacheList();
+      }
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'reloadCache fail: %{public}s', (err as Error).message);
+    }
+  }
+
+  private toggleCacheList(): void {
+    this.showCacheList = !this.showCacheList;
+    if (this.showCacheList) {
+      try {
+        this.cacheList = ShibeiService.instance.getCacheList();
+      } catch (err) {
+        hilog.warn(0x0000, 'shibei', 'getCacheList fail: %{public}s', (err as Error).message);
+      }
+    }
+  }
+
+  private async clearCacheConfirm(): Promise<void> {
+    if (this.cacheBusy) return;
+    try {
+      const r = await promptAction.showDialog({
+        title: I18n.t($r('app.string.cache_clear_confirm_title')),
+        message: I18n.t($r('app.string.cache_clear_confirm_body')),
+        buttons: [
+          { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+          { text: I18n.t($r('app.string.cache_clear_confirm_ok')), color: $r('app.color.accent_danger') },
+        ],
+      });
+      if (r.index !== 1) return;
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'cache clear dismissed: %{public}s', (err as Error).message);
+      return;
+    }
+    this.cacheBusy = true;
+    try {
+      const n = ShibeiService.instance.clearCache();
+      this.reloadCache();
+      promptAction.showToast({ message: I18n.t($r('app.string.cache_clear_toast_ok'), n) });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      promptAction.showToast({
+        message: I18n.t($r('app.string.cache_clear_toast_failed'), I18n.translateError(code)),
+      });
+    } finally {
+      this.cacheBusy = false;
+    }
+  }
+
+  private formatBytes(b: number): string {
+    if (b < 1024) return `${b} B`;
+    const kb = b / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    return `${(mb / 1024).toFixed(2)} GB`;
   }
 
   private async setTheme(mode: ThemeMode): Promise<void> {
@@ -592,10 +660,95 @@ struct Settings {
             }.width('100%').padding(12);
           }
 
-          // ── 数据 ─────────────────────────────────────────
+          // ── 数据 / 缓存管理 (§7.2) ────────────────────────
           Text(I18n.t($r('app.string.settings_section_data'))).fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .margin({ top: 24, left: 16, bottom: 4 });
+          Column() {
+            Row() {
+              Text(I18n.t($r('app.string.cache_header_title'))).fontSize(15)
+                .fontColor($r('app.color.text_primary'))
+                .layoutWeight(1);
+              Text(I18n.t(
+                $r('app.string.cache_header_total'),
+                this.formatBytes(this.cacheStats.totalBytes),
+                this.formatBytes(this.cacheStats.limitBytes),
+              ))
+                .fontSize(12)
+                .fontColor($r('app.color.text_secondary'));
+            }
+            .width('100%').padding({ top: 12, bottom: 6, left: 12, right: 12 });
+            // Progress bar — clamp visually at 100% even if file-system drift
+            // ever puts us slightly over.
+            Progress({
+              value: Math.min(this.cacheStats.totalBytes, this.cacheStats.limitBytes),
+              total: this.cacheStats.limitBytes || 1,
+              type: ProgressType.Linear,
+            })
+              .width('96%').height(4)
+              .margin({ left: 12, right: 12, bottom: 8 });
+            Row() {
+              Text(I18n.t(
+                $r('app.string.cache_header_entry_count'),
+                this.cacheStats.entryCount,
+              ))
+                .fontSize(12).fontColor($r('app.color.text_secondary'))
+                .layoutWeight(1);
+              Text(this.showCacheList
+                ? I18n.t($r('app.string.cache_collapse_list'))
+                : I18n.t($r('app.string.cache_expand_list')))
+                .fontSize(13).fontColor($r('app.color.accent_primary'))
+                .onClick(() => this.toggleCacheList());
+            }
+            .width('100%').padding({ left: 12, right: 12, bottom: 10 });
+
+            if (this.showCacheList) {
+              if (this.cacheList.length === 0) {
+                Text(I18n.t($r('app.string.cache_list_empty')))
+                  .fontSize(12).fontColor($r('app.color.text_subtle'))
+                  .padding({ left: 12, right: 12, bottom: 12 });
+              } else {
+                Column() {
+                  ForEach(this.cacheList, (row: CacheListRow) => {
+                    Column() {
+                      Text(row.title || row.url)
+                        .fontSize(13).fontColor($r('app.color.text_primary'))
+                        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+                      Row() {
+                        Text(row.resourceType.toUpperCase()).fontSize(10)
+                          .fontColor($r('app.color.text_subtle'))
+                          .margin({ right: 8 });
+                        Text(this.formatBytes(row.bytes)).fontSize(11)
+                          .fontColor($r('app.color.text_secondary'))
+                          .layoutWeight(1);
+                      }.width('100%').margin({ top: 2 });
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .width('100%')
+                    .padding({ left: 12, right: 12, top: 8, bottom: 8 });
+                  }, (row: CacheListRow) => row.resourceId);
+                }
+                .width('100%');
+              }
+            }
+
+            Divider().strokeWidth(0.5).color($r('app.color.border_divider'));
+            Row() {
+              Text(this.cacheBusy
+                ? I18n.t($r('app.string.cache_clear_busy'))
+                : I18n.t($r('app.string.cache_clear_button')))
+                .fontSize(15)
+                .fontColor($r('app.color.accent_danger'))
+                .layoutWeight(1);
+              Text('›').fontSize(18)
+                .fontColor($r('app.color.text_disabled'));
+            }
+            .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
+            .onClick(() => this.clearCacheConfirm());
+          }
+          .backgroundColor($r('app.color.bg_secondary')).borderRadius(8)
+          .margin({ left: 12, right: 12, bottom: 12 });
+
           Column() {
             Row() {
               Text(this.resetting

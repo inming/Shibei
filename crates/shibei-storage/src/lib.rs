@@ -1,5 +1,7 @@
 pub mod plain_text;
 pub mod pdf_text;
+#[cfg(feature = "mobile-cache")]
+pub mod cache;
 
 use std::fs;
 use std::path::{Path, PathBuf};

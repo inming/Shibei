@@ -12,6 +12,11 @@ export struct ResourceList {
   @State loading: boolean = false;
   @State error: string = '';
   @State refreshing: boolean = false;
+  // Stringified CSV of cached ids; an @State Set<string> would work but
+  // ArkUI change detection on Set is flaky, so we keep a parallel string
+  // as the diff trigger and resolve `isCached(id)` in build().
+  @State cachedKey: string = '';
+  private cachedSet: Set<string> = new Set<string>();
   private unsubDataChanged?: () => void;
 
   aboutToAppear(): void {
@@ -35,6 +40,7 @@ export struct ResourceList {
     this.error = '';
     try {
       this.resources = ShibeiService.instance.listResources(this.folderId, [], { by: 'created_at', order: 'desc' });
+      this.refreshCachedSet();
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.error = code;
@@ -42,6 +48,75 @@ export struct ResourceList {
       hilog.error(0x0000, 'shibei', 'ResourceList listResources fail: %{public}s', code);
     }
     this.loading = false;
+  }
+
+  /// Rebuild the cached-id set for the currently loaded resources. Called
+  /// after `reload()` and after a long-press 「缓存到本地」 completes.
+  private refreshCachedSet(): void {
+    if (this.resources.length === 0) {
+      this.cachedSet = new Set<string>();
+      this.cachedKey = '';
+      return;
+    }
+    const ids: string[] = this.resources.map((r: Resource) => r.id);
+    try {
+      const cached: string[] = ShibeiService.instance.getCachedIds(ids);
+      this.cachedSet = new Set<string>(cached);
+      this.cachedKey = cached.join(',');
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'getCachedIds fail: %{public}s', (err as Error).message);
+    }
+  }
+
+  /// Long-press on a row: offer to cache-this + cache-entire-folder. We
+  /// keep it as two rows rather than a dialog so the primary action (cache
+  /// one) is a single tap.
+  private onLongPress(id: string): void {
+    promptAction.showDialog({
+      title: I18n.t($r('app.string.cache_menu_title')),
+      buttons: [
+        { text: I18n.t($r('app.string.cache_action_this_resource')), color: $r('app.color.accent_primary') },
+        { text: I18n.t($r('app.string.cache_action_this_folder')), color: $r('app.color.accent_primary_alt') },
+        { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+      ],
+    }).then((r) => {
+      if (r.index === 0) this.preloadOne(id);
+      else if (r.index === 1) this.preloadFolder();
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'cache dialog dismissed: %{public}s', err.message);
+    });
+  }
+
+  private async preloadOne(id: string): Promise<void> {
+    try {
+      await ShibeiService.instance.preloadResource(id);
+      this.refreshCachedSet();
+      promptAction.showToast({ message: I18n.t($r('app.string.cache_toast_one_ok')) });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      promptAction.showToast({
+        message: I18n.t($r('app.string.cache_toast_one_failed'), I18n.translateError(code)),
+      });
+    }
+  }
+
+  private async preloadFolder(): Promise<void> {
+    promptAction.showToast({ message: I18n.t($r('app.string.cache_toast_folder_started')) });
+    try {
+      const summary = await ShibeiService.instance.preloadFolder(this.folderId);
+      this.refreshCachedSet();
+      promptAction.showToast({
+        message: I18n.t(
+          $r('app.string.cache_toast_folder_done'),
+          summary.ok, summary.failed, summary.skipped,
+        ),
+      });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      promptAction.showToast({
+        message: I18n.t($r('app.string.cache_toast_folder_failed'), I18n.translateError(code)),
+      });
+    }
   }
 
   // Pull-to-refresh handler. Silent on success — the list auto-reloads via
@@ -81,12 +156,27 @@ export struct ResourceList {
           }.padding(40).alignItems(HorizontalAlign.Center).width('100%');
         } else {
           List({ space: 0 }) {
+            // Re-read the @State cachedKey here so the ForEach builder is
+            // dependency-tracked against it. Reading `this.cachedSet` alone
+            // would not — the Set is a plain field and ArkUI won't notice
+            // its mutation. `cachedIsReactive` just pulls the string into
+            // the build-time read set.
             ForEach(this.resources, (r: Resource) => {
               ListItem() {
-                ResourceItem({
-                  resource: r,
-                  onTap: (id: string) => { if (this.onOpenResource) this.onOpenResource(id); },
-                });
+                Stack({ alignContent: Alignment.TopEnd }) {
+                  ResourceItem({
+                    resource: r,
+                    onTap: (id: string) => { if (this.onOpenResource) this.onOpenResource(id); },
+                    onLongPress: (id: string) => this.onLongPress(id),
+                  });
+                  if (this.cachedKey.length > 0 && this.cachedSet.has(r.id)) {
+                    Text('●')
+                      .fontSize(10)
+                      .fontColor($r('app.color.accent_primary'))
+                      .margin({ top: 14, right: 18 });
+                  }
+                }
+                .width('100%');
               }
             }, (r: Resource) => r.id);
           }

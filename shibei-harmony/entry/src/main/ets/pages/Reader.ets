@@ -117,12 +117,16 @@ struct Reader {
       // which may download snapshot.pdf via S3 sync. The Reader shell is
       // shown immediately; the inner Stack drives the download/error/ready
       // state.
+      //
+      // HTML gets the same treatment (§7.2): Phase 5.1's sync engine no
+      // longer pulls snapshots eagerly, so first read may need to fetch
+      // from S3. Keep the `loading` flag up during download — annotator
+      // load + paint waits on it.
       if (this.resource.resource_type === 'pdf') {
         this.loading = false;
         this.ensurePdfReady(id);
       } else {
-        this.html = ShibeiService.instance.getResourceHtml(id);
-        this.loading = false;
+        this.ensureHtmlReady(id);
       }
     } catch (err) {
       this.loadError = (err as Error).message;
@@ -216,6 +220,23 @@ struct Reader {
     } catch (err) {
       hilog.warn(0x0000, 'shibei', 'restoreScroll fail: %{public}s',
         (err as Error).message);
+    }
+  }
+
+  /// Ensure snapshot.html is on disk, pulling via sync if missing (§7.2),
+  /// then pull the annotator-injected HTML string. Fast path when the file
+  /// already exists. On failure we fall through to loadError so Reader
+  /// shows the error card instead of a blank page.
+  private async ensureHtmlReady(id: string): Promise<void> {
+    try {
+      await ShibeiService.instance.ensureHtmlDownloaded(id);
+      this.html = ShibeiService.instance.getResourceHtml(id);
+      this.loading = false;
+    } catch (err) {
+      this.loadError = (err as Error).message;
+      this.loading = false;
+      hilog.warn(0x0000, 'shibei', 'ensureHtmlReady fail %{public}s: %{public}s',
+        id, this.loadError);
     }
   }
 

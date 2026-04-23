@@ -33,6 +33,15 @@ extern char* shibei_ffi_get_resource_summary(const char* id, int32_t max_chars);
 extern char* shibei_ffi_get_resource_html(const char* id);
 extern char* shibei_ffi_get_pdf_bytes(const char* id);
 extern void shibei_ffi_ensure_pdf_downloaded(const char* id, void* ctx);
+extern void shibei_ffi_ensure_html_downloaded(const char* id, void* ctx);
+extern char* shibei_ffi_cache_stats(void);
+extern char* shibei_ffi_cache_list(void);
+extern char* shibei_ffi_cached_ids(const char* ids_json);
+extern char* shibei_ffi_cache_clear(void);
+extern char* shibei_ffi_cache_evict(void);
+extern char* shibei_ffi_cache_set_limit(int64_t limit_bytes);
+extern void shibei_ffi_preload_resource(const char* id, void* ctx);
+extern void shibei_ffi_preload_folder(const char* folder_id, void* ctx);
 extern char* shibei_ffi_list_annotations(const char* resource_id);
 extern char* shibei_ffi_create_highlight(const char* input_json);
 extern char* shibei_ffi_delete_highlight(const char* id);
@@ -413,6 +422,115 @@ static napi_value ensure_pdf_downloaded_wrap(napi_env env, napi_callback_info in
     napi_create_string_utf8(env, "ensurePdfDownloaded_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_ensure_pdf_downloaded(buf_id, ctx);
+    return promise;
+}
+
+static napi_value ensure_html_downloaded_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "ensureHtmlDownloaded_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_ensure_html_downloaded(buf_id, ctx);
+    return promise;
+}
+
+static napi_value cache_stats_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_cache_stats();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value cache_list_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_cache_list();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value cached_ids_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_ids_json[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_ids_json, sizeof(buf_ids_json), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_cached_ids(buf_ids_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value cache_clear_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_cache_clear();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value cache_evict_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_cache_evict();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value cache_set_limit_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    int64_t v_limit_bytes = 0; if (0 < argc) napi_get_value_int64(env, args[0], &v_limit_bytes);
+    napi_value result = NULL;
+    char* ret = shibei_ffi_cache_set_limit(v_limit_bytes);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value preload_resource_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "preloadResource_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_preload_resource(buf_id, ctx);
+    return promise;
+}
+
+static napi_value preload_folder_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_folder_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_folder_id, sizeof(buf_folder_id), &len); }
+    AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
+    napi_value promise = NULL;
+    napi_create_promise(env, &ctx->deferred, &promise);
+    napi_value res_name = NULL;
+    napi_create_string_utf8(env, "preloadFolder_tsfn", NAPI_AUTO_LENGTH, &res_name);
+    napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
+    shibei_ffi_preload_folder(buf_folder_id, ctx);
     return promise;
 }
 
@@ -829,6 +947,15 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"getResourceHtml", NULL, get_resource_html_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getPdfBytes", NULL, get_pdf_bytes_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"ensurePdfDownloaded", NULL, ensure_pdf_downloaded_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"ensureHtmlDownloaded", NULL, ensure_html_downloaded_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"cacheStats", NULL, cache_stats_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"cacheList", NULL, cache_list_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"cachedIds", NULL, cached_ids_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"cacheClear", NULL, cache_clear_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"cacheEvict", NULL, cache_evict_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"cacheSetLimit", NULL, cache_set_limit_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"preloadResource", NULL, preload_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"preloadFolder", NULL, preload_folder_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listAnnotations", NULL, list_annotations_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"createHighlight", NULL, create_highlight_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"deleteHighlight", NULL, delete_highlight_wrap, NULL, NULL, NULL, napi_default, NULL},

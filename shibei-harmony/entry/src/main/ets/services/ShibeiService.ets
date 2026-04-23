@@ -36,6 +36,15 @@ import {
   deleteComment as napiDeleteComment,
   getPdfBytes as napiGetPdfBytes,
   ensurePdfDownloaded as napiEnsurePdfDownloaded,
+  ensureHtmlDownloaded as napiEnsureHtmlDownloaded,
+  cacheStats as napiCacheStats,
+  cacheList as napiCacheList,
+  cachedIds as napiCachedIds,
+  cacheClear as napiCacheClear,
+  cacheEvict as napiCacheEvict,
+  cacheSetLimit as napiCacheSetLimit,
+  preloadResource as napiPreloadResource,
+  preloadFolder as napiPreloadFolder,
   lockIsConfigured as napiLockIsConfigured,
   lockIsBioEnabled as napiLockIsBioEnabled,
   lockIsMkLoaded as napiLockIsMkLoaded,
@@ -488,6 +497,70 @@ export class ShibeiService {
     }
   }
 
+  /// Symmetric to ensurePdfDownloaded for HTML snapshots. Mobile's Reader
+  /// calls this before `getResourceHtml` so we can lazy-download — the
+  /// engine no longer pulls all snapshots at sync time (§7.2).
+  async ensureHtmlDownloaded(id: string): Promise<void> {
+    const result: string = await napiEnsureHtmlDownloaded(id);
+    if (result !== 'ok') {
+      throw new ShibeiError(result);
+    }
+  }
+
+  // ── LRU cache management (§7.2) ───────────────────────────
+
+  getCacheStats(): CacheStats {
+    const raw: string = napiCacheStats();
+    return JSON.parse(raw) as CacheStats;
+  }
+
+  getCacheList(): CacheListRow[] {
+    const raw: string = napiCacheList();
+    return JSON.parse(raw) as CacheListRow[];
+  }
+
+  /// Batch membership check used by ResourceList to decorate rows.
+  /// Returns the subset of `ids` whose snapshots are on disk.
+  getCachedIds(ids: string[]): string[] {
+    const raw: string = napiCachedIds(JSON.stringify(ids));
+    return JSON.parse(raw) as string[];
+  }
+
+  /// Wipes all cached snapshots + cache-index.json. Returns the number of
+  /// entries removed. DB rows + annotations are unaffected.
+  clearCache(): number {
+    const raw: string = napiCacheClear();
+    return parseInt(raw, 10) || 0;
+  }
+
+  /// Force an eviction pass to fit under the current limit. Rare — the
+  /// engine evicts automatically on snapshot-saved. Use after lowering
+  /// `cache_set_limit` if you want the effect immediately.
+  evictCache(): number {
+    const raw: string = napiCacheEvict();
+    return parseInt(raw, 10) || 0;
+  }
+
+  setCacheLimit(bytes: number): void {
+    const result: string = napiCacheSetLimit(bytes);
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Preload a single resource's snapshot (picks HTML or PDF via DB type).
+  async preloadResource(id: string): Promise<void> {
+    const result: string = await napiPreloadResource(id);
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  /// Preload every resource in a folder. Returns summary counts; failures
+  /// are swallowed per-resource on the Rust side (user on spotty WiFi
+  /// shouldn't lose a mostly-successful batch to one bad URL).
+  async preloadFolder(folderId: string): Promise<PreloadSummary> {
+    const raw: string = await napiPreloadFolder(folderId);
+    if (raw.startsWith('error.')) throw new ShibeiError(raw);
+    return JSON.parse(raw) as PreloadSummary;
+  }
+
   // ── Annotations ───────────────────────────────────────────
 
   listAnnotations(resourceId: string): AnnotationsBundle {
@@ -610,6 +683,29 @@ export interface Comment {
 export interface AnnotationsBundle {
   highlights: Highlight[];
   comments: Comment[];
+}
+
+// ── Cache types (§7.2) ────────────────────────────────────────
+
+export interface CacheStats {
+  totalBytes: number;
+  limitBytes: number;
+  entryCount: number;
+}
+
+export interface CacheListRow {
+  resourceId: string;
+  title: string;
+  url: string;
+  resourceType: string;
+  bytes: number;
+  lastAccessMs: number;
+}
+
+export interface PreloadSummary {
+  ok: number;
+  failed: number;
+  skipped: number;
 }
 
 interface HighlightEnvelope { highlight?: Highlight; error?: string; }
