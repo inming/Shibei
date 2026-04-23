@@ -45,6 +45,9 @@ import {
   cacheSetLimit as napiCacheSetLimit,
   preloadResource as napiPreloadResource,
   preloadFolder as napiPreloadFolder,
+  getLastSyncAt as napiGetLastSyncAt,
+  getAutoSyncMode as napiGetAutoSyncMode,
+  setAutoSyncMode as napiSetAutoSyncMode,
   lockIsConfigured as napiLockIsConfigured,
   lockIsBioEnabled as napiLockIsBioEnabled,
   lockIsMkLoaded as napiLockIsMkLoaded,
@@ -561,6 +564,23 @@ export class ShibeiService {
     return JSON.parse(raw) as PreloadSummary;
   }
 
+  // ── Sync settings (§7.3) ──────────────────────────────────
+
+  /// ISO8601 of the last successful sync, or empty string if never.
+  getLastSyncAt(): string {
+    return napiGetLastSyncAt();
+  }
+
+  getAutoSyncMode(): AutoSyncMode {
+    const v = napiGetAutoSyncMode();
+    return v === 'manual' ? 'manual' : 'on_open';
+  }
+
+  setAutoSyncMode(mode: AutoSyncMode): void {
+    const result = napiSetAutoSyncMode(mode);
+    if (result !== 'ok') throw new ShibeiError(result);
+  }
+
   // ── Annotations ───────────────────────────────────────────
 
   listAnnotations(resourceId: string): AnnotationsBundle {
@@ -707,6 +727,8 @@ export interface PreloadSummary {
   failed: number;
   skipped: number;
 }
+
+export type AutoSyncMode = 'on_open' | 'manual';
 
 interface HighlightEnvelope { highlight?: Highlight; error?: string; }
 interface CommentEnvelope { comment?: Comment; error?: string; }

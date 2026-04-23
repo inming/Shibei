@@ -229,6 +229,16 @@
     { "name": "cache_toast_folder_failed", "value": "批量缓存失败：%1$s" },
     { "name": "cache_folder_confirm_title", "value": "缓存此文件夹" },
     { "name": "cache_folder_confirm_body", "value": "将下载「%1$s」中所有未缓存的资料。建议在 Wi-Fi 环境执行。" },
-    { "name": "cache_folder_confirm_ok", "value": "开始缓存" }
+    { "name": "cache_folder_confirm_ok", "value": "开始缓存" },
+    { "name": "cache_limit_row_title", "value": "缓存上限" },
+    { "name": "cache_limit_title", "value": "选择缓存上限" },
+    { "name": "cache_limit_toast_ok", "value": "上限已改为 %1$s" },
+
+    { "name": "sync_last_label", "value": "上次同步：%1$s" },
+    { "name": "sync_last_never", "value": "从未同步" },
+    { "name": "sync_auto_row_title", "value": "自动同步" },
+    { "name": "sync_auto_title", "value": "自动同步" },
+    { "name": "sync_auto_on_open", "value": "打开时" },
+    { "name": "sync_auto_manual", "value": "手动" }
   ]
 }

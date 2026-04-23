@@ -1040,6 +1040,44 @@ pub fn cache_evict() -> String {
     n.to_string()
 }
 
+/// Last successful sync, as the ISO8601 string stored in sync_state. Empty
+/// string if never synced (or state not initialized). ArkTS formats this
+/// into "HH:MM" or "MM-DD HH:MM" depending on recency.
+#[shibei_napi]
+pub fn get_last_sync_at() -> String {
+    let result = with_conn(|conn| shibei_sync::sync_state::get(conn, "last_sync_at"));
+    result.unwrap_or(None).unwrap_or_default()
+}
+
+/// Auto-sync mode. `"on_open"` (default) means the app fires a background
+/// sync when Library lands on a cold launch; `"manual"` means the user
+/// must explicitly tap 立即同步 or pull-to-refresh. Any unexpected value
+/// from storage falls back to `"on_open"` so a garbled write can't leave
+/// the user stuck on stale data forever.
+#[shibei_napi]
+pub fn get_auto_sync_mode() -> String {
+    let raw = with_conn(|conn| shibei_sync::sync_state::get(conn, "config:auto_sync"))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    match raw.as_str() {
+        "manual" => "manual".to_string(),
+        _ => "on_open".to_string(),
+    }
+}
+
+#[shibei_napi]
+pub fn set_auto_sync_mode(mode: String) -> String {
+    if mode != "on_open" && mode != "manual" {
+        return "error.invalidAutoSyncMode".to_string();
+    }
+    let result = with_conn(|conn| shibei_sync::sync_state::set(conn, "config:auto_sync", &mode));
+    match result {
+        Ok(()) => "ok".to_string(),
+        Err(e) => e,
+    }
+}
+
 /// Update the cache size ceiling (bytes). Values < 1 are clamped to 1. If the
 /// new limit is below current usage, an eviction pass runs immediately.
 #[shibei_napi]

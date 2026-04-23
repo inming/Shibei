@@ -271,6 +271,24 @@ pub unsafe extern "C" fn shibei_ffi_cache_evict() -> *mut c_char {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_get_last_sync_at() -> *mut c_char {
+    let s = crate::commands::get_last_sync_at();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_get_auto_sync_mode() -> *mut c_char {
+    let s = crate::commands::get_auto_sync_mode();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_set_auto_sync_mode(mode: *const c_char) -> *mut c_char {
+    let s = crate::commands::set_auto_sync_mode(cstr_to_string(mode));
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_cache_set_limit(limit_bytes: i64) -> *mut c_char {
     let s = crate::commands::cache_set_limit(limit_bytes);
     leak_cstring(s)

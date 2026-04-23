@@ -47,6 +47,20 @@ struct Library {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.initError = code;
       hilog.error(0x0000, 'shibei', 'Library init fail: %{public}s', code);
+      return;
+    }
+
+    // §7.3 auto-sync. Mode "on_open" is default; "manual" skips. Failures
+    // (e.g. MK not loaded on a locked vault, no network) are swallowed —
+    // the user never asked for this sync, so we shouldn't pop a toast.
+    try {
+      if (ShibeiService.instance.getAutoSyncMode() === 'on_open') {
+        ShibeiService.instance.syncMetadata().catch((err: Error) => {
+          hilog.info(0x0000, 'shibei', 'auto-sync skipped: %{public}s', err.message);
+        });
+      }
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'auto-sync gate fail: %{public}s', (err as Error).message);
     }
   }
 

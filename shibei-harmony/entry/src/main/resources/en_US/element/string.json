@@ -224,6 +224,16 @@
     { "name": "cache_toast_folder_failed", "value": "Folder cache failed: %1$s" },
     { "name": "cache_folder_confirm_title", "value": "Cache folder" },
     { "name": "cache_folder_confirm_body", "value": "Download all uncached items in \"%1$s\". Wi-Fi recommended." },
-    { "name": "cache_folder_confirm_ok", "value": "Start" }
+    { "name": "cache_folder_confirm_ok", "value": "Start" },
+    { "name": "cache_limit_row_title", "value": "Cache limit" },
+    { "name": "cache_limit_title", "value": "Choose cache limit" },
+    { "name": "cache_limit_toast_ok", "value": "Limit set to %1$s" },
+
+    { "name": "sync_last_label", "value": "Last sync: %1$s" },
+    { "name": "sync_last_never", "value": "never" },
+    { "name": "sync_auto_row_title", "value": "Auto sync" },
+    { "name": "sync_auto_title", "value": "Auto sync" },
+    { "name": "sync_auto_on_open", "value": "On open" },
+    { "name": "sync_auto_manual", "value": "Manual" }
   ]
 }

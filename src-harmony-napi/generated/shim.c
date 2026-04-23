@@ -39,6 +39,9 @@ extern char* shibei_ffi_cache_list(void);
 extern char* shibei_ffi_cached_ids(const char* ids_json);
 extern char* shibei_ffi_cache_clear(void);
 extern char* shibei_ffi_cache_evict(void);
+extern char* shibei_ffi_get_last_sync_at(void);
+extern char* shibei_ffi_get_auto_sync_mode(void);
+extern char* shibei_ffi_set_auto_sync_mode(const char* mode);
 extern char* shibei_ffi_cache_set_limit(int64_t limit_bytes);
 extern void shibei_ffi_preload_resource(const char* id, void* ctx);
 extern void shibei_ffi_preload_folder(const char* folder_id, void* ctx);
@@ -485,6 +488,37 @@ static napi_value cache_evict_wrap(napi_env env, napi_callback_info info) {
     (void)info;
     napi_value result = NULL;
     char* ret = shibei_ffi_cache_evict();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value get_last_sync_at_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_get_last_sync_at();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value get_auto_sync_mode_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_get_auto_sync_mode();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value set_auto_sync_mode_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_mode[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_mode, sizeof(buf_mode), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_set_auto_sync_mode(buf_mode);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
     return result;
@@ -953,6 +987,9 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"cachedIds", NULL, cached_ids_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"cacheClear", NULL, cache_clear_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"cacheEvict", NULL, cache_evict_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"getLastSyncAt", NULL, get_last_sync_at_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"getAutoSyncMode", NULL, get_auto_sync_mode_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"setAutoSyncMode", NULL, set_auto_sync_mode_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"cacheSetLimit", NULL, cache_set_limit_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"preloadResource", NULL, preload_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"preloadFolder", NULL, preload_folder_wrap, NULL, NULL, NULL, napi_default, NULL},

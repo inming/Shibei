@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 import { router, promptAction } from '@kit.ArkUI';
-import { ShibeiService, ShibeiError, CacheStats, CacheListRow } from '../services/ShibeiService';
+import { ShibeiService, ShibeiError, CacheStats, CacheListRow, AutoSyncMode } from '../services/ShibeiService';
 import { loadTheme, applyTheme, ThemeMode } from '../app/ThemeManager';
 import { LockService } from '../services/LockService';
 import { HuksService } from '../services/HuksService';
@@ -39,6 +39,9 @@ struct Settings {
   @State cacheList: CacheListRow[] = [];
   @State showCacheList: boolean = false;
   @State cacheBusy: boolean = false;
+  // Sync settings (§7.3)
+  @State autoSyncMode: AutoSyncMode = 'on_open';
+  @State lastSyncAt: string = '';
 
   async aboutToAppear(): Promise<void> {
     const ctx = getContext(this) as common.UIAbilityContext;
@@ -47,6 +50,88 @@ struct Settings {
     this.bioEnabled = ShibeiService.instance.lockIsBioEnabled();
     this.bioAvailable = await HuksService.instance.isBioAvailable();
     this.reloadCache();
+    this.reloadSyncSettings();
+  }
+
+  private reloadSyncSettings(): void {
+    try {
+      this.autoSyncMode = ShibeiService.instance.getAutoSyncMode();
+      this.lastSyncAt = ShibeiService.instance.getLastSyncAt();
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'reloadSyncSettings fail: %{public}s', (err as Error).message);
+    }
+  }
+
+  private async pickAutoSyncMode(): Promise<void> {
+    try {
+      const r = await promptAction.showDialog({
+        title: I18n.t($r('app.string.sync_auto_title')),
+        buttons: [
+          { text: I18n.t($r('app.string.sync_auto_on_open')), color: $r('app.color.accent_primary') },
+          { text: I18n.t($r('app.string.sync_auto_manual')), color: $r('app.color.text_secondary') },
+        ],
+      });
+      const mode: AutoSyncMode = r.index === 1 ? 'manual' : 'on_open';
+      ShibeiService.instance.setAutoSyncMode(mode);
+      this.autoSyncMode = mode;
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'pickAutoSyncMode dismissed: %{public}s', (err as Error).message);
+    }
+  }
+
+  private async pickCacheLimit(): Promise<void> {
+    try {
+      const r = await promptAction.showDialog({
+        title: I18n.t($r('app.string.cache_limit_title')),
+        buttons: [
+          { text: '200 MB', color: $r('app.color.text_primary') },
+          { text: '500 MB', color: $r('app.color.text_primary') },
+          { text: '1 GB', color: $r('app.color.accent_primary') },
+          { text: '2 GB', color: $r('app.color.text_primary') },
+        ],
+      });
+      const mb = [200, 500, 1024, 2048][r.index] ?? 1024;
+      ShibeiService.instance.setCacheLimit(mb * 1024 * 1024);
+      this.reloadCache();
+      promptAction.showToast({
+        message: I18n.t($r('app.string.cache_limit_toast_ok'), mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`),
+      });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      hilog.warn(0x0000, 'shibei', 'pickCacheLimit fail: %{public}s', code);
+    }
+  }
+
+  /// Format `lastSyncAt` ISO8601 into a compact label. Empty ISO → the
+  /// "从未同步" placeholder. Same-day → "HH:MM"; otherwise "MM-DD HH:MM"
+  /// so the value is still readable without a full year stamp.
+  private formatLastSync(): string {
+    if (!this.lastSyncAt) {
+      return I18n.t($r('app.string.sync_last_never'));
+    }
+    const d = new Date(this.lastSyncAt);
+    if (isNaN(d.getTime())) return this.lastSyncAt;
+    const now = new Date();
+    const sameDay = d.getFullYear() === now.getFullYear()
+      && d.getMonth() === now.getMonth()
+      && d.getDate() === now.getDate();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    if (sameDay) return `${hh}:${mm}`;
+    const MM = String(d.getMonth() + 1).padStart(2, '0');
+    const DD = String(d.getDate()).padStart(2, '0');
+    return `${MM}-${DD} ${hh}:${mm}`;
+  }
+
+  private autoSyncLabel(): string {
+    return this.autoSyncMode === 'on_open'
+      ? I18n.t($r('app.string.sync_auto_on_open'))
+      : I18n.t($r('app.string.sync_auto_manual'));
+  }
+
+  private cacheLimitLabel(): string {
+    const mb = Math.round(this.cacheStats.limitBytes / (1024 * 1024));
+    return mb >= 1024 ? `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1)} GB` : `${mb} MB`;
   }
 
   private reloadCache(): void {
@@ -457,6 +542,11 @@ struct Settings {
                   Text(this.syncStatus).fontSize(12)
                     .fontColor($r('sys.color.ohos_id_color_text_secondary'))
                     .margin({ top: 2 });
+                } else {
+                  Text(I18n.t($r('app.string.sync_last_label'), this.formatLastSync()))
+                    .fontSize(11)
+                    .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+                    .margin({ top: 2 });
                 }
               }.alignItems(HorizontalAlign.Start).layoutWeight(1);
               Text('›').fontSize(18)
@@ -464,6 +554,21 @@ struct Settings {
             }
             .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
             .onClick(() => this.syncNow());
+
+            Divider().color($r('sys.color.ohos_id_color_list_separator'));
+
+            Row() {
+              Text(I18n.t($r('app.string.sync_auto_row_title'))).fontSize(15)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                .layoutWeight(1);
+              Text(this.autoSyncLabel()).fontSize(14)
+                .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+                .margin({ right: 6 });
+              Text('›').fontSize(18)
+                .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
+            }
+            .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
+            .onClick(() => this.pickAutoSyncMode());
 
             Divider().color($r('sys.color.ohos_id_color_list_separator'));
 
@@ -731,6 +836,20 @@ struct Settings {
                 .width('100%');
               }
             }
+
+            Divider().strokeWidth(0.5).color($r('app.color.border_divider'));
+            Row() {
+              Text(I18n.t($r('app.string.cache_limit_row_title'))).fontSize(15)
+                .fontColor($r('app.color.text_primary'))
+                .layoutWeight(1);
+              Text(this.cacheLimitLabel()).fontSize(14)
+                .fontColor($r('app.color.text_secondary'))
+                .margin({ right: 6 });
+              Text('›').fontSize(18)
+                .fontColor($r('app.color.text_disabled'));
+            }
+            .width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 })
+            .onClick(() => this.pickCacheLimit());
 
             Divider().strokeWidth(0.5).color($r('app.color.border_divider'));
             Row() {
