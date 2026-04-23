@@ -16,8 +16,22 @@
   if (!wg || !wg.WorkerMessageHandler) { setStatus('pdfjsWorker missing'); return; }
   pdfjs.GlobalWorkerOptions.workerSrc = 'about:blank';
 
-  var id = new URL(location.href).searchParams.get('id') || '';
+  var ZOOM_MIN = 0.5;
+  var ZOOM_MAX = 4.0;
+  var ZOOM_DEFAULT = 1.0;
+
+  function clampZoom(z) {
+    if (typeof z !== 'number' || !isFinite(z)) return ZOOM_DEFAULT;
+    if (z < ZOOM_MIN) return ZOOM_MIN;
+    if (z > ZOOM_MAX) return ZOOM_MAX;
+    // Round to 2 decimals to avoid FP drift accumulating across +/- steps.
+    return Math.round(z * 100) / 100;
+  }
+
+  var params = new URL(location.href).searchParams;
+  var id = params.get('id') || '';
   if (!id) { setStatus('no resource id'); return; }
+  var initialZoom = clampZoom(parseFloat(params.get('zoom') || '1'));
 
   window.__shibei = window.__shibei || {
     paintHighlights: function() {},
@@ -31,6 +45,11 @@
     pageDivs: [],          // [idx] → div.page
     pageViewports: [],     // [idx] → viewport @ fit-to-width scale
     rendered: new Set(),   // page idx where canvas has been drawn
+    // baseFitScale = containerWidth / unscaled-page-1-width. Mirrors
+    // "fit-to-width" zoom and updates only on container resize (fold /
+    // rotate). The effective render scale is baseFitScale * zoomFactor.
+    baseFitScale: 1.0,
+    zoomFactor: ZOOM_DEFAULT,
     scale: 1.0,
     // Bumped every time relayoutForNewWidth fires. renderPage captures
     // the current gen at start and bails at every await boundary if the
@@ -39,6 +58,7 @@
     // in new-scale containers.
     renderGen: 0,
   };
+  state.zoomFactor = initialZoom;
 
   (async function() {
     try {
@@ -55,7 +75,8 @@
       var containerWidth = pagesEl.clientWidth - 16;
       var first = await state.pdf.getPage(1);
       var unscaled = first.getViewport({ scale: 1.0 });
-      state.scale = containerWidth / unscaled.width;
+      state.baseFitScale = containerWidth / unscaled.width;
+      state.scale = state.baseFitScale * state.zoomFactor;
 
       // Create placeholder divs for every page so IntersectionObserver can
       // observe scroll-into-view without loading every page up front.
@@ -168,32 +189,54 @@
     }
   }
 
-  // Recompute fit-to-width scale and re-render all previously-rendered
-  // pages at the new dimensions. Preserves the user's approximate scroll
-  // position by tracking the top-visible page before teardown and
-  // scrolling back to it after.
-  async function relayoutForNewWidth() {
-    if (!state.pdf) return;
+  // Capture scroll position as scrollTop/scrollHeight fraction before we
+  // tear down pages. Better than tracking topPage for zoom (preserves the
+  // sub-page offset), equally good for resize (pages keep same aspect).
+  function captureScrollState() {
+    var scrollEl = document.scrollingElement || document.documentElement;
+    var sh = scrollEl.scrollHeight;
+    // Fallback: top-visible page idx when height is zero (can happen mid-layout).
+    var topPage = 1;
+    if (state.pdf) {
+      for (var i = 1; i <= state.pdf.numPages; i++) {
+        var d = state.pageDivs[i];
+        if (!d) continue;
+        var r = d.getBoundingClientRect();
+        if (r.bottom > 0) { topPage = i; break; }
+      }
+    }
+    return {
+      fraction: sh > 0 ? scrollEl.scrollTop / sh : 0,
+      topPage: topPage,
+    };
+  }
 
+  function restoreScrollState(prior) {
+    // Two rAFs: first for the DOM size updates to settle, second for the
+    // browser to recompute scrollHeight. One rAF is sometimes too early
+    // on ArkWeb and leaves us clamped to 0.
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        var scrollEl = document.scrollingElement || document.documentElement;
+        var sh = scrollEl.scrollHeight;
+        if (sh > 0 && prior.fraction > 0) {
+          scrollEl.scrollTop = prior.fraction * sh;
+        } else if (state.pageDivs[prior.topPage]) {
+          state.pageDivs[prior.topPage].scrollIntoView({ block: 'start' });
+        }
+      });
+    });
+  }
+
+  // Tear down + reflow all pages at the current state.scale. Callers set
+  // state.scale (and optionally state.baseFitScale) beforehand; this
+  // function owns the generation bump, DOM sweep, and IO re-observe.
+  async function rebuildAllPages() {
+    if (!state.pdf) return;
     // Bump generation so any in-flight renderPage from the prior scale
     // aborts at its next await boundary instead of publishing a stale
     // text-layer whose span positions are from the old viewport.
     state.renderGen++;
-
-    // Capture current top-visible page for restore.
-    var topPage = 1;
-    for (var i = 1; i <= state.pdf.numPages; i++) {
-      var d = state.pageDivs[i];
-      if (!d) continue;
-      var r = d.getBoundingClientRect();
-      if (r.bottom > 0) { topPage = i; break; }
-    }
-
-    // New scale based on page 1 (same heuristic as first load).
-    var containerWidth = pagesEl.clientWidth - 16;
-    var first = await state.pdf.getPage(1);
-    var unscaled = first.getViewport({ scale: 1.0 });
-    state.scale = containerWidth / unscaled.width;
 
     // Flush all cached render state and DOM children (canvas / text-layer /
     // highlight-layer) so IntersectionObserver repaints from scratch.
@@ -201,10 +244,11 @@
     if (window.__shibei && window.__shibei.resetPageCache) {
       window.__shibei.resetPageCache();
     }
+    var first = await state.pdf.getPage(1);
     for (var j = 1; j <= state.pdf.numPages; j++) {
       var pd = state.pageDivs[j];
       if (!pd) continue;
-      // Update placeholder size so layout re-flows at the new width.
+      // Update placeholder size so layout re-flows at the new scale.
       var vp = first.getViewport({ scale: state.scale });
       pd.style.setProperty('--w', vp.width + 'px');
       pd.style.setProperty('--h', vp.height + 'px');
@@ -220,10 +264,36 @@
       state.pageDivs.forEach(function(div) { if (div) state.io.unobserve(div); });
       state.pageDivs.forEach(function(div) { if (div) state.io.observe(div); });
     }
+  }
 
-    if (state.pageDivs[topPage]) {
-      state.pageDivs[topPage].scrollIntoView({ block: 'start' });
-    }
+  // Recompute fit-to-width scale and re-render all previously-rendered
+  // pages at the new dimensions. Triggered by ResizeObserver on fold /
+  // rotate; preserves the user's scroll position by fraction.
+  async function relayoutForNewWidth() {
+    if (!state.pdf) return;
+    var prior = captureScrollState();
+
+    var containerWidth = pagesEl.clientWidth - 16;
+    var first = await state.pdf.getPage(1);
+    var unscaled = first.getViewport({ scale: 1.0 });
+    state.baseFitScale = containerWidth / unscaled.width;
+    state.scale = state.baseFitScale * state.zoomFactor;
+
+    await rebuildAllPages();
+    restoreScrollState(prior);
+  }
+
+  // Zoom change path: keep baseFitScale (container hasn't resized),
+  // update zoomFactor, and rebuild at the new composed scale.
+  async function applyZoom(newZoom) {
+    if (!state.pdf) return;
+    var z = clampZoom(newZoom);
+    if (Math.abs(z - state.zoomFactor) < 0.001) return;
+    var prior = captureScrollState();
+    state.zoomFactor = z;
+    state.scale = state.baseFitScale * state.zoomFactor;
+    await rebuildAllPages();
+    restoreScrollState(prior);
   }
 
   // Small API for ArkTS to drive.
@@ -236,6 +306,12 @@
     // when ResizeObserver didn't fire (e.g., ArkWeb swapped containers).
     relayout: function() {
       relayoutForNewWidth().catch(console.error);
+    },
+    setZoom: function(z) {
+      applyZoom(z).catch(console.error);
+    },
+    getZoom: function() {
+      return state.zoomFactor;
     },
   };
 })();

@@ -15,6 +15,15 @@ import {
 import { AnnotationPanel } from '../components/AnnotationPanel';
 import { AnnotationsBundle } from '../services/ShibeiService';
 import { getReaderScroll, saveReaderScroll } from '../app/ReaderScrollState';
+import {
+  getReaderZoom,
+  saveReaderZoom,
+  clampZoom,
+  PDF_ZOOM_MIN,
+  PDF_ZOOM_MAX,
+  PDF_ZOOM_DEFAULT,
+  PDF_ZOOM_STEP,
+} from '../app/ReaderZoomState';
 
 // Route param shape.
 interface ReaderParams { resourceId?: string; }
@@ -57,6 +66,13 @@ struct Reader {
   @State pdfReady: boolean = false;
   @State pdfDownloading: boolean = false;
   @State pdfError: string = '';
+  // PDF zoom is the shell's zoomFactor, initialized from prefs inside
+  // ensurePdfReady so the Web src (built in PdfContent) already carries
+  // ?zoom=X on first render — avoids an initial 1.0 rebuild.
+  @State pdfZoom: number = PDF_ZOOM_DEFAULT;
+  // Debounce persistence of zoom changes — a rapid tap on +/- shouldn't
+  // flush preferences N times. Same 500ms cadence as scroll save.
+  private zoomSaveTimer: number = -1;
 
   private webController: webview.WebviewController = new webview.WebviewController();
   private bridge: AnnotationBridge = new AnnotationBridge({
@@ -129,6 +145,11 @@ struct Reader {
       this.scrollSaveTimer = -1;
       this.flushScroll();
     }
+    if (this.zoomSaveTimer !== -1) {
+      clearTimeout(this.zoomSaveTimer);
+      this.zoomSaveTimer = -1;
+      this.flushZoom();
+    }
   }
 
   private flushScroll(): void {
@@ -143,6 +164,34 @@ struct Reader {
       this.scrollSaveTimer = -1;
       this.flushScroll();
     }, 500);
+  }
+
+  private flushZoom(): void {
+    if (!this.resource) return;
+    const ctx = getContext(this) as common.UIAbilityContext;
+    saveReaderZoom(ctx, this.resource.id, this.pdfZoom).catch(() => {});
+  }
+
+  private scheduleZoomSave(): void {
+    if (this.zoomSaveTimer !== -1) clearTimeout(this.zoomSaveTimer);
+    this.zoomSaveTimer = setTimeout(() => {
+      this.zoomSaveTimer = -1;
+      this.flushZoom();
+    }, 500);
+  }
+
+  // Drive the shell's zoomFactor from ArkTS. Clamp here so the Web side
+  // never sees an out-of-range value; the shell also clamps defensively.
+  private applyPdfZoom(next: number): void {
+    const z = clampZoom(next);
+    if (Math.abs(z - this.pdfZoom) < 0.001) return;
+    this.pdfZoom = z;
+    this.webController.runJavaScript(
+      `window.__shibeiReader && window.__shibeiReader.setZoom(${z});`
+    ).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'setZoom fail: %{public}s', err.message);
+    });
+    this.scheduleZoomSave();
   }
 
   private async restoreScrollIfNeeded(): Promise<void> {
@@ -169,6 +218,13 @@ struct Reader {
     this.pdfError = '';
     this.pdfDownloading = true;
     try {
+      // Load the saved zoom BEFORE flipping pdfReady — the Web src in
+      // PdfContent embeds `?zoom=X` and is evaluated exactly once, so
+      // the shell sees the final zoom on first pdfjs init and we skip
+      // the would-be 1.0 → saved rebuild.
+      const ctx = getContext(this) as common.UIAbilityContext;
+      const savedZoom = await getReaderZoom(ctx, id);
+      this.pdfZoom = clampZoom(savedZoom);
       await ShibeiService.instance.ensurePdfDownloaded(id);
       this.pdfReady = true;
       this.pdfDownloading = false;
@@ -418,8 +474,8 @@ struct Reader {
     });
   }
 
-  // Top bar: back button + title + annotations drawer toggle. Shared by
-  // both HTML and PDF branches; keep it thin and depend only on @State
+  // Top bar: back button + title + (PDF only) zoom toolbar + annotations drawer toggle.
+  // Shared by both HTML and PDF branches; keep it thin and depend only on @State
   // fields already reactive to the bundle/resource.
   @Builder TopBar() {
     Row() {
@@ -431,6 +487,13 @@ struct Reader {
         .fontSize(15).fontWeight(FontWeight.Medium).layoutWeight(1)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+      // Zoom toolbar: only shown once the PDF shell is actually loaded.
+      // Pre-ready (downloading / error) the buttons would be no-ops since
+      // the webview hasn't registered __shibeiReader yet, and the visual
+      // clutter would distract from the download status panel.
+      if (this.resource && this.resource.resource_type === 'pdf' && this.pdfReady) {
+        this.ZoomToolbar();
+      }
       Text(`☰ ${this.bundle.highlights.length}`)
         .fontSize(14)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
@@ -439,6 +502,40 @@ struct Reader {
     }
     .width('100%')
     .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .padding({ left: 4, right: 4 });
+  }
+
+  // PDF zoom controls: [−] [N%] [+]. Percentage tap resets to 1.0.
+  // Buttons are 36x44 for comfortable thumb hit targets; the row itself
+  // stays compact so it doesn't crowd the title at narrow widths.
+  @Builder ZoomToolbar() {
+    Row() {
+      Text('−')
+        .fontSize(20)
+        .fontColor(this.pdfZoom <= PDF_ZOOM_MIN + 0.001
+          ? $r('sys.color.ohos_id_color_text_tertiary')
+          : $r('sys.color.ohos_id_color_text_primary'))
+        .width(36).height(44).textAlign(TextAlign.Center)
+        .onClick(() => {
+          if (this.pdfZoom <= PDF_ZOOM_MIN + 0.001) return;
+          this.applyPdfZoom(this.pdfZoom - PDF_ZOOM_STEP);
+        });
+      Text(`${Math.round(this.pdfZoom * 100)}%`)
+        .fontSize(13)
+        .fontColor($r('sys.color.ohos_id_color_text_primary'))
+        .width(44).height(44).textAlign(TextAlign.Center)
+        .onClick(() => this.applyPdfZoom(PDF_ZOOM_DEFAULT));
+      Text('+')
+        .fontSize(20)
+        .fontColor(this.pdfZoom >= PDF_ZOOM_MAX - 0.001
+          ? $r('sys.color.ohos_id_color_text_tertiary')
+          : $r('sys.color.ohos_id_color_text_primary'))
+        .width(36).height(44).textAlign(TextAlign.Center)
+        .onClick(() => {
+          if (this.pdfZoom >= PDF_ZOOM_MAX - 0.001) return;
+          this.applyPdfZoom(this.pdfZoom + PDF_ZOOM_STEP);
+        });
+    }
     .padding({ left: 4, right: 4 });
   }
 
@@ -550,7 +647,12 @@ struct Reader {
           }.width('100%').height('100%').justifyContent(FlexAlign.Center);
         } else if (this.pdfReady && this.resource) {
           Web({
-            src: $rawfile(`pdf-shell/shell.html?id=${this.resource.id}`),
+            // zoom is appended so the shell reads its initial zoomFactor
+            // from the URL query and computes the first scale with that
+            // value, avoiding a flash-of-1.0 → saved rebuild. pdfZoom has
+            // already been loaded from prefs in ensurePdfReady before
+            // pdfReady flips true.
+            src: $rawfile(`pdf-shell/shell.html?id=${this.resource.id}&zoom=${this.pdfZoom}`),
             controller: this.webController,
           })
             .domStorageAccess(true)
