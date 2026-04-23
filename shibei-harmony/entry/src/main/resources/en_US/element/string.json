@@ -1,0 +1,20 @@
+{
+  "string": [
+    { "name": "common_save", "value": "Save" },
+    { "name": "common_cancel", "value": "Cancel" },
+    { "name": "common_confirm", "value": "Confirm" },
+    { "name": "common_delete", "value": "Delete" },
+    { "name": "common_loading", "value": "Loading…" },
+    { "name": "common_initializing", "value": "Initializing…" },
+    { "name": "common_init_failed", "value": "Init failed: %1$s" },
+    { "name": "common_retry", "value": "Retry" },
+    { "name": "common_prev_step", "value": "Back" },
+    { "name": "common_next_step", "value": "Next" },
+    { "name": "common_done", "value": "Done" },
+    { "name": "common_processing", "value": "Processing…" },
+    { "name": "common_copy_success", "value": "Link copied" },
+    { "name": "common_copy_failed", "value": "Copy failed" },
+    { "name": "common_load_failed", "value": "Load failed: %1$s" },
+    { "name": "common_no_title", "value": "(untitled)" }
+  ]
+}

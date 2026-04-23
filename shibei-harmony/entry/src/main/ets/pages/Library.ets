@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router } from '@kit.ArkUI';
 import { ShibeiService, ShibeiError } from '../services/ShibeiService';
+import { I18n } from '../services/I18n';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
 import { ResourceList } from '../components/ResourceList';
 import { KEY_FOLD_STATUS } from '../app/AppStorageKeys';
@@ -78,9 +79,9 @@ struct Library {
       if (!this.initReady) {
         Column() {
           if (this.initError) {
-            Text(`init failed: ${this.initError}`).fontColor('#c00');
+            Text(I18n.t($r('app.string.common_init_failed'), this.initError)).fontColor('#c00');
           } else {
-            Text('初始化中…').fontColor('#888');
+            Text(I18n.t($r('app.string.common_initializing'))).fontColor('#888');
           }
         }
         .width('100%').height('100%')

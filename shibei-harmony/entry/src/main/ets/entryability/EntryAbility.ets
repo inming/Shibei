@@ -4,6 +4,7 @@ import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { ShibeiService } from '../services/ShibeiService';
 import { LockService, LockState } from '../services/LockService';
+import { I18n } from '../services/I18n';
 import { loadTheme, applyTheme } from '../app/ThemeManager';
 import { FoldObserver } from '../app/FoldObserver';
 
@@ -55,6 +56,11 @@ export default class EntryAbility extends UIAbility {
   }
 
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
+    // Wire i18n before first frame so any page can call `I18n.t(...)`
+    // without an init guard (the wrapper still has one, but routing the
+    // context here keeps callers terse).
+    I18n.init(this.context);
+
     // Apply persisted color mode before first frame so the user's dark/light
     // choice survives restarts. Await'd — tens of ms at most.
     try {
