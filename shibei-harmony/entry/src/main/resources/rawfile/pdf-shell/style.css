@@ -97,3 +97,21 @@ body {
   0%, 100% { opacity: .35; }
   50% { opacity: .75; box-shadow: 0 0 0 2px rgba(255,235,59,.6); }
 }
+
+/* Dark mode — activated by `Web.darkMode(WebDarkMode.Auto)` on the ArkTS
+   side when the system ColorMode is Dark. Only the chrome (body bg, status
+   bar, page shadow) adapts; the PDF canvas itself stays authentic (white
+   page, just like Acrobat / desktop) so text contrast in the document
+   content is preserved. */
+@media (prefers-color-scheme: dark) {
+  body { background: #0f0f0f; }
+  #status {
+    background: #1a1a1a;
+    color: #a0a0a0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+  .page {
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  }
+}

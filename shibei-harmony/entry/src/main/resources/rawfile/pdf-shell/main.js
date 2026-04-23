@@ -30,6 +30,11 @@
 
   var params = new URL(location.href).searchParams;
   var id = params.get('id') || '';
+  // Loading text is localized by ArkTS and injected via URL param. Apply it
+  // before the first early-return so en-US users don't see a flash of CJK
+  // during the short window before pdfjs calls setStatus().
+  var loadingText = params.get('loadingText');
+  if (loadingText) setStatus(loadingText);
   if (!id) { setStatus('no resource id'); return; }
   var initialZoom = clampZoom(parseFloat(params.get('zoom') || '1'));
 

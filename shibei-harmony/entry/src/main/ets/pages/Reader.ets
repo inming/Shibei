@@ -693,7 +693,14 @@ struct Reader {
             // value, avoiding a flash-of-1.0 → saved rebuild. pdfZoom has
             // already been loaded from prefs in ensurePdfReady before
             // pdfReady flips true.
-            src: $rawfile(`pdf-shell/shell.html?id=${this.resource.id}&zoom=${this.pdfZoom}`),
+            //
+            // loadingText is the localized "Loading…" string, injected so
+            // the shell's status div stays in sync with the app's current
+            // locale (ArkTS resolves the resource; main.js applies it
+            // before pdfjs gets a chance to overwrite with progress).
+            src: $rawfile(`pdf-shell/shell.html?id=${this.resource.id}`
+              + `&zoom=${this.pdfZoom}`
+              + `&loadingText=${encodeURIComponent(I18n.t($r('app.string.common_loading')))}`),
             controller: this.webController,
           })
             .domStorageAccess(true)

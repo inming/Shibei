@@ -7,7 +7,11 @@
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<div id="status">加载中…</div>
+<!-- Loading text injected by main.js from URL ?loadingText= param so the
+     ArkTS side can pass a localized string (i18n resource lookup happens
+     there, not in the WebView). Empty initial text prevents a flash of
+     hardcoded CJK during en-US display. -->
+<div id="status"></div>
 <div id="pages"></div>
 
 <script>
