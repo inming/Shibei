@@ -229,23 +229,37 @@ export class HuksService {
       props.push({ tag: huks.HuksTag.HUKS_TAG_AE_TAG, value: tag });
     }
 
-    const handle = await huks.initSession(BIO_ALIAS, { properties: props });
-    const hukschallenge: Uint8Array = handle.challenge ?? new Uint8Array();
-    if (hukschallenge.byteLength === 0) {
-      throw new Error('error.secureStoreCorrupted: HUKS returned no challenge');
+    // Wrap init+auth+finish so we can map HUKS's "key auth permanently
+    // invalidated" (triggered by a new fingerprint enrollment, because the
+    // bio key was generated with authAccessType=INVALID_NEW_BIO_ENROLL)
+    // into our well-known `error.bioRevoked` code. Raw HUKS messages leak
+    // English strings like "this credential is invalidated permanently"
+    // which aren't useful to end users.
+    let outData: Uint8Array;
+    try {
+      const handle = await huks.initSession(BIO_ALIAS, { properties: props });
+      const hukschallenge: Uint8Array = handle.challenge ?? new Uint8Array();
+      if (hukschallenge.byteLength === 0) {
+        throw new Error('error.secureStoreCorrupted: HUKS returned no challenge');
+      }
+
+      // Step 3: prompt user for biometric with HUKS-minted challenge. The
+      // auth token returned is bound to this specific challenge and must
+      // reach finishSession within HUKS's validity window (~5 s).
+      const authToken = await requestBioAuthForChallenge(hukschallenge);
+
+      // finishSession adds AUTH_TOKEN on top of the same shared props.
+      const finishProps: huks.HuksParam[] = [...props,
+        { tag: huks.HuksTag.HUKS_TAG_AUTH_TOKEN, value: authToken },
+      ];
+      const finished = await huks.finishSession(handle.handle, { properties: finishProps, inData });
+      outData = finished.outData ?? new Uint8Array();
+    } catch (e) {
+      if (isBioRevokedError(e as Error)) {
+        throw new Error('error.bioRevoked');
+      }
+      throw e;
     }
-
-    // Step 3: prompt user for biometric with HUKS-minted challenge. The
-    // auth token returned is bound to this specific challenge and must
-    // reach finishSession within HUKS's validity window (~5 s).
-    const authToken = await requestBioAuthForChallenge(hukschallenge);
-
-    // finishSession adds AUTH_TOKEN on top of the same shared props.
-    const finishProps: huks.HuksParam[] = [...props,
-      { tag: huks.HuksTag.HUKS_TAG_AUTH_TOKEN, value: authToken },
-    ];
-    const finished = await huks.finishSession(handle.handle, { properties: finishProps, inData });
-    const outData = finished.outData ?? new Uint8Array();
 
     if (isEncrypt) {
       // Binary layout [IV | CT || TAG]. outData already has CT||TAG.
@@ -269,6 +283,29 @@ export class HuksService {
       return exists === true;
     } catch (e) { return false; }
   }
+}
+
+/// HUKS BusinessError code for "key authentication has been permanently
+/// invalidated" — fires when the user enrolls a new biometric after a key
+/// was created with `authAccessType=INVALID_NEW_BIO_ENROLL`. The key is
+/// dead and the only recovery is to delete it and re-wrap the MK.
+const HUKS_ERR_KEY_AUTH_PERMANENTLY_INVALIDATED = 12000013;
+
+interface MaybeBusinessError {
+  code?: number;
+  message?: string;
+}
+
+/// Detect HUKS's invalidated-key error across (a) structured BusinessError
+/// with .code=12000013 and (b) raw Error with message containing
+/// "invalidated" — some NEXT ROM builds surface only the message.
+function isBioRevokedError(e: Error): boolean {
+  const err = e as MaybeBusinessError;
+  if (typeof err.code === 'number' && err.code === HUKS_ERR_KEY_AUTH_PERMANENTLY_INVALIDATED) {
+    return true;
+  }
+  const msg: string = typeof err.message === 'string' ? err.message : '';
+  return msg.toLowerCase().includes('invalidated');
 }
 
 /// Prompt the user for fingerprint auth using a HUKS-minted challenge and

@@ -150,6 +150,13 @@ export class LockService {
       // error as a confusing "undefined is not callable" at the catch site.
       const raw = (e as Error).message;
       const msg: string = (typeof raw === 'string') ? raw : String(raw);
+      // On `error.bioRevoked` the wrapped blob + HUKS key are permanently
+      // dead. Clear both so subsequent launches don't retry a broken key;
+      // user must re-enable bio in Settings (which re-runs `enableBio`).
+      if (msg === 'error.bioRevoked') {
+        try { await svc.lockDeleteBioOnly(); } catch (_e) { /* best effort */ }
+        try { await huks.deleteBioKey(); } catch (_e) { /* best effort */ }
+      }
       throw new ShibeiError(msg);
     }
     await svc.lockPushUnwrappedMk(mkB64);
