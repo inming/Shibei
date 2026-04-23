@@ -255,10 +255,11 @@ export class HuksService {
       const finished = await huks.finishSession(handle.handle, { properties: finishProps, inData });
       outData = finished.outData ?? new Uint8Array();
     } catch (e) {
-      if (isBioRevokedError(e as Error)) {
+      const err = e as Error;
+      if (isBioRevokedError(err)) {
         throw new Error('error.bioRevoked');
       }
-      throw e;
+      throw err;
     }
 
     if (isEncrypt) {
