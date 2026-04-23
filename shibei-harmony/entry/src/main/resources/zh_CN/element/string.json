@@ -130,6 +130,24 @@
     { "name": "onboard_lock_enroll_pin_invalid", "value": "PIN 必须是 4 位数字" },
     { "name": "onboard_lock_enroll_pin_mismatch", "value": "两次输入不一致，请重新输入" },
     { "name": "onboard_lock_enroll_failed", "value": "启用失败：%1$s" },
-    { "name": "onboard_lock_skip", "value": "暂不启用" }
+    { "name": "onboard_lock_skip", "value": "暂不启用" },
+
+    { "name": "reader_pdf_downloading", "value": "正在下载 PDF…" },
+    { "name": "reader_pdf_download_failed", "value": "下载失败：%1$s" },
+    { "name": "reader_create_failed", "value": "创建失败：%1$s" },
+    { "name": "reader_note_new", "value": "新建笔记" },
+    { "name": "reader_note_edit", "value": "编辑笔记" },
+    { "name": "reader_note_placeholder", "value": "写下你的想法…" },
+    { "name": "reader_hl_color_yellow", "value": "黄" },
+    { "name": "reader_hl_color_green", "value": "绿" },
+    { "name": "reader_hl_color_blue", "value": "蓝" },
+    { "name": "reader_hl_color_pink", "value": "粉" },
+
+    { "name": "annotation_section_title", "value": "标注 (%1$d)" },
+    { "name": "annotation_note_label", "value": "笔记" },
+    { "name": "annotation_note_add", "value": "+ 笔记" },
+    { "name": "annotation_comment_add", "value": "+ 评论" },
+    { "name": "annotation_empty_hint", "value": "长按页面文字创建高亮" },
+    { "name": "annotation_copy_link", "value": "复制链接" }
   ]
 }

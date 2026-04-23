@@ -15,6 +15,7 @@ import {
 } from '../components/AnnotationBridge';
 import { AnnotationPanel } from '../components/AnnotationPanel';
 import { AnnotationsBundle } from '../services/ShibeiService';
+import { I18n } from '../services/I18n';
 import { getReaderScroll, saveReaderScroll } from '../app/ReaderScrollState';
 import {
   getReaderZoom,
@@ -32,12 +33,18 @@ interface ReaderParams { resourceId?: string; }
 // Palette shown in the selection action bar. Order left→right matches
 // the desktop picker. Yellow is the first tap position since it's the
 // historical default.
-interface HlColor { value: string; label: string; }
+//
+// `value` is the CSS color used both as paint and as data key for
+// createHighlight — it MUST NOT change without coordinating with desktop
+// annotation storage. `nameKey` is an i18n lookup for accessibility /
+// future tooltips; the palette itself only renders color circles so
+// the label is not currently shown in UI.
+interface HlColor { value: string; nameKey: Resource; }
 const HL_COLORS: HlColor[] = [
-  { value: '#ffeb3b', label: '黄' },
-  { value: '#81c784', label: '绿' },
-  { value: '#64b5f6', label: '蓝' },
-  { value: '#f48fb1', label: '粉' },
+  { value: '#ffeb3b', nameKey: $r('app.string.reader_hl_color_yellow') },
+  { value: '#81c784', nameKey: $r('app.string.reader_hl_color_green') },
+  { value: '#64b5f6', nameKey: $r('app.string.reader_hl_color_blue') },
+  { value: '#f48fb1', nameKey: $r('app.string.reader_hl_color_pink') },
 ];
 
 // Header row shape for WebResourceResponse.setResponseHeader. ArkTS strict
@@ -303,7 +310,9 @@ struct Reader {
       this.webController.runJavaScript(`window.__shibei && window.__shibei.clearSelection();`)
         .catch(() => {});
     } catch (err) {
-      promptAction.showToast({ message: `创建失败: ${(err as Error).message}` });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.reader_create_failed'), (err as Error).message),
+      });
     }
   }
 
@@ -341,10 +350,14 @@ struct Reader {
     const url = `shibei://open/resource/${this.resource.id}?highlight=${id}`;
     const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, url);
     pasteboard.getSystemPasteboard().setData(data).then(() => {
-      promptAction.showToast({ message: '链接已复制' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.common_copy_success')),
+      });
     }).catch((err: Error) => {
       hilog.warn(0x0000, 'shibei', 'pasteboard setData fail: %{public}s', err.message);
-      promptAction.showToast({ message: '复制失败' });
+      promptAction.showToast({
+        message: I18n.t($r('app.string.common_copy_failed')),
+      });
     });
   }
 
@@ -396,11 +409,13 @@ struct Reader {
     Stack() {
       if (this.loading) {
         Column() {
-          Text('加载中…').fontColor($r('sys.color.ohos_id_color_text_tertiary'));
+          Text(I18n.t($r('app.string.common_loading')))
+            .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
         }.width('100%').height('100%').justifyContent(FlexAlign.Center);
       } else if (this.loadError) {
         Column() {
-          Text(`加载失败: ${this.loadError}`).fontColor($r('sys.color.ohos_id_color_warning'));
+          Text(I18n.t($r('app.string.common_load_failed'), this.loadError))
+            .fontColor($r('sys.color.ohos_id_color_warning'));
         }.width('100%').height('100%').justifyContent(FlexAlign.Center);
       } else {
         SideBarContainer(SideBarContainerType.Overlay) {
@@ -485,7 +500,11 @@ struct Reader {
       detents: [SheetSize.MEDIUM, SheetSize.LARGE],
       showClose: true,
       dragBar: true,
-      title: { title: this.commentDialogId ? '编辑笔记' : '新建笔记' },
+      title: {
+        title: this.commentDialogId
+          ? I18n.t($r('app.string.reader_note_edit'))
+          : I18n.t($r('app.string.reader_note_new')),
+      },
     });
   }
 
@@ -575,7 +594,7 @@ struct Reader {
     .padding({ left: 12, right: 12, top: 8, bottom: 8 })
     .borderRadius(28)
     .backgroundColor($r('sys.color.ohos_id_color_background'))
-    .shadow({ radius: 12, color: '#40000000', offsetY: 2 })
+    .shadow({ radius: 12, color: $r('app.color.shadow_default'), offsetY: 2 })
     .position({ x: 0, y: '85%' })
     .margin({ left: 16, right: 16 })
     .justifyContent(FlexAlign.Center);
@@ -591,6 +610,13 @@ struct Reader {
         Web({ src: '', controller: this.webController })
           .domStorageAccess(true)
           .javaScriptAccess(true)
+          // Let Chromium follow the system ColorMode for ArkUI media queries
+          // (snapshot author's own styles still win). We leave
+          // forceDarkAccess at its default (false) so Chromium's forced
+          // dark-mode filter does NOT invert the saved page content —
+          // mirrors desktop behavior where the iframe stays authentic and
+          // only an optional invert filter is offered.
+          .darkMode(WebDarkMode.Auto)
           .onControllerAttached(() => {
             // Expose bridge before page loads so annotator-mobile.js
             // sees window.shibeiBridge on first evaluation.
@@ -620,7 +646,7 @@ struct Reader {
         if (this.panelOpen) {
           Column()
             .width('100%').height('100%')
-            .backgroundColor('#01000000')
+            .backgroundColor($r('app.color.surface_tap_invisible'))
             .onClick(() => { this.panelOpen = false; });
         }
 
@@ -648,14 +674,14 @@ struct Reader {
       Stack() {
         if (this.pdfDownloading) {
           Column() {
-            Text('正在下载 PDF…')
+            Text(I18n.t($r('app.string.reader_pdf_downloading')))
               .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
           }.width('100%').height('100%').justifyContent(FlexAlign.Center);
         } else if (this.pdfError) {
           Column() {
-            Text(`下载失败: ${this.pdfError}`)
+            Text(I18n.t($r('app.string.reader_pdf_download_failed'), this.pdfError))
               .fontColor($r('sys.color.ohos_id_color_warning'));
-            Button('重试').margin({ top: 12 })
+            Button(I18n.t($r('app.string.common_retry'))).margin({ top: 12 })
               .onClick(() => {
                 if (this.resource) this.ensurePdfReady(this.resource.id);
               });
@@ -679,6 +705,10 @@ struct Reader {
             // PDF canvas since pdfjs would still be rendering at the old
             // scale underneath.
             .zoomAccess(false)
+            // Follow system ColorMode for pdf-shell's own chrome (background
+            // behind pages, status text) — style.css has prefers-color-scheme
+            // rules. PDF canvas content itself stays authentic (white page).
+            .darkMode(WebDarkMode.Auto)
             .onControllerAttached(() => {
               // Same bridge contract as HTML — pdf-annotator-mobile.js
               // speaks the identical SelectionPayload / ClickPayload /
@@ -710,7 +740,7 @@ struct Reader {
         if (this.panelOpen) {
           Column()
             .width('100%').height('100%')
-            .backgroundColor('#01000000')
+            .backgroundColor($r('app.color.surface_tap_invisible'))
             .onClick(() => { this.panelOpen = false; });
         }
 
@@ -725,13 +755,16 @@ struct Reader {
 
   @Builder CommentSheet() {
     Column() {
-      TextArea({ text: this.commentDialogDraft, placeholder: '写下你的想法…' })
+      TextArea({
+        text: this.commentDialogDraft,
+        placeholder: I18n.t($r('app.string.reader_note_placeholder')),
+      })
         .fontSize(15)
         .width('100%')
         .height(160)
         .onChange((v: string) => { this.commentDialogDraft = v; });
       Row() {
-        Text('取消')
+        Text(I18n.t($r('app.string.common_cancel')))
           .fontSize(15)
           .padding({ left: 20, right: 20, top: 10, bottom: 10 })
           .onClick(() => {
@@ -740,7 +773,7 @@ struct Reader {
             this.commentDialogId = null;
             this.commentDialogHighlightId = null;
           });
-        Text('保存')
+        Text(I18n.t($r('app.string.common_save')))
           .fontSize(15).fontColor($r('sys.color.ohos_id_color_emphasize'))
           .padding({ left: 20, right: 20, top: 10, bottom: 10 })
           .onClick(() => this.saveComment());

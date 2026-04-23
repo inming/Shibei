@@ -130,6 +130,24 @@
     { "name": "onboard_lock_enroll_pin_invalid", "value": "PIN must be 4 digits" },
     { "name": "onboard_lock_enroll_pin_mismatch", "value": "PINs do not match, please re-enter" },
     { "name": "onboard_lock_enroll_failed", "value": "Enable failed: %1$s" },
-    { "name": "onboard_lock_skip", "value": "Skip for now" }
+    { "name": "onboard_lock_skip", "value": "Skip for now" },
+
+    { "name": "reader_pdf_downloading", "value": "Downloading PDF…" },
+    { "name": "reader_pdf_download_failed", "value": "Download failed: %1$s" },
+    { "name": "reader_create_failed", "value": "Create failed: %1$s" },
+    { "name": "reader_note_new", "value": "New Note" },
+    { "name": "reader_note_edit", "value": "Edit Note" },
+    { "name": "reader_note_placeholder", "value": "Write your thoughts…" },
+    { "name": "reader_hl_color_yellow", "value": "Yellow" },
+    { "name": "reader_hl_color_green", "value": "Green" },
+    { "name": "reader_hl_color_blue", "value": "Blue" },
+    { "name": "reader_hl_color_pink", "value": "Pink" },
+
+    { "name": "annotation_section_title", "value": "Annotations (%1$d)" },
+    { "name": "annotation_note_label", "value": "Note" },
+    { "name": "annotation_note_add", "value": "+ Note" },
+    { "name": "annotation_comment_add", "value": "+ Comment" },
+    { "name": "annotation_empty_hint", "value": "Long-press text to create a highlight" },
+    { "name": "annotation_copy_link", "value": "Copy Link" }
   ]
 }

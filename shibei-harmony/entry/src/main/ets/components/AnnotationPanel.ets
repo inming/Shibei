@@ -1,13 +1,19 @@
 import { Highlight, Comment, AnnotationsBundle } from '../services/ShibeiService';
+import { I18n } from '../services/I18n';
 
 // Four-color palette — same order as Reader.ets so the "change color" swatch
 // in the long-press menu reads left-to-right in the familiar sequence.
-interface HlColorOption { value: string; label: string; }
+//
+// `value` is the CSS color used as annotation data key; `nameKey` is an i18n
+// resource for future accessibility / tooltip use. Current UI only paints
+// circles, so the label is not rendered — but the key stays so grep-sweeps
+// for hardcoded CJK stay clean.
+interface HlColorOption { value: string; nameKey: Resource; }
 const HL_COLORS: HlColorOption[] = [
-  { value: '#ffeb3b', label: '黄' },
-  { value: '#81c784', label: '绿' },
-  { value: '#64b5f6', label: '蓝' },
-  { value: '#f48fb1', label: '粉' },
+  { value: '#ffeb3b', nameKey: $r('app.string.reader_hl_color_yellow') },
+  { value: '#81c784', nameKey: $r('app.string.reader_hl_color_green') },
+  { value: '#64b5f6', nameKey: $r('app.string.reader_hl_color_blue') },
+  { value: '#f48fb1', nameKey: $r('app.string.reader_hl_color_pink') },
 ];
 
 @Component
@@ -25,10 +31,10 @@ export struct AnnotationPanel {
 
   build() {
     Column() {
-      // Header — title only; "+ 笔记" moved to a sticky footer for parity
-      // with the desktop panel layout.
+      // Header — title only; the add-note button moved to a sticky footer
+      // for parity with the desktop panel layout.
       Row() {
-        Text(`标注 (${this.bundle.highlights.length})`)
+        Text(I18n.t($r('app.string.annotation_section_title'), this.bundle.highlights.length))
           .fontSize(16).fontWeight(FontWeight.Medium)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .layoutWeight(1);
@@ -49,7 +55,7 @@ export struct AnnotationPanel {
           }, (h: Highlight) => `${h.id}:${h.color}`);
 
           if (this.resourceComments().length > 0) {
-            Text('笔记').fontSize(13)
+            Text(I18n.t($r('app.string.annotation_note_label'))).fontSize(13)
               .fontColor($r('sys.color.ohos_id_color_text_secondary'))
               .padding({ left: 12, right: 12, top: 16, bottom: 4 });
             ForEach(this.resourceComments(), (c: Comment) => {
@@ -59,7 +65,7 @@ export struct AnnotationPanel {
 
           if (this.bundle.highlights.length === 0 && this.resourceComments().length === 0) {
             Column() {
-              Text('长按页面文字创建高亮').fontSize(13)
+              Text(I18n.t($r('app.string.annotation_empty_hint'))).fontSize(13)
                 .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
                 .textAlign(TextAlign.Center);
             }
@@ -72,10 +78,10 @@ export struct AnnotationPanel {
       .width('100%')
       .align(Alignment.Top);
 
-      // Footer — sticky "+ 笔记" button at the bottom of the drawer.
+      // Footer — sticky add-note button at the bottom of the drawer.
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
       Row() {
-        Text('+ 笔记')
+        Text(I18n.t($r('app.string.annotation_note_add')))
           .fontSize(15)
           .fontColor($r('sys.color.ohos_id_color_emphasize'))
           .layoutWeight(1)
@@ -106,7 +112,7 @@ export struct AnnotationPanel {
   }
 
   // Card visual mirrors the desktop AnnotationPanel: 3px left color strip,
-  // text preview, small meta row (dot + date), inline "+ 评论" action.
+  // text preview, small meta row (dot + date), inline add-comment action.
   // Destructive actions (delete, copy link, change color) live behind
   // long-press so single taps aren't misread as "delete".
   @Builder HighlightCard(h: Highlight) {
@@ -140,10 +146,10 @@ export struct AnnotationPanel {
         .onClick(() => this.onEditComment(c.id));
       }, (c: Comment) => c.id);
 
-      // Inline "+ 评论" — primary text, left-aligned. Opens comment sheet
+      // Inline add-comment — primary text, left-aligned. Opens comment sheet
       // with the highlight id preset so the saved comment is attached here.
       Row() {
-        Text('+ 评论')
+        Text(I18n.t($r('app.string.annotation_comment_add')))
           .fontSize(13)
           .fontColor($r('sys.color.ohos_id_color_emphasize'));
       }
@@ -192,7 +198,7 @@ export struct AnnotationPanel {
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
 
       Row() {
-        Text('复制链接')
+        Text(I18n.t($r('app.string.annotation_copy_link')))
           .fontSize(15)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .layoutWeight(1);
@@ -204,7 +210,7 @@ export struct AnnotationPanel {
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
 
       Row() {
-        Text('删除')
+        Text(I18n.t($r('app.string.common_delete')))
           .fontSize(15)
           .fontColor($r('sys.color.ohos_id_color_warning'))
           .layoutWeight(1);
