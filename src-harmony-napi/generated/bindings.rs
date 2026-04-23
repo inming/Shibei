@@ -506,8 +506,8 @@ pub unsafe extern "C" fn shibei_ffi_s3_creds_clear_legacy() -> *mut c_char {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn shibei_ffi_set_s3_creds_only(access_key: *const c_char, secret_key: *const c_char) -> *mut c_char {
-    let s = crate::commands::set_s3_creds_only(cstr_to_string(access_key), cstr_to_string(secret_key));
+pub unsafe extern "C" fn shibei_ffi_set_s3_creds_runtime(access_key: *const c_char, secret_key: *const c_char) -> *mut c_char {
+    let s = crate::commands::set_s3_creds_runtime(cstr_to_string(access_key), cstr_to_string(secret_key));
     leak_cstring(s)
 }
 

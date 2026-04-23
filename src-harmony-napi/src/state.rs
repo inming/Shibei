@@ -17,9 +17,13 @@
 //!                          the state.
 //!   - `device_id`        — UUID written to `sync_state` on first init, stable
 //!                          across runs; used as HLC node id for this device.
+//!   - `s3_creds`         — S3 access + secret keys in memory only (never
+//!     SQLite). Populated by `primeS3Creds` on cold start (HUKS blob unwrap)
+//!     and by `setS3Config` after pairing. Kill → blob on disk survives but
+//!     this cache is gone until next HUKS unwrap.
 
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use shibei_db::{init_pool, SharedPool};
 use shibei_sync::EncryptionState;
@@ -30,6 +34,7 @@ pub struct AppState {
     pub encryption: Arc<EncryptionState>,
     pub device_id: String,
     pub clock: shibei_db::hlc::HlcClock,
+    pub s3_creds: Arc<RwLock<Option<(String, String)>>>,
 }
 
 impl AppState {
@@ -78,6 +83,7 @@ pub fn init(data_dir: PathBuf, ca_bundle_path: PathBuf) -> Result<(), String> {
         encryption: Arc::new(EncryptionState::new()),
         device_id,
         clock,
+        s3_creds: Arc::new(RwLock::new(None)),
     };
 
     // If two threads race into init at the same time we pick one winner; the
@@ -150,5 +156,16 @@ pub fn is_unlocked() -> bool {
 pub fn lock_vault() {
     if let Some(state) = APP_STATE.get() {
         state.encryption.clear();
+    }
+}
+
+/// Phase 4.1: drop the in-memory S3 credentials. Called from `reset_device`
+/// alongside `lock_vault`. The HUKS-wrapped blob on disk is wiped by the
+/// reset flow's file-cleanup step (not here).
+pub fn clear_s3_creds() {
+    if let Some(state) = APP_STATE.get() {
+        if let Ok(mut guard) = state.s3_creds.write() {
+            *guard = None;
+        }
     }
 }

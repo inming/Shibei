@@ -52,7 +52,7 @@ import {
   s3CredsWrite as napiS3CredsWrite,
   s3CredsRead as napiS3CredsRead,
   s3CredsClearLegacy as napiS3CredsClearLegacy,
-  setS3CredsOnly as napiSetS3CredsOnly,
+  setS3CredsRuntime as napiSetS3CredsRuntime,
   resetSyncCursors as napiResetSyncCursors,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
@@ -241,16 +241,20 @@ export class ShibeiService {
     return napiS3CredsRead();
   }
 
-  /// Wipe the legacy SQLite credentials row after migration. Idempotent.
+  /// Wipe the legacy SQLite credentials row after migration. Idempotent —
+  /// safe to call on every cold start; on Phase 4.1-or-later installs it's
+  /// a no-op because the rows are never written anymore.
   s3CredsClearLegacy(): void {
     const result: string = napiS3CredsClearLegacy();
     if (result !== 'ok') throw new ShibeiError(result);
   }
 
-  /// Populate SQLite credentials runtime cache from plaintext access/secret
-  /// (called by Task 8's primeS3Creds after HUKS unwrap on app startup).
-  setS3CredsOnly(accessKey: string, secretKey: string): void {
-    const result: string = napiSetS3CredsOnly(accessKey, secretKey);
+  /// Phase 4.1: push plaintext access/secret into the in-memory RwLock
+  /// that `build_raw_backend` reads. Called by `primeS3Creds` after HUKS
+  /// unwrap on cold start; `setS3Config` populates the same cache
+  /// internally on the Rust side so new pairings don't need a second hop.
+  setS3CredsRuntime(accessKey: string, secretKey: string): void {
+    const result: string = napiSetS3CredsRuntime(accessKey, secretKey);
     if (result !== 'ok') throw new ShibeiError(result);
   }
 
@@ -276,13 +280,13 @@ export class ShibeiService {
 
   // ── Config + sync (Track A4 batch 1 + 3) ──────────────────
 
-  /// Persist S3 config + credentials. Phase 4 v1 keeps SQLite `sync_state`
-  /// rows as the runtime cache that `build_raw_backend` reads on every sync;
-  /// we ALSO persist the creds HUKS-wrapped in `secure/s3_creds.blob` so
-  /// next cold start can reprime via `primeS3Creds()`. Both writes are best
-  /// effort individually — the SQLite write is the critical path; HUKS
-  /// failure only removes the static-data-at-rest protection but doesn't
-  /// break sync.
+  /// Persist S3 config + credentials. Phase 4.1: `napiSetS3Config` writes
+  /// only endpoint/region/bucket to SQLite AND populates the in-memory
+  /// RwLock with the creds (so sync can run immediately without a restart).
+  /// The creds are additionally HUKS-wrapped and written to
+  /// `secure/s3_creds.blob` for next cold start's `primeS3Creds()`. The
+  /// HUKS step is best effort — a failure only removes static-data-at-rest
+  /// protection but doesn't break the current session.
   async setS3Config(cfg: S3ConfigInput): Promise<void> {
     const result: string = napiSetS3Config(JSON.stringify(cfg));
     if (result !== 'ok') throw new ShibeiError(result);
@@ -299,9 +303,11 @@ export class ShibeiService {
   }
 
   /// Called on cold start from EntryAbility.onWindowStageCreate after init().
-  /// Reads the HUKS-wrapped S3 creds from disk, unwraps, and plumbs them
-  /// back into sync_state so build_raw_backend finds them. No-op if the
-  /// blob is missing (onboarding will write fresh creds later).
+  /// Reads the HUKS-wrapped S3 creds from disk, unwraps, and pushes them
+  /// into the in-memory RwLock that `build_raw_backend` reads. Also runs
+  /// the one-shot migration wipe of the legacy SQLite credential rows —
+  /// idempotent, so on Phase 4.1+ installs the delete is a no-op. No-op if
+  /// the blob is missing (fresh install; onboarding writes creds later).
   async primeS3Creds(): Promise<void> {
     const wrappedB64: string = this.s3CredsRead();
     if (!wrappedB64) return;
@@ -309,7 +315,11 @@ export class ShibeiService {
       const plainB64 = await HuksService.instance.unwrapDeviceBound(wrappedB64);
       const plainJson = base64ToString(plainB64);
       const creds = JSON.parse(plainJson) as S3Creds;
-      this.setS3CredsOnly(creds.accessKey, creds.secretKey);
+      this.setS3CredsRuntime(creds.accessKey, creds.secretKey);
+      // Wipe any leftover plaintext rows from pre-4.1 installs. Runs once
+      // per launch but the underlying SQL DELETE is a no-op after the
+      // first successful migration.
+      try { this.s3CredsClearLegacy(); } catch (_e) { /* best effort */ }
     } catch (e) {
       hilog.warn(0x0000, 'shibei', 's3 creds unwrap failed: %{public}s', (e as Error).message);
     }

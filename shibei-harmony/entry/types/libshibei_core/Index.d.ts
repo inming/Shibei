@@ -50,4 +50,4 @@ export const lockDeleteBioOnly: () => Promise<string>;
 export const s3CredsWrite: (wrappedB64: string) => string;
 export const s3CredsRead: () => string;
 export const s3CredsClearLegacy: () => string;
-export const setS3CredsOnly: (accessKey: string, secretKey: string) => string;
+export const setS3CredsRuntime: (accessKey: string, secretKey: string) => string;

@@ -103,7 +103,10 @@ pub fn reset_device() -> String {
 fn reset_device_inner() -> Result<(), String> {
     // 1) Clear in-memory encryption state first so that, if anything below
     // fails, we don't leave an app that can still sync with the old MK.
+    // Also drop the Phase 4.1 RwLock'd S3 creds so the wiped bucket can't
+    // be re-contacted with the old access keys.
     state::lock_vault();
+    state::clear_s3_creds();
 
     // 2) Wipe all user-owned rows in a single transaction. We enumerate
     // tables via sqlite_master rather than hardcoding the list so a future
@@ -216,13 +219,22 @@ pub fn set_s3_config(config_json: String) -> String {
         shibei_sync::sync_state::set(conn, "config:s3_endpoint", input.endpoint.as_deref().unwrap_or(""))?;
         shibei_sync::sync_state::set(conn, "config:s3_region", &input.region)?;
         shibei_sync::sync_state::set(conn, "config:s3_bucket", &input.bucket)?;
-        shibei_sync::credentials::store_credentials(conn, &input.access_key, &input.secret_key)?;
         Ok(())
     });
-    match result {
-        Ok(()) => "ok".to_string(),
-        Err(e) => e,
+    if let Err(e) = result {
+        return e;
     }
+    // Phase 4.1: creds live only in the RwLock + HUKS blob on mobile, never
+    // SQLite. ArkTS is responsible for calling `setS3CredsRuntime` after
+    // this to populate the in-memory cache and `s3CredsWrite` to persist
+    // the HUKS-wrapped copy.
+    let Ok(app) = state::get() else {
+        return "error.notInitialized".to_string();
+    };
+    if let Ok(mut guard) = app.s3_creds.write() {
+        *guard = Some((input.access_key, input.secret_key));
+    }
+    "ok".to_string()
 }
 
 /// Fetch `meta/keyring.json` from S3, Argon2id-derive the wrapping key from
@@ -313,16 +325,28 @@ pub(crate) fn build_raw_backend_pub() -> Result<shibei_sync::backend::S3Backend,
 }
 
 fn build_raw_backend() -> Result<shibei_sync::backend::S3Backend, String> {
-    let (endpoint, region, bucket, access_key, secret_key) = with_conn(|conn| {
+    let app = state::get()?;
+    // Non-secret S3 config stays in sync_state (bucket+region identify the
+    // remote, not authenticate it). Only the keys move to the RwLock.
+    let (endpoint, region, bucket) = with_conn(|conn| {
         let endpoint = shibei_sync::sync_state::get(conn, "config:s3_endpoint")?.unwrap_or_default();
         let region = shibei_sync::sync_state::get(conn, "config:s3_region")?
             .ok_or_else(|| shibei_db::DbError::NotFound("config:s3_region".into()))?;
         let bucket = shibei_sync::sync_state::get(conn, "config:s3_bucket")?
             .ok_or_else(|| shibei_db::DbError::NotFound("config:s3_bucket".into()))?;
-        let (ak, sk) = shibei_sync::credentials::load_credentials(conn)?
-            .ok_or_else(|| shibei_db::DbError::NotFound("credentials".into()))?;
-        Ok((endpoint, region, bucket, ak, sk))
+        Ok((endpoint, region, bucket))
     })?;
+    // Phase 4.1: credentials live in the AppState RwLock, populated by
+    // `primeS3Creds` (cold start via HUKS unwrap) or `setS3Config` (first
+    // pairing). `error.credentialsNotPrimed` fires if a sync path runs
+    // before ArkTS had a chance to rehydrate — shouldn't normally happen
+    // since EntryAbility calls primeS3Creds before unlocking.
+    let guard = app.s3_creds.read().map_err(|_| "error.credentialsLockPoisoned".to_string())?;
+    let (access_key, secret_key) = guard
+        .as_ref()
+        .ok_or_else(|| "error.credentialsNotPrimed".to_string())?
+        .clone();
+    drop(guard);
     let cfg = shibei_sync::backend::S3Config {
         endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
         region,
@@ -1052,13 +1076,18 @@ pub fn s3_creds_clear_legacy() -> String {
     }
 }
 
+/// Phase 4.1: populate the in-memory S3 credentials cache. Called by ArkTS
+/// (a) after `primeS3Creds` unwraps `secure/s3_creds.blob` on cold start,
+/// and (b) after `setS3Config` to immediately back the HUKS-wrapped blob
+/// with a live runtime copy. Never touches SQLite; kill → cleared.
 #[shibei_napi]
-pub fn set_s3_creds_only(access_key: String, secret_key: String) -> String {
-    let result = with_conn(|conn| {
-        shibei_sync::credentials::store_credentials(conn, &access_key, &secret_key)
-    });
-    match result {
-        Ok(()) => "ok".to_string(),
-        Err(e) => e,
-    }
+pub fn set_s3_creds_runtime(access_key: String, secret_key: String) -> String {
+    let Ok(app) = state::get() else {
+        return "error.notInitialized".to_string();
+    };
+    let Ok(mut guard) = app.s3_creds.write() else {
+        return "error.credentialsLockPoisoned".to_string();
+    };
+    *guard = Some((access_key, secret_key));
+    "ok".to_string()
 }

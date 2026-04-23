@@ -62,7 +62,7 @@ extern void shibei_ffi_lock_delete_bio_only(void* ctx);
 extern char* shibei_ffi_s3_creds_write(const char* wrapped_b64);
 extern char* shibei_ffi_s3_creds_read(void);
 extern char* shibei_ffi_s3_creds_clear_legacy(void);
-extern char* shibei_ffi_set_s3_creds_only(const char* access_key, const char* secret_key);
+extern char* shibei_ffi_set_s3_creds_runtime(const char* access_key, const char* secret_key);
 
 // C callbacks invoked from Rust worker threads.
 void shibei_async_resolve(void* ctx, int ok, const char* payload);
@@ -790,7 +790,7 @@ static napi_value s3_creds_clear_legacy_wrap(napi_env env, napi_callback_info in
     return result;
 }
 
-static napi_value set_s3_creds_only_wrap(napi_env env, napi_callback_info info) {
+static napi_value set_s3_creds_runtime_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
@@ -799,7 +799,7 @@ static napi_value set_s3_creds_only_wrap(napi_env env, napi_callback_info info) 
     char buf_secret_key[4096] = {0};
     if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_secret_key, sizeof(buf_secret_key), &len); }
     napi_value result = NULL;
-    char* ret = shibei_ffi_set_s3_creds_only(buf_access_key, buf_secret_key);
+    char* ret = shibei_ffi_set_s3_creds_runtime(buf_access_key, buf_secret_key);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
     return result;
@@ -857,7 +857,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"s3CredsWrite", NULL, s3_creds_write_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3CredsRead", NULL, s3_creds_read_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3CredsClearLegacy", NULL, s3_creds_clear_legacy_wrap, NULL, NULL, NULL, napi_default, NULL},
-        {"setS3CredsOnly", NULL, set_s3_creds_only_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"setS3CredsRuntime", NULL, set_s3_creds_runtime_wrap, NULL, NULL, NULL, napi_default, NULL},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);
     return exports;
