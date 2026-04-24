@@ -2,6 +2,7 @@
   "src": [
     "pages/Onboard",
     "pages/LockScreen",
+    "pages/E2eeUnlockGate",
     "pages/Library",
     "pages/Reader",
     "pages/Search",

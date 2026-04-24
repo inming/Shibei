@@ -83,6 +83,13 @@ export default class EntryAbility extends UIAbility {
         route = 'pages/Onboard';
       } else if (LockService.instance.getState() === LockState.Locked) {
         route = 'pages/LockScreen';
+      } else if (!ShibeiService.instance.isUnlocked()) {
+        // App Lock not configured but MK not in memory (process was killed
+        // between sessions). Without this gate the user lands on Library
+        // with a config but no way to decrypt S3 / snapshots, and the
+        // Settings recovery card is the only exit — too buried. This page
+        // is unskippable and replaces to Library on success.
+        route = 'pages/E2eeUnlockGate';
       } else {
         route = 'pages/Library';
       }

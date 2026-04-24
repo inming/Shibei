@@ -249,6 +249,8 @@
     { "name": "unlock_e2ee_submit", "value": "Unlock" },
     { "name": "unlock_e2ee_submitting", "value": "Unlocking…" },
     { "name": "unlock_e2ee_empty", "value": "Password required" },
-    { "name": "unlock_e2ee_toast_ok", "value": "Encryption unlocked" }
+    { "name": "unlock_e2ee_toast_ok", "value": "Encryption unlocked" },
+    { "name": "unlock_e2ee_gate_title", "value": "Encryption enabled" },
+    { "name": "unlock_e2ee_gate_subtitle", "value": "Enter your encryption password to continue" }
   ]
 }
