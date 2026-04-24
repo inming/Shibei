@@ -838,6 +838,11 @@ struct Reader {
         .fontSize(15)
         .width('100%')
         .height(160)
+        // Pop the keyboard the instant the sheet slides up. Without
+        // defaultFocus the user has to tap the area first, which feels
+        // wrong for a "write a note" sheet — they just tapped a button
+        // that said add note.
+        .defaultFocus(true)
         .onChange((v: string) => { this.commentDialogDraft = v; });
       Row() {
         Text(I18n.t($r('app.string.common_cancel')))

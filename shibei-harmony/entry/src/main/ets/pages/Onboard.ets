@@ -364,6 +364,7 @@ struct Onboard {
             text: this.pinInput,
           })
             .type(InputType.Number).maxLength(6).layoutWeight(1)
+            .defaultFocus(true)
             .onChange((v: string) => this.pinInput = v);
           Button(I18n.t($r('app.string.onboard_apply_pin')))
             .layoutWeight(1).margin({ left: 8 })
@@ -445,6 +446,7 @@ struct Onboard {
         text: this.password,
       })
         .type(InputType.Password)
+        .defaultFocus(true)
         .width('80%')
         .onChange((v: string) => this.password = v);
       if (this.unlockError) {
@@ -549,6 +551,7 @@ struct Onboard {
         .type(InputType.Number)
         .maxLength(4)
         .width('60%')
+        .defaultFocus(true)
         .enabled(!this.enrollingLock)
         .onChange((v: string) => {
           const d = v.replace(/\D/g, '').slice(0, 4);
