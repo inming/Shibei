@@ -28,6 +28,13 @@ struct Library {
   // the first view anymore.
   @State selectedFolderId: string = '__all__';
   @State selectedFolderLabel: string = '';
+  // Left-edge swipe arming — set in PanGesture.onActionStart when the finger
+  // lands within 20px of the left edge with the drawer closed. A later
+  // onActionUpdate with offsetX > 60 opens the drawer. Anything that starts
+  // off the edge, or starts with the drawer already open, is ignored and
+  // the pan falls through to the system default (which on HarmonyOS NEXT
+  // is a no-op for inner-screen horizontal drags).
+  @State private edgeSwipeArmed: boolean = false;
   // Kept in sync with FoldObserver; updates here trigger an automatic
   // re-layout between Embed / Overlay without reopening the page.
   @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
@@ -154,23 +161,16 @@ struct Library {
                 Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
                   .textAlign(TextAlign.Center);
+                // Settings entry moved to the drawer footer (above Sync) so
+                // the top bar only carries the primary navigation (Search).
                 // Plain Text + onClick (rather than Button) so the glyph isn't
-                // squeezed by Button's default inner padding — ⚙ was clipping
-                // inside a 40×40 Button on Mate X5.
+                // squeezed by Button's default inner padding.
                 Text('🔍')
                   .fontSize(20)
                   .width(44).height(44).textAlign(TextAlign.Center)
                   .onClick(() => {
                     router.pushUrl({ url: 'pages/Search' }).catch((err: Error) => {
                       hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
-                    });
-                  });
-                Text('⚙')
-                  .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
-                  .width(44).height(44).textAlign(TextAlign.Center)
-                  .onClick(() => {
-                    router.pushUrl({ url: 'pages/Settings' }).catch((err: Error) => {
-                      hilog.warn(0x0000, 'shibei', 'Settings pushUrl fail: %{public}s', err.message);
                     });
                   });
               }
@@ -198,7 +198,33 @@ struct Library {
                 .onClick(() => { this.setDrawerOpen(false); });
             }
           }
-          .width('100%').height('100%');
+          .width('100%').height('100%')
+          // Left-edge swipe: open the drawer when the user drags right
+          // from the first 20 px of the screen. Only armed in FOLDED mode
+          // with the drawer closed; other states fall through so the
+          // gesture doesn't steal vertical scroll or swap the pager.
+          // PriorityGesture pre-empts ArkUI's built-in back-navigation
+          // handler so the edge swipe is bound to our action, not the
+          // router.back() default.
+          .priorityGesture(
+            PanGesture({ direction: PanDirection.Right, fingers: 1, distance: 8 })
+              .onActionStart((e: GestureEvent) => {
+                const startX = e.fingerList && e.fingerList[0]
+                  ? e.fingerList[0].localX
+                  : 9999;
+                this.edgeSwipeArmed = this.foldStatus === FoldStatus.FOLDED
+                  && !this.drawerOpen
+                  && startX < 20;
+              })
+              .onActionUpdate((e: GestureEvent) => {
+                if (this.edgeSwipeArmed && e.offsetX > 60) {
+                  this.setDrawerOpen(true);
+                  this.edgeSwipeArmed = false;
+                }
+              })
+              .onActionEnd(() => { this.edgeSwipeArmed = false; })
+              .onActionCancel(() => { this.edgeSwipeArmed = false; })
+          );
         }
         .showSideBar(this.foldStatus === FoldStatus.EXPANDED ? true : this.drawerOpen)
         .sideBarWidth(260)

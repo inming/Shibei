@@ -1,5 +1,5 @@
 import { ShibeiService, ShibeiError, Folder, SyncProgressEvent, SyncResult } from '../services/ShibeiService';
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { I18n } from '../services/I18n';
 
@@ -213,9 +213,27 @@ export struct FolderDrawer {
       .width('100%')
       .layoutWeight(1);
 
-      // Footer — sync button always visible at drawer bottom.
+      // Footer — Settings + Sync pinned to drawer bottom.
+      // Order (top to bottom inside the footer) is [Settings, Sync] so the
+      // most-frequently-used action (sync) sits at the very edge where the
+      // thumb lands. The top-bar ⚙ was removed to avoid two entry points.
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
       Column() {
+        Row() {
+          Text('⚙').fontSize(16).margin({ right: 8 })
+            .fontColor($r('sys.color.ohos_id_color_text_primary'));
+          Text(I18n.t($r('app.string.settings_page_title')))
+            .fontSize(15)
+            .fontColor($r('sys.color.ohos_id_color_text_primary'));
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/Settings' }).catch((err: Error) => {
+            hilog.warn(0x0000, 'shibei', 'Settings pushUrl fail: %{public}s', err.message);
+          });
+        });
+
         Row() {
           Text('⟳').fontSize(16).margin({ right: 8 })
             .fontColor($r('sys.color.ohos_id_color_emphasize'));
