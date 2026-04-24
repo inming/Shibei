@@ -99,6 +99,11 @@ struct Library {
     promptAction.showToast({
       message: I18n.t($r('app.string.library_back_confirm_exit')),
       duration: 1800,
+      // Pinned near the top so the notch + back gesture fingertip don't
+      // sit on top of the toast. 140 vp clears the status bar on most
+      // HarmonyOS NEXT devices we target.
+      alignment: Alignment.Top,
+      offset: { dx: 0, dy: 140 },
     });
     if (this.exitArmTimer !== -1) clearTimeout(this.exitArmTimer);
     this.exitArmTimer = setTimeout(() => {

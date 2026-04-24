@@ -169,6 +169,19 @@ struct Reader {
     }
   }
 
+  // System back / edge swipe: if the annotation panel is open, the first
+  // back closes it (consume). If it's already closed, let the OS pop the
+  // route to Library. This mirrors the drawer-closes-first pattern users
+  // see in most mobile apps and keeps both edges working since ArkUI's
+  // onBackPress can't discriminate left- vs right-edge swipes.
+  onBackPress(): boolean {
+    if (this.panelOpen) {
+      this.setPanelOpen(false);
+      return true;
+    }
+    return false;
+  }
+
   private flushScroll(): void {
     if (!this.resource) return;
     const ctx = getContext(this) as common.UIAbilityContext;
