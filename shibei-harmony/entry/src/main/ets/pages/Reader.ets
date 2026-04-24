@@ -64,6 +64,12 @@ struct Reader {
   // which card to flash + scroll to. Cleared by AnnotationPanel once the
   // flash animation settles so the next tap on the same id re-fires.
   @State focusedHighlightId: string = '';
+  // Right-edge swipe state. `readerWidth` is set by onAreaChange so the
+  // gesture can check `localX > readerWidth - 20` at touch-down. `armed`
+  // latches from onActionStart to onActionUpdate so only swipes that
+  // started on the edge count.
+  @State private readerWidth: number = 0;
+  @State private edgeSwipeArmed: boolean = false;
   @State pendingSelection: SelectionPayload | null = null;
   @State commentDialogOpen: boolean = false;
   @State commentDialogId: string | null = null;  // null = new resource-level note
@@ -544,7 +550,37 @@ struct Reader {
         .maxSideBarWidth(360)
         .sideBarPosition(SideBarPosition.End)
         .showControlButton(false)
-        .width('100%').height('100%');
+        .width('100%').height('100%')
+        .onAreaChange((_old: Area, n: Area) => {
+          // Track content width so the right-edge PanGesture can compute
+          // `localX > width - 20`. onAreaChange fires on rotation / fold
+          // reshape too, keeping the threshold accurate.
+          const w = n.width;
+          this.readerWidth = typeof w === 'number' ? w : Number(w);
+        })
+        // Right-edge swipe: drag left from the last 20 px to open the
+        // AnnotationPanel. Mirrors the Library left-edge gesture but with
+        // direction flipped. priorityGesture pre-empts system back so the
+        // edge swipe opens the panel instead of popping the router.
+        .priorityGesture(
+          PanGesture({ direction: PanDirection.Left, fingers: 1, distance: 8 })
+            .onActionStart((e: GestureEvent) => {
+              const startX = e.fingerList && e.fingerList[0]
+                ? e.fingerList[0].localX
+                : -1;
+              this.edgeSwipeArmed = !this.panelOpen
+                && this.readerWidth > 0
+                && startX > this.readerWidth - 20;
+            })
+            .onActionUpdate((e: GestureEvent) => {
+              if (this.edgeSwipeArmed && e.offsetX < -60) {
+                this.setPanelOpen(true);
+                this.edgeSwipeArmed = false;
+              }
+            })
+            .onActionEnd(() => { this.edgeSwipeArmed = false; })
+            .onActionCancel(() => { this.edgeSwipeArmed = false; })
+        );
       }
     }
     .width('100%').height('100%')
