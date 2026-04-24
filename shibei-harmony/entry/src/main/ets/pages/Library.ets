@@ -83,25 +83,35 @@ struct Library {
       // no toggle makes sense — let the system handle back normally.
       return false;
     }
-    if (!this.drawerOpen) {
-      // Closed → open drawer. Reset any armed exit.
-      this.disarmExit();
-      this.setDrawerOpen(true);
+    // Drawer open → close it, arm the exit toast so the next back-swipe
+    // enters the exit flow (don't exit immediately: the user probably
+    // just wanted to dismiss the drawer). Either-edge back works.
+    if (this.drawerOpen) {
+      this.setDrawerOpen(false);
+      this.armExitToast();
       return true;
     }
-    // Drawer already open. First back arms exit + toast; second back
-    // within 2s returns false so the OS closes the app.
+    // Drawer closed + exit armed (user already saw "再滑一次关闭应用"
+    // after closing the drawer) → let the OS close the app.
     if (this.exitArmed) {
       this.disarmExit();
       return false;
     }
+    // Drawer closed, cold start on Library → open the drawer.
+    this.setDrawerOpen(true);
+    return true;
+  }
+
+  // Show the "swipe again to exit" toast and start a 2 s arm window. If
+  // the user back-swipes again inside that window, onBackPress returns
+  // false and the system closes the Library window. Called after closing
+  // the drawer via any back gesture.
+  private armExitToast(): void {
+    if (this.exitArmed) return;
     this.exitArmed = true;
     promptAction.showToast({
       message: I18n.t($r('app.string.library_back_confirm_exit')),
       duration: 1800,
-      // Upper-middle of the screen (~1/3 down from the top). Low enough
-      // to read at a glance without craning, high enough to stay out of
-      // the back-gesture fingertip path at the bottom edge.
       alignment: Alignment.Top,
       offset: { dx: 0, dy: 300 },
     });
@@ -110,7 +120,6 @@ struct Library {
       this.exitArmed = false;
       this.exitArmTimer = -1;
     }, 2000);
-    return true;
   }
 
   private disarmExit(): void {
@@ -251,6 +260,16 @@ struct Library {
           .width('100%').height('100%');
         }
         .showSideBar(this.foldStatus === FoldStatus.EXPANDED ? true : this.drawerOpen)
+        .onChange((value: boolean) => {
+          // SideBarContainer may close its own sidebar via autoHide when
+          // inner components swallow the tap that would've hit our scrim.
+          // Without this sync, this.drawerOpen stays `true` while the
+          // sidebar is visually closed — the top-bar toggle gets stuck
+          // showing ✕ and onBackPress thinks the drawer is still open.
+          if (this.foldStatus === FoldStatus.FOLDED) {
+            this.drawerOpen = value;
+          }
+        })
         .sideBarWidth(260)
         .minSideBarWidth(200)
         .maxSideBarWidth(320)
