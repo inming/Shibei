@@ -591,6 +591,11 @@ struct Settings {
   }
 
   build() {
+    // Wrap the page in a Stack so the PIN modal overlays can render on
+    // top of the scroll content. bindContentCover turned out to flicker
+    // closed mid-transition (likely a Toggle onChange race); a plain
+    // Stack+conditional render avoids the cover lifecycle entirely.
+    Stack() {
     Column() {
       // Top bar
       Row() {
@@ -975,35 +980,34 @@ struct Settings {
       .width('100%');
     }
     .width('100%').height('100%')
-    .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
-    // Modal PIN flows — bindContentCover puts each on a full-screen layer
-    // above the page with ALPHA transition so they fade in instead of
-    // popping. The hidden TextInput inside each @Builder grabs focus via
-    // defaultFocus(true) (keyboard auto-raises) and is kept focused on
-    // step transitions via refocus* helpers.
-    .bindContentCover($$this.showSetupLock, this.SetupLockModal(), {
-      modalTransition: ModalTransition.ALPHA,
-      backgroundColor: $r('sys.color.ohos_id_color_mask_thin'),
-    })
-    .bindContentCover($$this.showDisableLock, this.DisableLockModal(), {
-      modalTransition: ModalTransition.ALPHA,
-      backgroundColor: $r('sys.color.ohos_id_color_mask_thin'),
-    })
-    .bindContentCover($$this.showChangePin, this.ChangePinModal(), {
-      modalTransition: ModalTransition.ALPHA,
-      backgroundColor: $r('sys.color.ohos_id_color_mask_thin'),
-    });
+    .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+
+      // PIN overlays — conditional render at the root Stack level so the
+      // card sits on top of the scroll content with its own backdrop. Each
+      // overlay is self-contained: backdrop Column fills the screen,
+      // centered card in the middle. No bindContentCover.
+      if (this.showSetupLock) {
+        this.SetupLockModal();
+      }
+      if (this.showDisableLock) {
+        this.DisableLockModal();
+      }
+      if (this.showChangePin) {
+        this.ChangePinModal();
+      }
+    }
+    .width('100%').height('100%');
   }
 
-  /// PIN "card" layout shared by all three modals. Renders a centered
-  /// card with title, 4-dot progress, a hidden numeric TextInput that
-  /// drives the dots, and a cancel button. `currentPin` is read-only
-  /// (used only for dot count); the flow's onChange handler routes the
-  /// typed string into the right @State slot.
+  /// PIN "card" layout shared by all three modals. Renders a full-screen
+  /// backdrop with a centered card holding the title, a 4-dot progress
+  /// row, a hidden numeric TextInput driving the dots, and a cancel
+  /// button. The flow's onChange handler routes the typed string into
+  /// the right @State slot. Stack-parented at the root Column so the
+  /// card visually floats over the page content.
   @Builder
   PinModalCard(opts: PinCardOpts) {
-    // Centered backdrop — bindContentCover covers the screen but provides
-    // no layout, so we compose the card ourselves.
+    // Full-screen backdrop + centered card.
     Column() {
       Column() {
         Text(opts.title).fontSize(16).fontWeight(FontWeight.Medium)
@@ -1051,6 +1055,7 @@ struct Settings {
       .alignItems(HorizontalAlign.Center);
     }
     .width('100%').height('100%')
+    .backgroundColor($r('sys.color.ohos_id_color_mask_thin'))
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center);
   }
