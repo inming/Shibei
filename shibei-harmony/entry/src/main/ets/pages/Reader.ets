@@ -60,6 +60,10 @@ struct Reader {
   @State loadError: string = '';
   @State bundle: AnnotationsBundle = { highlights: [], comments: [] };
   @State panelOpen: boolean = false;
+  // When the user taps a highlight in the Web, we open the panel AND tell it
+  // which card to flash + scroll to. Cleared by AnnotationPanel once the
+  // flash animation settles so the next tap on the same id re-fires.
+  @State focusedHighlightId: string = '';
   @State pendingSelection: SelectionPayload | null = null;
   @State commentDialogOpen: boolean = false;
   @State commentDialogId: string | null = null;  // null = new resource-level note
@@ -303,6 +307,10 @@ struct Reader {
     if (!p.highlightId) {
       return;
     }
+    // Re-setting to the same id wouldn't re-fire AnnotationPanel's
+    // @Watch; prepend an incrementing counter so every tap triggers the
+    // flash even if the user keeps tapping the same highlight.
+    this.focusedHighlightId = `${Date.now()}:${p.highlightId}`;
     this.setPanelOpen(true);
   }
 
@@ -470,6 +478,7 @@ struct Reader {
           // We put AnnotationPanel first (drawer) and the top-bar+Web column second.
           AnnotationPanel({
             bundle: this.bundle,
+            focusedHighlightId: this.focusedHighlightId,
             onTapHighlight: (id: string) => {
               // Auto-close the drawer on folded / overlay layouts — user
               // expects the tap to "jump" them to the passage, and keeping

@@ -19,6 +19,19 @@ const HL_COLORS: HlColorOption[] = [
 @Component
 export struct AnnotationPanel {
   @Prop bundle: AnnotationsBundle = { highlights: [], comments: [] };
+  // Reader sets this to `${ts}:${hlId}` whenever the user taps a highlight
+  // in the Web — we parse the suffix, scroll that card into view and pulse
+  // its left color strip. The `ts:` prefix makes @Watch re-fire even when
+  // the same id is tapped repeatedly (@Prop dedups equal values).
+  @Prop @Watch('onFocusedChanged') focusedHighlightId: string = '';
+  // Per-card flash state: `id -> {flashing: bool, generation: number}`.
+  // `generation` lets the animation loop cancel itself when a newer flash
+  // targets a different id. The card @Builder reads `flashState` to choose
+  // the border opacity — 0.3 during off-beat, 1.0 otherwise.
+  @State flashingHighlightId: string = '';
+  @State flashGeneration: number = 0;
+  // Scroller controller for programmatic scrollTo.
+  private scroller: Scroller = new Scroller();
   // Short tap on a highlight card → flash on page (Reader calls runJavaScript).
   onTapHighlight: (id: string) => void = () => {};
   onDeleteHighlight: (id: string) => void = () => {};
@@ -28,6 +41,45 @@ export struct AnnotationPanel {
   onAddResourceComment: () => void = () => {};
   onEditComment: (id: string) => void = () => {};
   onDeleteComment: (id: string) => void = () => {};
+  // Parse ts:id back to id (strip the timestamp prefix Reader prepends).
+  private parseFocusId(raw: string): string {
+    if (!raw) return '';
+    const colon = raw.indexOf(':');
+    return colon >= 0 ? raw.substring(colon + 1) : raw;
+  }
+  // Drive the pulse: ON / off / ON / off, 250ms each phase. The `animation`
+  // decorator on the card already interpolates the width change so each
+  // toggle reads as a soft breathe rather than a blink. `generation` is
+  // checked between phases to bail cleanly when a newer flash targets a
+  // different id.
+  private async runFlash(id: string): Promise<void> {
+    const gen = ++this.flashGeneration;
+    for (let cycle = 0; cycle < 2; cycle++) {
+      this.flashingHighlightId = id;
+      await new Promise<void>((r) => setTimeout(r, 250));
+      if (this.flashGeneration !== gen) return;
+      this.flashingHighlightId = '';
+      await new Promise<void>((r) => setTimeout(r, 250));
+      if (this.flashGeneration !== gen) return;
+    }
+  }
+  // @Watch target — fires each time focusedHighlightId mutates (including
+  // repeated taps thanks to the ts: prefix in Reader).
+  onFocusedChanged(): void {
+    const id = this.parseFocusId(this.focusedHighlightId);
+    if (!id) return;
+    const idx = this.bundle.highlights.findIndex((h: Highlight) => h.id === id);
+    if (idx < 0) return;
+    // Scroll the target card into view. List.scrollToIndex would be cleaner
+    // but we're inside a Scroll+Column; use scrollTo with a rough estimate
+    // based on the card index. 120px per card is a generous average (some
+    // have multiple comments, some have none) — the flash still lands on a
+    // visible card because the panel is narrow and cards are tall.
+    try {
+      this.scroller.scrollTo({ xOffset: 0, yOffset: Math.max(0, idx * 120 - 40) });
+    } catch (_e) { /* scroller not attached yet — OK, ignore */ }
+    this.runFlash(id);
+  }
 
   build() {
     Column() {
@@ -45,7 +97,7 @@ export struct AnnotationPanel {
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
 
       // Body — scrollable list
-      Scroll() {
+      Scroll(this.scroller) {
         Column() {
           ForEach(this.bundle.highlights, (h: Highlight) => {
             this.HighlightCard(h);
@@ -162,10 +214,15 @@ export struct AnnotationPanel {
     .margin({ left: 12, right: 12, bottom: 8 })
     .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
     .borderRadius(6)
+    // Left color strip — widens to 6px and the background to a tint of the
+    // highlight color while the card is "flashing" (user tapped the matching
+    // highlight in the Web). animateTo drives the transition so the pulse
+    // reads as a smooth throb rather than a jump cut.
     .border({
-      width: { left: 3 },
+      width: { left: this.flashingHighlightId === h.id ? 6 : 3 },
       color: { left: h.color },
     })
+    .animation({ duration: 250, curve: Curve.EaseInOut })
     .onClick(() => this.onTapHighlight(h.id))
     .bindContextMenu(this.HighlightContextMenu(h), ResponseType.LongPress);
   }
