@@ -212,12 +212,15 @@ export struct AnnotationPanel {
     .width('100%')
     .padding({ left: 10, right: 10, top: 10, bottom: 10 })
     .margin({ left: 12, right: 12, bottom: 8 })
-    .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+    // Flash effect: during pulses the whole card tints to the highlight
+    // color (with alpha so text stays legible) and the left strip widens
+    // from 3 to 6 px. Off-pulse: normal component background + 3 px strip.
+    // animation() wraps the state change so every toggle reads as a smooth
+    // throb rather than a blink cut.
+    .backgroundColor(this.flashingHighlightId === h.id
+      ? `${h.color}55`
+      : $r('sys.color.ohos_id_color_component_normal'))
     .borderRadius(6)
-    // Left color strip — widens to 6px and the background to a tint of the
-    // highlight color while the card is "flashing" (user tapped the matching
-    // highlight in the Web). animateTo drives the transition so the pulse
-    // reads as a smooth throb rather than a jump cut.
     .border({
       width: { left: this.flashingHighlightId === h.id ? 6 : 3 },
       color: { left: h.color },

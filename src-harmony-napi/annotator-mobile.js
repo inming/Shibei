@@ -26,11 +26,15 @@
   const state = { highlightsById: new Map() };
 
   // ── Styles ──
+  // `--shibei-hl-text` overrides the text color inside a highlight so the
+  // label stays legible across dark-mode pages (ArkWeb auto-inverts body
+  // text to white; yellow hl + white text would be unreadable). Each hl
+  // sets its own per-element var via getContrastText(color) below.
   const style = document.createElement("style");
   style.textContent = `
     shibei-hl {
       background: var(--shibei-hl-color, #ffeb3b) !important;
-      color: inherit !important;
+      color: var(--shibei-hl-text, inherit) !important;
       border-radius: 2px !important;
     }
     shibei-hl.shibei-flash {
@@ -42,6 +46,20 @@
     }
   `;
   document.documentElement.appendChild(style);
+
+  // Pick #111 / #fff depending on luminance — ported from desktop annotator.
+  // Weighting: 0.299 R + 0.587 G + 0.114 B (ITU-R BT.601). Threshold 0.6
+  // tuned so the four HL_COLORS split correctly (yellow/green/blue/pink).
+  function getContrastText(hex) {
+    if (!hex) return '#111';
+    const h = hex.replace('#', '');
+    if (h.length !== 6) return '#111';
+    const r = parseInt(h.slice(0, 2), 16) / 255;
+    const g = parseInt(h.slice(2, 4), 16) / 255;
+    const b = parseInt(h.slice(4, 6), 16) / 255;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    return lum > 0.6 ? '#111' : '#fff';
+  }
 
   // ── Text offset utilities ──
   const EXCLUDED_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]);
@@ -154,7 +172,9 @@
       const after = (node.nodeValue || "").slice(endOff);
       const hl = document.createElement("shibei-hl");
       hl.setAttribute("data-shibei-id", id);
-      hl.style.setProperty("--shibei-hl-color", color || "#ffeb3b");
+      const hlColor = color || "#ffeb3b";
+      hl.style.setProperty("--shibei-hl-color", hlColor);
+      hl.style.setProperty("--shibei-hl-text", getContrastText(hlColor));
       hl.textContent = mid;
       const parent = node.parentNode;
       if (!parent) continue;
@@ -202,8 +222,10 @@
           // repaint without a full wrap/unwrap cycle.
           if (existing.color !== h.color) {
             const sel = `shibei-hl[data-shibei-id="${CSS.escape(h.id)}"]`;
+            const textColor = getContrastText(h.color);
             document.querySelectorAll(sel).forEach((el) => {
               el.style.setProperty("--shibei-hl-color", h.color);
+              el.style.setProperty("--shibei-hl-text", textColor);
             });
             state.highlightsById.set(h.id, h);
           }
