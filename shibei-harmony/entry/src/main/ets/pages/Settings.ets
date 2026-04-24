@@ -15,6 +15,31 @@ import { I18n } from '../services/I18n';
 // tokens (accent_primary / accent_danger / text_secondary / accent_primary_alt)
 // for dialog buttons where the SDK expects an explicit color argument.
 
+// Hidden-TextInput ids for programmatic focus. Separate ids per PIN flow so
+// re-opening a dialog after a previous one resolved doesn't steal focus
+// from the wrong input element.
+const E2EE_PWD_ID = 'settingsE2eePwd';
+const SETUP_PIN_ID = 'settingsSetupPin';
+const DISABLE_PIN_ID = 'settingsDisablePin';
+const CHANGE_PIN_ID = 'settingsChangePin';
+
+// Change-PIN flow has 3 sequential steps (vs setup's 2). Separate state
+// from setupPinStep so the union type stays tight.
+type ChangePinStep = 'oldPin' | 'newPin' | 'confirm';
+
+// Shared shape for all three PIN modals. Named so ArkTS @Builder doesn't
+// trip on "object literal as type". `onChange` is where each flow maps
+// the typed value back to its @State slot; `filled` drives the 4-dot row.
+interface PinCardOpts {
+  title: string;
+  subtitle: string;
+  inputId: string;
+  filled: number;
+  value: string;
+  onChange: (v: string) => void;
+  onCancel: () => void;
+}
+
 @Entry
 @Component
 struct Settings {
@@ -34,6 +59,7 @@ struct Settings {
   @State pinConfirm: string = '';
   @State pinStep: 'enter' | 'confirm' = 'enter';
   @State oldPinInput: string = '';
+  @State changePinStep: ChangePinStep = 'oldPin';
   // ── Cache management state (§7.2) ──
   @State cacheStats: CacheStats = { totalBytes: 0, limitBytes: 0, entryCount: 0 };
   @State cacheList: CacheListRow[] = [];
@@ -260,6 +286,7 @@ struct Settings {
     this.pinStep = 'enter';
     this.pinInput = '';
     this.pinConfirm = '';
+    this.refocusSetupPin();
   }
 
   private async submitSetupLock(): Promise<void> {
@@ -272,6 +299,7 @@ struct Settings {
       }
       this.pinStep = 'confirm';
       this.pinConfirm = '';
+      this.refocusSetupPin();
       return;
     }
     if (this.pinConfirm !== this.pinInput) {
@@ -280,6 +308,7 @@ struct Settings {
       });
       this.pinStep = 'enter';
       this.pinInput = '';
+      this.refocusSetupPin();
       return;
     }
     try {
@@ -371,9 +400,10 @@ struct Settings {
       promptAction.showToast({
         message: I18n.t($r('app.string.settings_pin_new_mismatch')),
       });
-      this.pinStep = 'enter';
+      this.changePinStep = 'newPin';
       this.pinInput = '';
       this.pinConfirm = '';
+      this.refocusChangePin();
       return;
     }
     try {
@@ -391,12 +421,31 @@ struct Settings {
       this.oldPinInput = '';
       this.pinInput = '';
       this.pinConfirm = '';
-      this.pinStep = 'enter';
+      this.changePinStep = 'oldPin';
+      this.refocusChangePin();
       const message = code === 'error.pinIncorrect'
         ? I18n.t($r('app.string.settings_lock_old_pin_incorrect'))
         : I18n.t($r('app.string.settings_lock_pin_change_failed'), I18n.translateError(code));
       promptAction.showToast({ message });
     }
+  }
+
+  /// Pop the numeric keyboard focus on the current step's hidden TextInput.
+  /// Called after each step flip (oldPin → newPin → confirm) + on mismatch
+  /// reset. 50ms delay lets ArkUI rebuild the opened dialog before we poke
+  /// focus — otherwise the input element doesn't exist yet.
+  private refocusChangePin(): void {
+    setTimeout(() => {
+      try { focusControl.requestFocus(CHANGE_PIN_ID); }
+      catch (_e) { /* dialog closed */ }
+    }, 50);
+  }
+
+  private refocusSetupPin(): void {
+    setTimeout(() => {
+      try { focusControl.requestFocus(SETUP_PIN_ID); }
+      catch (_e) { /* dialog closed */ }
+    }, 50);
   }
 
   // Manual sync trigger. Mobile has no automatic sync loop yet — the user
@@ -584,6 +633,10 @@ struct Settings {
                       this.showUnlockE2ee = true;
                       this.e2eeUnlockError = '';
                       this.e2eePwdInput = '';
+                      setTimeout(() => {
+                        try { focusControl.requestFocus(E2EE_PWD_ID); }
+                        catch (_e) { /* not mounted yet */ }
+                      }, 50);
                     });
                 }.width('100%').padding(12);
               } else {
@@ -591,7 +644,9 @@ struct Settings {
                   Text(I18n.t($r('app.string.unlock_e2ee_prompt')))
                     .fontSize(14).margin({ top: 4 });
                   TextInput({ placeholder: I18n.t($r('app.string.unlock_e2ee_placeholder')), text: this.e2eePwdInput })
+                    .id(E2EE_PWD_ID)
                     .type(InputType.Password)
+                    .defaultFocus(true)
                     .width('100%').margin({ top: 10 })
                     .onChange((v: string) => {
                       this.e2eePwdInput = v;
@@ -722,6 +777,10 @@ struct Settings {
                   } else if (!isOn && this.lockEnabled) {
                     this.showDisableLock = true;
                     this.pinInput = '';
+                    setTimeout(() => {
+                      try { focusControl.requestFocus(DISABLE_PIN_ID); }
+                      catch (_e) { /* dismissed */ }
+                    }, 50);
                   }
                 });
             }.width('100%').padding({ top: 12, bottom: 12, left: 12, right: 12 });
@@ -756,7 +815,8 @@ struct Settings {
                   this.oldPinInput = '';
                   this.pinInput = '';
                   this.pinConfirm = '';
-                  this.pinStep = 'enter';
+                  this.changePinStep = 'oldPin';
+                  this.refocusChangePin();
                 });
 
               Divider().color($r('sys.color.ohos_id_color_list_separator'));
@@ -774,110 +834,10 @@ struct Settings {
           .backgroundColor($r('sys.color.ohos_id_color_background')).borderRadius(8)
           .margin({ left: 12, right: 12 });
 
-          // Setup PIN dialog (inline, shown when toggle enabled)
-          if (this.showSetupLock) {
-            Column() {
-              Text(this.pinStep === 'enter'
-                ? I18n.t($r('app.string.settings_pin_set_prompt_enter'))
-                : I18n.t($r('app.string.settings_pin_set_prompt_confirm')))
-                .fontSize(14).margin({ top: 16 });
-              TextInput({
-                placeholder: '',
-                text: this.pinStep === 'enter' ? this.pinInput : this.pinConfirm,
-              })
-                .type(InputType.Number).maxLength(4).width('60%')
-                .margin({ top: 12 })
-                .onChange((v: string) => {
-                  const d = v.replace(/\D/g, '').slice(0, 4);
-                  if (this.pinStep === 'enter') {
-                    this.pinInput = d;
-                  } else {
-                    this.pinConfirm = d;
-                  }
-                  if (d.length === 4) this.submitSetupLock();
-                });
-              Button(I18n.t($r('app.string.common_cancel')))
-                .backgroundColor(Color.Transparent)
-                .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-                .margin({ top: 12 })
-                .onClick(() => {
-                  this.showSetupLock = false;
-                  this.pinInput = '';
-                  this.pinConfirm = '';
-                });
-            }.width('100%').padding(12);
-          }
-
-          // Disable PIN dialog
-          if (this.showDisableLock) {
-            Column() {
-              Text(I18n.t($r('app.string.settings_pin_disable_prompt')))
-                .fontSize(14).margin({ top: 16 });
-              TextInput({
-                placeholder: I18n.t($r('app.string.settings_pin_placeholder_4')),
-                text: this.pinInput,
-              })
-                .type(InputType.Number).maxLength(4).width('60%').margin({ top: 12 })
-                .onChange((v: string) => {
-                  const d = v.replace(/\D/g, '').slice(0, 4);
-                  this.pinInput = d;
-                  if (d.length === 4) this.submitDisableLock();
-                });
-              Button(I18n.t($r('app.string.common_cancel')))
-                .backgroundColor(Color.Transparent)
-                .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-                .margin({ top: 12 })
-                .onClick(() => {
-                  this.showDisableLock = false;
-                  this.pinInput = '';
-                });
-            }.width('100%').padding(12);
-          }
-
-          // Change PIN dialog
-          if (this.showChangePin) {
-            Column() {
-              Text(I18n.t($r('app.string.settings_pin_old_prompt')))
-                .fontSize(14).margin({ top: 16 });
-              TextInput({
-                placeholder: I18n.t($r('app.string.settings_pin_placeholder_old')),
-                text: this.oldPinInput,
-              })
-                .type(InputType.Number).maxLength(4).width('60%').margin({ top: 8 })
-                .onChange((v: string) => {
-                  this.oldPinInput = v.replace(/\D/g, '').slice(0, 4);
-                });
-              Text(this.pinStep === 'enter'
-                ? I18n.t($r('app.string.settings_pin_new_prompt'))
-                : I18n.t($r('app.string.settings_pin_set_prompt_confirm')))
-                .fontSize(14).margin({ top: 16 });
-              TextInput({
-                placeholder: I18n.t($r('app.string.settings_pin_placeholder_new')),
-                text: this.pinStep === 'enter' ? this.pinInput : this.pinConfirm,
-              })
-                .type(InputType.Number).maxLength(4).width('60%').margin({ top: 8 })
-                .onChange((v: string) => {
-                  const d = v.replace(/\D/g, '').slice(0, 4);
-                  if (this.pinStep === 'enter') {
-                    this.pinInput = d;
-                    if (d.length === 4) this.pinStep = 'confirm';
-                  } else {
-                    this.pinConfirm = d;
-                    if (d.length === 4) this.submitChangePin();
-                  }
-                });
-              Button(I18n.t($r('app.string.common_cancel')))
-                .backgroundColor(Color.Transparent)
-                .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-                .margin({ top: 12 })
-                .onClick(() => {
-                  this.showChangePin = false;
-                  this.oldPinInput = '';
-                  this.pinInput = '';
-                  this.pinConfirm = '';
-                });
-            }.width('100%').padding(12);
-          }
+          // Setup/Disable/Change PIN flows moved to bindContentCover modals
+          // attached at the root Column (end of build()) so they float over
+          // the page instead of tucking into the scroll footer where they
+          // were hard to notice.
 
           // ── 数据 / 缓存管理 (§7.2) ────────────────────────
           Text(I18n.t($r('app.string.settings_section_data'))).fontSize(13)
@@ -1015,6 +975,194 @@ struct Settings {
       .width('100%');
     }
     .width('100%').height('100%')
-    .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+    .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+    // Modal PIN flows — bindContentCover puts each on a full-screen layer
+    // above the page with ALPHA transition so they fade in instead of
+    // popping. The hidden TextInput inside each @Builder grabs focus via
+    // defaultFocus(true) (keyboard auto-raises) and is kept focused on
+    // step transitions via refocus* helpers.
+    .bindContentCover($$this.showSetupLock, this.SetupLockModal(), {
+      modalTransition: ModalTransition.ALPHA,
+      backgroundColor: $r('sys.color.ohos_id_color_mask_thin'),
+    })
+    .bindContentCover($$this.showDisableLock, this.DisableLockModal(), {
+      modalTransition: ModalTransition.ALPHA,
+      backgroundColor: $r('sys.color.ohos_id_color_mask_thin'),
+    })
+    .bindContentCover($$this.showChangePin, this.ChangePinModal(), {
+      modalTransition: ModalTransition.ALPHA,
+      backgroundColor: $r('sys.color.ohos_id_color_mask_thin'),
+    });
+  }
+
+  /// PIN "card" layout shared by all three modals. Renders a centered
+  /// card with title, 4-dot progress, a hidden numeric TextInput that
+  /// drives the dots, and a cancel button. `currentPin` is read-only
+  /// (used only for dot count); the flow's onChange handler routes the
+  /// typed string into the right @State slot.
+  @Builder
+  PinModalCard(opts: PinCardOpts) {
+    // Centered backdrop — bindContentCover covers the screen but provides
+    // no layout, so we compose the card ourselves.
+    Column() {
+      Column() {
+        Text(opts.title).fontSize(16).fontWeight(FontWeight.Medium)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .margin({ top: 4, bottom: 4 });
+        if (opts.subtitle) {
+          Text(opts.subtitle).fontSize(12)
+            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+            .textAlign(TextAlign.Center)
+            .margin({ bottom: 20 });
+        } else {
+          Blank().height(20);
+        }
+        // 4 dots, filled based on `opts.filled` (digits typed so far).
+        Row() {
+          ForEach([0, 1, 2, 3], (i: number) => {
+            Circle({ width: 14, height: 14 })
+              .fill(i < opts.filled
+                ? $r('sys.color.ohos_id_color_text_primary')
+                : Color.Transparent)
+              .stroke($r('sys.color.ohos_id_color_text_tertiary'))
+              .strokeWidth(1.5)
+              .margin({ left: 8, right: 8 });
+          }, (i: number) => `${opts.inputId}:${i}`);
+        }.justifyContent(FlexAlign.Center).margin({ bottom: 16 });
+        // Hidden TextInput — numeric keyboard, opacity 0, height 1. The
+        // focus lives here; the visible Circle row just renders dots.
+        TextInput({ placeholder: '', text: opts.value })
+          .id(opts.inputId)
+          .type(InputType.Number)
+          .maxLength(4)
+          .defaultFocus(true)
+          .opacity(0.01).height(1)
+          .onChange(opts.onChange);
+        Button(I18n.t($r('app.string.common_cancel')))
+          .backgroundColor(Color.Transparent)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .margin({ top: 16 })
+          .onClick(opts.onCancel);
+      }
+      .width('80%')
+      .padding({ top: 24, bottom: 16, left: 20, right: 20 })
+      .backgroundColor($r('sys.color.ohos_id_color_background'))
+      .borderRadius(12)
+      .alignItems(HorizontalAlign.Center);
+    }
+    .width('100%').height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center);
+  }
+
+  /// Setup PIN: enter (4 digits) → confirm (4 digits).
+  @Builder
+  SetupLockModal() {
+    this.PinModalCard({
+      title: this.pinStep === 'enter'
+        ? I18n.t($r('app.string.settings_pin_set_prompt_enter'))
+        : I18n.t($r('app.string.settings_pin_set_prompt_confirm')),
+      subtitle: '',
+      inputId: SETUP_PIN_ID,
+      filled: (this.pinStep === 'enter' ? this.pinInput : this.pinConfirm).length,
+      value: this.pinStep === 'enter' ? this.pinInput : this.pinConfirm,
+      onChange: (v: string) => {
+        const d = v.replace(/\D/g, '').slice(0, 4);
+        if (this.pinStep === 'enter') {
+          this.pinInput = d;
+        } else {
+          this.pinConfirm = d;
+        }
+        if (d.length === 4) this.submitSetupLock();
+      },
+      onCancel: () => {
+        this.showSetupLock = false;
+        this.pinInput = '';
+        this.pinConfirm = '';
+      },
+    });
+  }
+
+  /// Disable PIN: single step (enter 4 digits to confirm identity).
+  @Builder
+  DisableLockModal() {
+    this.PinModalCard({
+      title: I18n.t($r('app.string.settings_pin_disable_prompt')),
+      subtitle: '',
+      inputId: DISABLE_PIN_ID,
+      filled: this.pinInput.length,
+      value: this.pinInput,
+      onChange: (v: string) => {
+        const d = v.replace(/\D/g, '').slice(0, 4);
+        this.pinInput = d;
+        if (d.length === 4) this.submitDisableLock();
+      },
+      onCancel: () => {
+        this.showDisableLock = false;
+        this.pinInput = '';
+      },
+    });
+  }
+
+  /// Change PIN: oldPin → newPin → confirm. Single visible dot row,
+  /// title changes per step. Focus stays on the same hidden TextInput
+  /// so the keyboard never drops between steps. @Builder can only hold
+  /// UI-component statements, so the per-step title/value/filled selector
+  /// lives in changePinOpts() below.
+  @Builder
+  ChangePinModal() {
+    this.PinModalCard(this.changePinOpts());
+  }
+
+  private changePinOpts(): PinCardOpts {
+    let currentValue: string;
+    let filled: number;
+    let title: string;
+    if (this.changePinStep === 'oldPin') {
+      currentValue = this.oldPinInput;
+      filled = this.oldPinInput.length;
+      title = I18n.t($r('app.string.settings_pin_old_prompt'));
+    } else if (this.changePinStep === 'newPin') {
+      currentValue = this.pinInput;
+      filled = this.pinInput.length;
+      title = I18n.t($r('app.string.settings_pin_new_prompt'));
+    } else {
+      currentValue = this.pinConfirm;
+      filled = this.pinConfirm.length;
+      title = I18n.t($r('app.string.settings_pin_set_prompt_confirm'));
+    }
+    return {
+      title,
+      subtitle: '',
+      inputId: CHANGE_PIN_ID,
+      filled,
+      value: currentValue,
+      onChange: (v: string) => {
+        const d = v.replace(/\D/g, '').slice(0, 4);
+        if (this.changePinStep === 'oldPin') {
+          this.oldPinInput = d;
+          if (d.length === 4) {
+            this.changePinStep = 'newPin';
+            this.refocusChangePin();
+          }
+        } else if (this.changePinStep === 'newPin') {
+          this.pinInput = d;
+          if (d.length === 4) {
+            this.changePinStep = 'confirm';
+            this.refocusChangePin();
+          }
+        } else {
+          this.pinConfirm = d;
+          if (d.length === 4) this.submitChangePin();
+        }
+      },
+      onCancel: () => {
+        this.showChangePin = false;
+        this.oldPinInput = '';
+        this.pinInput = '';
+        this.pinConfirm = '';
+        this.changePinStep = 'oldPin';
+      },
+    };
   }
 }
