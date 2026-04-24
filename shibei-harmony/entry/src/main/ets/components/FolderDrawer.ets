@@ -256,6 +256,14 @@ export struct FolderDrawer {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+    .backgroundColor($r('sys.color.ohos_id_color_sub_background'))
+    // Right edge divider. In dark mode the drawer background and the
+    // Library content are both near-black, so without a visible edge the
+    // boundary between sidebar and main view is invisible. 0.5 vp in the
+    // list_separator token picks up the dark-mode override automatically.
+    .border({
+      width: { right: 0.5 },
+      color: { right: $r('sys.color.ohos_id_color_list_separator') },
+    });
   }
 }

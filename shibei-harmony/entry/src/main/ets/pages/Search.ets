@@ -13,6 +13,15 @@ import { I18n } from '../services/I18n';
 // `Search` is a built-in ArkTS component name — using it for the struct
 // trips the compiler (`reserved tag name`). The file path / route can
 // still be `pages/Search`; only the @Entry identifier needs to differ.
+const SEARCH_INPUT_ID = 'searchInput';
+
+// ArkTS struct ForEach requires named interfaces, not inline object types.
+// `hit` = this segment matches the current query (render in emphasize color).
+interface SnippetSeg {
+  text: string;
+  hit: boolean;
+}
+
 @Entry
 @Component
 struct SearchPage {
@@ -22,6 +31,19 @@ struct SearchPage {
   @State errorMessage: string = '';
 
   private debounceTimer: number = -1;
+
+  onPageShow(): void {
+    // Pop the soft keyboard immediately — the user tapped the 🔍 button
+    // to get here; making them tap the box is a wasted round-trip.
+    // 120ms fallback covers the occasional slow layout frame, same pattern
+    // as LockScreen / E2eeUnlockGate.
+    try { focusControl.requestFocus(SEARCH_INPUT_ID); }
+    catch (e) { hilog.warn(0x0000, 'shibei', 'focus search fail: %{public}s', (e as Error).message); }
+    setTimeout(() => {
+      try { focusControl.requestFocus(SEARCH_INPUT_ID); }
+      catch (_e) { /* already focused */ }
+    }, 120);
+  }
 
   aboutToDisappear(): void {
     if (this.debounceTimer >= 0) {
@@ -71,6 +93,49 @@ struct SearchPage {
     });
   }
 
+  // Split `snippet` around every case-insensitive occurrence of the
+  // current query and render the matched runs with the emphasize color
+  // so the user can spot the hit at a glance. Degrades cleanly to the
+  // plain snippet when the query is empty or missing from the snippet
+  // (e.g. only title/url matched — backend still returns the snippet).
+  @Builder
+  SnippetText(snippet: string) {
+    Text() {
+      ForEach(this.splitSnippet(snippet, this.query.trim()), (seg: SnippetSeg, i: number) => {
+        Span(seg.text)
+          .fontColor(seg.hit
+            ? $r('sys.color.ohos_id_color_emphasize')
+            : $r('sys.color.ohos_id_color_text_secondary'))
+          .fontWeight(seg.hit ? FontWeight.Medium : FontWeight.Regular);
+      }, (seg: SnippetSeg, i: number) => `${i}:${seg.hit ? 'h' : 'n'}`);
+    }
+    .fontSize(12)
+    .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+    .margin({ top: 4 });
+  }
+
+  private splitSnippet(text: string, q: string): SnippetSeg[] {
+    if (!q) return [{ text, hit: false }];
+    const segs: SnippetSeg[] = [];
+    const lowerText = text.toLowerCase();
+    const lowerQ = q.toLowerCase();
+    let idx = 0;
+    while (idx < text.length) {
+      const hit = lowerText.indexOf(lowerQ, idx);
+      if (hit < 0) {
+        segs.push({ text: text.substring(idx), hit: false });
+        break;
+      }
+      if (hit > idx) {
+        segs.push({ text: text.substring(idx, hit), hit: false });
+      }
+      segs.push({ text: text.substring(hit, hit + q.length), hit: true });
+      idx = hit + q.length;
+    }
+    if (segs.length === 0) segs.push({ text, hit: false });
+    return segs;
+  }
+
   // Render every matched field, not just the first. Ordering puts the
   // "more specific" matches (highlights / comments / title) ahead of body,
   // because body almost always matches any query the user types and would
@@ -108,6 +173,8 @@ struct SearchPage {
           placeholder: I18n.t($r('app.string.search_placeholder')),
           text: this.query,
         })
+          .id(SEARCH_INPUT_ID)
+          .defaultFocus(true)
           .layoutWeight(1)
           .onChange((v: string) => this.onQueryChange(v));
         if (this.query) {
@@ -155,10 +222,7 @@ struct SearchPage {
                   .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                   .margin({ top: 2 });
                 if (r.snippet) {
-                  Text(r.snippet).fontSize(12)
-                    .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-                    .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-                    .margin({ top: 4 });
+                  this.SnippetText(r.snippet);
                 }
                 Text(this.matchLabel(r.matchFields)).fontSize(10)
                   .fontColor($r('sys.color.ohos_id_color_emphasize'))
