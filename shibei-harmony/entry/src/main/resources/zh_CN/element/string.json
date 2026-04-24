@@ -251,6 +251,7 @@
     { "name": "unlock_e2ee_empty", "value": "请输入密码" },
     { "name": "unlock_e2ee_toast_ok", "value": "加密已解锁" },
     { "name": "unlock_e2ee_gate_title", "value": "加密已启用" },
-    { "name": "unlock_e2ee_gate_subtitle", "value": "请输入加密密码以继续" }
+    { "name": "unlock_e2ee_gate_subtitle", "value": "请输入加密密码以继续" },
+    { "name": "library_back_confirm_exit", "value": "再滑一次关闭应用" }
   ]
 }

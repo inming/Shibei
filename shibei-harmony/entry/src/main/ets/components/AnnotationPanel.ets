@@ -213,12 +213,12 @@ export struct AnnotationPanel {
     .padding({ left: 10, right: 10, top: 10, bottom: 10 })
     .margin({ left: 12, right: 12, bottom: 8 })
     // Flash effect: during pulses the whole card tints to the highlight
-    // color (with alpha so text stays legible) and the left strip widens
-    // from 3 to 6 px. Off-pulse: normal component background + 3 px strip.
-    // animation() wraps the state change so every toggle reads as a smooth
-    // throb rather than a blink cut.
+    // color (with low alpha so text stays legible and the pulse reads as
+    // a soft wash, not a jump) and the left strip widens from 3 to 6 px.
+    // Off-pulse: normal component background + 3 px strip. animation()
+    // wraps the state change so every toggle reads as a smooth throb.
     .backgroundColor(this.flashingHighlightId === h.id
-      ? `${h.color}55`
+      ? `${h.color}22`
       : $r('sys.color.ohos_id_color_component_normal'))
     .borderRadius(6)
     .border({

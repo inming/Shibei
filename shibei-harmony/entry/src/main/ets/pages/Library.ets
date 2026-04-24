@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { router } from '@kit.ArkUI';
+import { router, promptAction } from '@kit.ArkUI';
 import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { I18n } from '../services/I18n';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
@@ -64,20 +64,56 @@ struct Library {
     }
   }
 
+  // Two-step exit guard: when the drawer is already open, the first back
+  // shows a toast and arms the exit; a second back within 2s falls through
+  // to the system (app closes). Resets on any other state change (e.g.
+  // drawer closed via button, folder pick) so the user always starts from
+  // "one back to open drawer".
+  private exitArmed: boolean = false;
+  private exitArmTimer: number = -1;
+
   // Intercept the system back gesture (any edge). HarmonyOS NEXT's edge
   // swipe is OS-level — priorityGesture/PanGesture cannot pre-empt it, so
   // the only hook is this page callback. Returning true consumes the event
-  // (no router pop / app exit). Tradeoff: both edges trigger the same
-  // handler, so left-edge right-swipe no longer exits the app; the user
-  // exits via the home indicator instead.
+  // (no router pop / app exit); returning false lets the system close the
+  // Library window (== exit the app since Library is the root page).
   onBackPress(): boolean {
     if (this.foldStatus !== FoldStatus.FOLDED) {
       // Expanded (unfolded Mate X5 / tablet): drawer is always visible,
       // no toggle makes sense — let the system handle back normally.
       return false;
     }
-    this.setDrawerOpen(!this.drawerOpen);
+    if (!this.drawerOpen) {
+      // Closed → open drawer. Reset any armed exit.
+      this.disarmExit();
+      this.setDrawerOpen(true);
+      return true;
+    }
+    // Drawer already open. First back arms exit + toast; second back
+    // within 2s returns false so the OS closes the app.
+    if (this.exitArmed) {
+      this.disarmExit();
+      return false;
+    }
+    this.exitArmed = true;
+    promptAction.showToast({
+      message: I18n.t($r('app.string.library_back_confirm_exit')),
+      duration: 1800,
+    });
+    if (this.exitArmTimer !== -1) clearTimeout(this.exitArmTimer);
+    this.exitArmTimer = setTimeout(() => {
+      this.exitArmed = false;
+      this.exitArmTimer = -1;
+    }, 2000);
     return true;
+  }
+
+  private disarmExit(): void {
+    this.exitArmed = false;
+    if (this.exitArmTimer !== -1) {
+      clearTimeout(this.exitArmTimer);
+      this.exitArmTimer = -1;
+    }
   }
 
   private onFolderPick(id: string): void {

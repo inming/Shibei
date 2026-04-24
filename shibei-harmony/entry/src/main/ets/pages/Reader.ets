@@ -169,16 +169,6 @@ struct Reader {
     }
   }
 
-  // Intercept the system back gesture. HarmonyOS NEXT's edge swipe is
-  // OS-level (priorityGesture can't pre-empt it), so this hook is the
-  // only reliable way to re-target it. Tradeoff: both edges trigger the
-  // same handler, so the left-edge right-swipe that used to pop to Library
-  // now toggles the panel instead — use the `←` TopBar button to go back.
-  onBackPress(): boolean {
-    this.setPanelOpen(!this.panelOpen);
-    return true;
-  }
-
   private flushScroll(): void {
     if (!this.resource) return;
     const ctx = getContext(this) as common.UIAbilityContext;
