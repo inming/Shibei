@@ -1,6 +1,7 @@
 import { ShibeiService, ShibeiError, Resource } from '../services/ShibeiService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction } from '@kit.ArkUI';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { ResourceItem } from './ResourceItem';
 import { I18n } from '../services/I18n';
 
@@ -77,14 +78,32 @@ export struct ResourceList {
       buttons: [
         { text: I18n.t($r('app.string.cache_action_this_resource')), color: $r('app.color.accent_primary') },
         { text: I18n.t($r('app.string.cache_action_this_folder')), color: $r('app.color.accent_primary_alt') },
+        { text: I18n.t($r('app.string.annotation_copy_link')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
       ],
     }).then((r) => {
       if (r.index === 0) this.preloadOne(id);
       else if (r.index === 1) this.preloadFolder();
+      else if (r.index === 2) this.copyLink(id);
     }).catch((err: Error) => {
       hilog.warn(0x0000, 'shibei', 'cache dialog dismissed: %{public}s', err.message);
     });
+  }
+
+  private copyLink(id: string): void {
+    try {
+      const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN,
+        `shibei://open/resource/${id}`);
+      pasteboard.getSystemPasteboard().setData(data).then(() => {
+        promptAction.showToast({ message: I18n.t($r('app.string.common_copy_success')) });
+      }).catch((err: Error) => {
+        hilog.warn(0x0000, 'shibei', 'pasteboard set fail: %{public}s', err.message);
+        promptAction.showToast({ message: I18n.t($r('app.string.common_copy_failed')) });
+      });
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'copyLink fail: %{public}s', (err as Error).message);
+      promptAction.showToast({ message: I18n.t($r('app.string.common_copy_failed')) });
+    }
   }
 
   private async preloadOne(id: string): Promise<void> {

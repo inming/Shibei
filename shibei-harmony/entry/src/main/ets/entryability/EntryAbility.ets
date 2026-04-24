@@ -1,12 +1,14 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { router, window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { ShibeiService } from '../services/ShibeiService';
 import { LockService, LockState } from '../services/LockService';
 import { I18n } from '../services/I18n';
 import { loadTheme, applyTheme } from '../app/ThemeManager';
 import { FoldObserver } from '../app/FoldObserver';
+import { KEY_PENDING_DEEP_LINK } from '../app/AppStorageKeys';
+import { SessionState } from '../app/SessionState';
 
 // Cold-start routing (Track C/F + Phase 4):
 //   no saved S3 config            → pages/Onboard      (fresh install)
@@ -25,8 +27,13 @@ import { FoldObserver } from '../app/FoldObserver';
 // the wizard's error banner instead of a blank window.
 
 export default class EntryAbility extends UIAbility {
-  onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+  onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'shibei', 'EntryAbility onCreate');
+    // Stash any deep-link URI for consumption after lock-screen / onboard.
+    const uri = want?.uri;
+    if (uri && uri.startsWith('shibei://')) {
+      AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
+    }
     // Register the `shibei-pdf://` scheme BEFORE any Web component is
     // created. ArkWeb's Chromium blocks fetches to unknown schemes at the
     // network layer; without this registration, pdfjs XHRs to
@@ -112,5 +119,29 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     hilog.info(0x0000, 'shibei', 'EntryAbility onForeground');
     LockService.instance.onForegrounded();
+  }
+
+  onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    const uri = want?.uri;
+    if (!uri || !uri.startsWith('shibei://')) return;
+    if (LockService.instance.getState() === LockState.Locked ||
+        !ShibeiService.instance.isUnlocked()) {
+      AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
+    } else {
+      const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
+      if (!match) return;
+      const resourceId = match[1];
+      const highlightId = match[2] || undefined;
+      SessionState.save(this.context, { inReader: true, readerResourceId: resourceId }).then(() => {
+        router.pushUrl({
+          url: 'pages/Reader',
+          params: { resourceId, highlightId },
+        }).catch((err: Error) => {
+          hilog.warn(0x0000, 'shibei', 'deep link pushUrl fail: %{public}s', err.message);
+        });
+      }).catch((err: Error) => {
+        hilog.warn(0x0000, 'shibei', 'deep link session save fail: %{public}s', err.message);
+      });
+    }
   }
 }

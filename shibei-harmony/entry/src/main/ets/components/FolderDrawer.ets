@@ -29,9 +29,18 @@ export struct FolderDrawer {
   @State error: string = '';
   @State syncing: boolean = false;
   @State syncStatus: string = '';
+  private unsubDataChanged?: () => void;
 
   aboutToAppear(): void {
     this.reload();
+    this.unsubDataChanged = ShibeiService.instance.onDataChanged(() => this.reload());
+  }
+
+  aboutToDisappear(): void {
+    if (this.unsubDataChanged) {
+      this.unsubDataChanged();
+      this.unsubDataChanged = undefined;
+    }
   }
 
   private async syncNow(): Promise<void> {

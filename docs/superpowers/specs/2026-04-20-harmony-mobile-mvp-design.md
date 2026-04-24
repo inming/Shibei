@@ -2,7 +2,7 @@
 
 - 日期：2026-04-20（Phase 0 验证后修订）
 - 范围：HarmonyOS NEXT（Mate X5 折叠屏优先）
-- 状态：Phase 0 已完成真机验证；Phase 1（桌面端配对 QR）已合入主干
+- 状态：Phase 0–5.1 核心链路已合入并完成真机验收；2026-04-24 已补齐会话持久化 / Deep Link / 同步刷新收尾项
 - 验证报告：`docs/superpowers/reports/2026-04-20-harmony-phase0-verification-report.md`
 - Phase 1 计划：`docs/superpowers/plans/2026-04-21-phase1-pairing-qr.md`
 
@@ -507,13 +507,9 @@ ReaderView
 
 ### 5.8 会话持久化
 
-复用桌面 `sessionState` JSON schema，存储介质换成 `@ohos.data.preferences`，单 key `shibei-session-state`。ArkTS `SessionStateService` 提供桌面 `sessionState.ts` 等价 API：
+已实现为 `entry/src/main/ets/app/SessionState.ets`，存储介质为 `@ohos.data.preferences` 的 `shibei_prefs` store，单 key `shibei-session-state`。移动端没有桌面 TabBar，因此 schema 采用移动端简化形态：`version` / `inReader` / `readerResourceId` / `library(selectedFolderId, selectedTagIds, selectedResourceId, listScrollTop?)`。
 
-- `updateReaderTab(id, patch)`
-- `removeReaderTab(id)`
-- `loadSessionState()` / `saveSessionState()`
-
-Schema 一致是为未来桌面 ↔ 移动会话接力（v2 超级终端）留种。
+Reader 滚动位置和 PDF 缩放不复制进 `SessionState.ets`：HTML/PDF scroll 继续由 `ReaderScrollState.ets` 按 resource_id 持久化，PDF zoom 继续由 `ReaderZoomState.ets` 的 `reader:zoomMap` 持久化。打开 Reader 前必须 `await SessionState.save({ inReader: true, readerResourceId })` 再 `router.pushUrl`，避免用户快速杀进程时尚未落盘。**不得在 `Reader.aboutToDisappear()` 清 `inReader`**，因为任务管理器杀 app 也会触发该生命周期；只在显式返回（系统 back / 顶部 `←`）时通过 `leaveReader()` 清除。
 
 ### 5.9 PDF 缩放与手势
 
@@ -576,7 +572,7 @@ UI：
 └─────────────────────────┘
 ```
 
-锁屏时 deep link 通过 `@StorageProp('pendingDeepLink')` 暂存，解锁后消费。
+锁屏时 deep link 通过 `AppStorage` 的 `KEY_PENDING_DEEP_LINK` 暂存，解锁后进入 `Library.aboutToAppear()` 消费。`module.json5` 已注册 `shibei://open/resource/{id}?highlight={hlId}` scheme；`EntryAbility.onCreate/onNewWant` 负责暂存 `Want.uri`，`Library` 消费后 push `pages/Reader`，`Reader` 接收 `highlightId` route param 并在 ready 后 flash 对应标注。
 
 ### 6.3 Auto-lock 时序
 
@@ -868,6 +864,8 @@ Phase 5  打磨与内测              2 周
 合计 12~15 周（独立开发）
 ```
 
+截至 2026-04-24，Phase 0–5.1 的核心功能已合入；会话持久化、Deep Link、同步刷新收尾项已通过真机验收。剩余发布工作集中在 AGC 材料、隐私协议、截图与更大样本的内测性能观察。
+
 ---
 
 ## 十、风险矩阵
@@ -903,7 +901,7 @@ Phase 5  打磨与内测              2 周
 
 - NAPI 接口命名对齐桌面 command，移植 iOS/Android 不重设计
 - ArkTS 组件按功能分层，view-model 层未来可复用到 SwiftUI / Compose
-- session state JSON schema 与桌面完全一致，为跨端接力留种
+- session state 语义与桌面对齐（恢复当前阅读上下文与资料库选择），但移动端 schema 允许按 Navigation 架构简化；跨端接力未来以显式迁移层转换，不要求 v1 完全同形
 - 不写"仅鸿蒙"魔法字符串到 Rust 核心；所有 cfg 差异通过 `#[cfg(feature = "...")]` 明确分支
 - 鸿蒙端不修改同步协议、数据库 schema、加密算法；出现冲突时以桌面为准
 

@@ -1,7 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
 import { ShibeiService, ShibeiError, SearchResult } from '../services/ShibeiService';
 import { I18n } from '../services/I18n';
+import { SessionState } from '../app/SessionState';
 
 // Track E — full-text search over resources (title / url / description /
 // highlights / comments / body). Runs against the local FTS5 virtual
@@ -84,7 +86,9 @@ struct SearchPage {
     this.searching = false;
   }
 
-  private openResource(id: string): void {
+  private async openResource(id: string): Promise<void> {
+    const ctx = getContext(this) as common.UIAbilityContext;
+    await SessionState.save(ctx, { inReader: true, readerResourceId: id });
     router.pushUrl({
       url: 'pages/Reader',
       params: { resourceId: id },

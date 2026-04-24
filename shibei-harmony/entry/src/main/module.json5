@@ -19,7 +19,11 @@
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
         "skills": [
-          { "entities": ["entity.system.home"], "actions": ["action.system.home"] }
+          { "entities": ["entity.system.home"], "actions": ["action.system.home"] },
+          {
+            "actions": ["ohos.want.action.viewData"],
+            "uris": [{ "scheme": "shibei", "host": "open" }]
+          }
         ]
       }
     ],

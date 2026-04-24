@@ -5,8 +5,9 @@ import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { I18n } from '../services/I18n';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
 import { ResourceList } from '../components/ResourceList';
-import { KEY_FOLD_STATUS } from '../app/AppStorageKeys';
+import { KEY_FOLD_STATUS, KEY_PENDING_DEEP_LINK } from '../app/AppStorageKeys';
 import { FoldStatus } from '../app/FoldObserver';
+import { SessionState, SessionLibrary } from '../app/SessionState';
 
 // Track E — Library with dual-state layout.
 //   FOLDED   → SideBarContainer(Overlay); drawer slides out under the ☰
@@ -32,6 +33,10 @@ struct Library {
   // re-layout between Embed / Overlay without reopening the page.
   @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
 
+  // Guard to prevent re-pushing Reader when the user navigates back from
+  // Settings / Search to Library (aboutToAppear fires again).
+  private restoredOnce: boolean = false;
+
   async aboutToAppear(): Promise<void> {
     // I18n is wired in EntryAbility.onWindowStageCreate before any page
     // renders, so lookup here is safe. Do it before init so the first
@@ -50,6 +55,10 @@ struct Library {
       return;
     }
 
+    // Restore persisted library state and open Reader if needed.
+    const ctx = getContext(this) as common.UIAbilityContext;
+    await this.restoreSession(ctx);
+
     // §7.3 auto-sync. Mode "on_open" is default; "manual" skips. Failures
     // (e.g. MK not loaded on a locked vault, no network) are swallowed —
     // the user never asked for this sync, so we shouldn't pop a toast.
@@ -61,6 +70,78 @@ struct Library {
       }
     } catch (err) {
       hilog.warn(0x0000, 'shibei', 'auto-sync gate fail: %{public}s', (err as Error).message);
+    }
+  }
+
+  private async restoreSession(ctx: common.UIAbilityContext): Promise<void> {
+    try {
+      const state = await SessionState.load(ctx);
+      // Restore folder selection.
+      if (state.library.selectedFolderId) {
+        this.selectedFolderId = state.library.selectedFolderId;
+        this.syncFolderLabel(state.library.selectedFolderId);
+      }
+      if (!this.restoredOnce && state.inReader && state.readerResourceId) {
+        // Verify the resource still exists before pushing.
+        try {
+          const resource = ShibeiService.instance.getResource(state.readerResourceId);
+          if (resource) {
+            this.restoredOnce = true;
+            router.pushUrl({
+              url: 'pages/Reader',
+              params: { resourceId: state.readerResourceId },
+            }).catch((err: Error) => {
+              hilog.error(0x0000, 'shibei', 'restore Reader pushUrl fail: %{public}s', err.message);
+            });
+          }
+        } catch (_e) {
+          // Resource deleted — clear the stale entry silently.
+          await SessionState.save(ctx, { inReader: false, readerResourceId: null });
+        }
+      }
+      this.restoredOnce = true;
+    } catch (_e) {
+      // Session restore failure is non-fatal.
+      this.restoredOnce = true;
+    }
+    // Consume any deep link that was stashed during lock-screen / onboard.
+    this.consumePendingDeepLink();
+  }
+
+  private syncFolderLabel(id: string): void {
+    if (id === '__all__') {
+      this.selectedFolderLabel = I18n.t($r('app.string.sidebar_all_resources'));
+    } else if (id === INBOX_FOLDER_ID) {
+      this.selectedFolderLabel = I18n.t($r('app.string.sidebar_inbox'));
+    } else {
+      const folders = ShibeiService.instance.listFolders();
+      const found = folders.find(f => f.id === id);
+      this.selectedFolderLabel = found ? found.name : id;
+    }
+  }
+
+  private consumePendingDeepLink(): void {
+    try {
+      const uri = AppStorage.get<string>(KEY_PENDING_DEEP_LINK);
+      if (!uri || uri === '') return;
+      AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, '');
+      const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
+      if (!match) return;
+      const resourceId = match[1];
+      const highlightId = match[2] || undefined;
+      SessionState.save(getContext(this) as common.UIAbilityContext, {
+        inReader: true,
+        readerResourceId: resourceId,
+      });
+      router.pushUrl({
+        url: 'pages/Reader',
+        params: { resourceId, highlightId },
+      }).catch((err: Error) => {
+        hilog.error(0x0000, 'shibei', 'deepLink pushUrl fail: %{public}s', err.message);
+      });
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'consumePendingDeepLink fail: %{public}s',
+        (err as Error).message);
     }
   }
 
@@ -132,17 +213,14 @@ struct Library {
 
   private onFolderPick(id: string): void {
     this.selectedFolderId = id;
-    // Derive a display label; the folder name comes from ShibeiService
-    // only for non-virtual folders. Cheap lookup for MVP.
-    if (id === '__all__') {
-      this.selectedFolderLabel = I18n.t($r('app.string.sidebar_all_resources'));
-    } else if (id === INBOX_FOLDER_ID) {
-      this.selectedFolderLabel = I18n.t($r('app.string.sidebar_inbox'));
-    } else {
-      const folders = ShibeiService.instance.listFolders();
-      const found = folders.find(f => f.id === id);
-      this.selectedFolderLabel = found ? found.name : id;
-    }
+    this.syncFolderLabel(id);
+    const ctx = getContext(this) as common.UIAbilityContext;
+    const lib: SessionLibrary = {
+      selectedFolderId: id,
+      selectedTagIds: [],
+      selectedResourceId: null,
+    };
+    SessionState.save(ctx, { library: lib });
     // Only collapse the drawer in the folded single-column mode; on an
     // expanded device (tablet / unfolded Mate X5) the drawer is an always-
     // on side rail so dismissing it on every pick would be annoying.
@@ -160,9 +238,9 @@ struct Library {
     });
   }
 
-  private onOpenResource(id: string): void {
-    // Push to the stub reader; Phase 3 replaces the stub with the real
-    // ArkWeb + annotator.js page behind the same route.
+  private async onOpenResource(id: string): Promise<void> {
+    const ctx = getContext(this) as common.UIAbilityContext;
+    await SessionState.save(ctx, { inReader: true, readerResourceId: id });
     router.pushUrl({
       url: 'pages/Reader',
       params: { resourceId: id },

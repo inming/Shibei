@@ -26,9 +26,10 @@ import {
   PDF_ZOOM_DEFAULT,
   PDF_ZOOM_STEP,
 } from '../app/ReaderZoomState';
+import { SessionState } from '../app/SessionState';
 
 // Route param shape.
-interface ReaderParams { resourceId?: string; }
+interface ReaderParams { resourceId?: string; highlightId?: string; }
 
 // Palette shown in the selection action bar. Order left→right matches
 // the desktop picker. Yellow is the first tap position since it's the
@@ -99,11 +100,14 @@ struct Reader {
   private scrollSaveTimer: number = -1;
   private lastScrollY: number = 0;
   private restoredScroll: boolean = false;
+  private initialHighlightId: string = '';
 
   aboutToAppear(): void {
     const raw = router.getParams();
     const params: ReaderParams = raw ? (raw as ReaderParams) : {};
     const id = params.resourceId ?? '';
+    // highlightId from deep link — flashed after the page is ready.
+    this.initialHighlightId = params.highlightId ?? '';
     if (!id) {
       this.loadError = 'error.missingResourceId';
       this.loading = false;
@@ -171,15 +175,21 @@ struct Reader {
 
   // System back / edge swipe: if the annotation panel is open, the first
   // back closes it (consume). If it's already closed, let the OS pop the
-  // route to Library. This mirrors the drawer-closes-first pattern users
-  // see in most mobile apps and keeps both edges working since ArkUI's
-  // onBackPress can't discriminate left- vs right-edge swipes.
+  // route to Library. Save inReader=false only on explicit back — NOT in
+  // aboutToDisappear (which fires on task-switcher kill too).
   onBackPress(): boolean {
     if (this.panelOpen) {
       this.setPanelOpen(false);
       return true;
     }
-    return false;
+    this.leaveReader();
+    return true;
+  }
+
+  private async leaveReader(): Promise<void> {
+    const ctx = getContext(this) as common.UIAbilityContext;
+    await SessionState.save(ctx, { inReader: false, readerResourceId: null });
+    router.back();
   }
 
   private flushScroll(): void {
@@ -355,6 +365,11 @@ struct Reader {
     // PDF shell also emits 'ready' via window.shibeiBridge once pdfjs has
     // finished the initial document parse, so this path covers both branches.
     this.restoreScrollIfNeeded();
+    // Flash the highlight from a deep link, if any.
+    if (this.initialHighlightId) {
+      this.flashHighlight(this.initialHighlightId);
+      this.initialHighlightId = '';
+    }
   }
 
   private createHighlightWithColor(color: string): void {
@@ -585,7 +600,7 @@ struct Reader {
       Text('←').fontSize(22)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
         .width(44).height(44).textAlign(TextAlign.Center)
-        .onClick(() => router.back());
+        .onClick(() => this.leaveReader());
       Text(this.resource ? this.resource.title : '')
         .fontSize(15).fontWeight(FontWeight.Medium).layoutWeight(1)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
