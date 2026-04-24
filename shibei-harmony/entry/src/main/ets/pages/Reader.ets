@@ -612,7 +612,7 @@ struct Reader {
       if (this.resource && this.resource.resource_type === 'pdf' && this.pdfReady) {
         this.ZoomToolbar();
       }
-      Text(`☰ ${this.bundle.highlights.length}`)
+      Text(`☰ ${this.bundle.highlights.length + this.resourceNoteCount()}`)
         .fontSize(14)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
         .padding({ left: 8, right: 8 }).height(44)
@@ -621,6 +621,10 @@ struct Reader {
     .width('100%')
     .backgroundColor($r('sys.color.ohos_id_color_background'))
     .padding({ left: 4, right: 4 });
+  }
+
+  private resourceNoteCount(): number {
+    return this.bundle.comments.filter((c: Comment) => !c.highlight_id).length;
   }
 
   // PDF zoom controls: [−] [N%] [+]. Percentage tap resets to 1.0.

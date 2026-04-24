@@ -1,5 +1,6 @@
 import { Highlight, Comment, AnnotationsBundle } from '../services/ShibeiService';
 import { I18n } from '../services/I18n';
+import { MarkdownText } from './MarkdownText';
 
 // Four-color palette — same order as Reader.ets so the "change color" swatch
 // in the long-press menu reads left-to-right in the familiar sequence.
@@ -30,6 +31,13 @@ export struct AnnotationPanel {
   // the border opacity — 0.3 during off-beat, 1.0 otherwise.
   @State flashingHighlightId: string = '';
   @State flashGeneration: number = 0;
+  // Sticky title mode: when the in-scroll 笔记 section header crosses the
+  // top, the panel's sticky title switches from `标注 (N)` to `笔记 (M)`.
+  @State inNotesSection: boolean = false;
+  // Captured via the 笔记 header's onAreaChange — position.y within the
+  // Scroll content's coordinate space. Compared with Scroll's currentOffset
+  // to decide whether the header has crossed the sticky top.
+  private notesHeaderOffsetTop: number = -1;
   // Scroller controller for programmatic scrollTo.
   private scroller: Scroller = new Scroller();
   // Short tap on a highlight card → flash on page (Reader calls runJavaScript).
@@ -83,10 +91,15 @@ export struct AnnotationPanel {
 
   build() {
     Column() {
-      // Header — title only; the add-note button moved to a sticky footer
-      // for parity with the desktop panel layout.
+      // Header — title only; add-note button moved to a sticky footer for
+      // parity with the desktop panel layout. Title text swaps to 笔记 (M)
+      // when the user scrolls past the in-scroll 笔记 section header.
       Row() {
-        Text(I18n.t($r('app.string.annotation_section_title'), this.bundle.highlights.length))
+        Text(this.inNotesSection
+          ? I18n.t($r('app.string.annotation_note_section_title'),
+                   this.resourceComments().length)
+          : I18n.t($r('app.string.annotation_section_title'),
+                   this.bundle.highlights.length))
           .fontSize(16).fontWeight(FontWeight.Medium)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .layoutWeight(1);
@@ -106,14 +119,30 @@ export struct AnnotationPanel {
           // the diff and the left color strip stays stale.
           }, (h: Highlight) => `${h.id}:${h.color}`);
 
-          if (this.resourceComments().length > 0) {
-            Text(I18n.t($r('app.string.annotation_note_label'))).fontSize(13)
-              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-              .padding({ left: 12, right: 12, top: 16, bottom: 4 });
-            ForEach(this.resourceComments(), (c: Comment) => {
-              this.CommentCard(c);
-            }, (c: Comment) => c.id);
+          // 笔记 section header — always rendered (even when M=0) so users
+          // always see the section boundary and can add their first note
+          // from the familiar position. Its position.y is the swap
+          // threshold for the top sticky title.
+          Row() {
+            Text(I18n.t($r('app.string.annotation_note_section_title'),
+                        this.resourceComments().length))
+              .fontSize(16).fontWeight(FontWeight.Medium)
+              .fontColor($r('sys.color.ohos_id_color_text_primary'))
+              .layoutWeight(1);
           }
+          .width('100%')
+          .padding({ left: 12, right: 12, top: 16, bottom: 8 })
+          .onAreaChange((_old: Area, area: Area) => {
+            const y: number = parseFloat(`${area.position.y}`) || 0;
+            if (y >= 0 && y !== this.notesHeaderOffsetTop) {
+              this.notesHeaderOffsetTop = y;
+              this.recomputeSection();
+            }
+          });
+
+          ForEach(this.resourceComments(), (c: Comment) => {
+            this.CommentCard(c);
+          }, (c: Comment) => c.id);
 
           if (this.bundle.highlights.length === 0 && this.resourceComments().length === 0) {
             Column() {
@@ -128,7 +157,8 @@ export struct AnnotationPanel {
       }
       .layoutWeight(1)
       .width('100%')
-      .align(Alignment.Top);
+      .align(Alignment.Top)
+      .onDidScroll(() => this.recomputeSection());
 
       // Footer — sticky add-note button at the bottom of the drawer.
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
@@ -149,6 +179,26 @@ export struct AnnotationPanel {
 
   private resourceComments(): Comment[] {
     return this.bundle.comments.filter((c: Comment) => !c.highlight_id);
+  }
+
+  // Decide which sticky title to show. Compared with notesHeaderOffsetTop
+  // (set by the 笔记 header's onAreaChange): when scroll yOffset reaches
+  // that threshold, the 笔记 header has scrolled up to sit exactly at the
+  // top of the scroll viewport — which is directly beneath the sticky
+  // title row — so we swap. Small negative tolerance absorbs sub-pixel
+  // drift from layout rounding.
+  private recomputeSection(): void {
+    if (this.notesHeaderOffsetTop < 0) return;
+    let cur: number = 0;
+    try {
+      cur = this.scroller.currentOffset().yOffset;
+    } catch (_e) {
+      return;
+    }
+    const next: boolean = cur >= this.notesHeaderOffsetTop - 1;
+    if (next !== this.inNotesSection) {
+      this.inNotesSection = next;
+    }
   }
 
   private commentsFor(hlId: string): Comment[] {
@@ -186,16 +236,17 @@ export struct AnnotationPanel {
       .width('100%')
       .margin({ top: 6 });
 
-      // Nested comments — tap to edit.
+      // Nested comments: native markdown render; edit is a footer action
+      // so that inline tables can horizontally scroll without fighting the
+      // row-level tap gesture.
       ForEach(this.commentsFor(h.id), (c: Comment) => {
-        Row() {
-          Text(c.content).fontSize(13)
-            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-            .layoutWeight(1);
+        Column() {
+          MarkdownText({ content: c.content, baseFontSize: 13 })
+            .width('100%');
+          this.CommentEditButton(c);
         }
         .width('100%')
-        .padding({ left: 8, top: 6, right: 4 })
-        .onClick(() => this.onEditComment(c.id));
+        .padding({ left: 8, top: 6, right: 4 });
       }, (c: Comment) => c.id);
 
       // Inline add-comment — primary text, left-aligned. Opens comment sheet
@@ -284,13 +335,25 @@ export struct AnnotationPanel {
   }
 
   @Builder CommentCard(c: Comment) {
-    Row() {
-      Text(c.content).fontSize(14)
-        .fontColor($r('sys.color.ohos_id_color_text_primary'))
-        .layoutWeight(1);
+    Column() {
+      MarkdownText({ content: c.content, baseFontSize: 14 })
+        .width('100%');
+      this.CommentEditButton(c);
     }
     .width('100%')
-    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-    .onClick(() => this.onEditComment(c.id));
+    .padding({ left: 12, right: 12, top: 8, bottom: 8 });
+  }
+
+  @Builder CommentEditButton(c: Comment) {
+    Row() {
+      Blank();
+      Text(I18n.t($r('app.string.common_edit')))
+        .fontSize(13)
+        .fontColor($r('sys.color.ohos_id_color_emphasize'))
+        .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+        .onClick(() => this.onEditComment(c.id));
+    }
+    .width('100%')
+    .margin({ top: 4 });
   }
 }

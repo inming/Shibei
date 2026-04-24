@@ -4,6 +4,7 @@
     { "name": "common_cancel", "value": "取消" },
     { "name": "common_confirm", "value": "确认" },
     { "name": "common_delete", "value": "删除" },
+    { "name": "common_edit", "value": "编辑" },
     { "name": "common_loading", "value": "加载中…" },
     { "name": "common_initializing", "value": "初始化中…" },
     { "name": "common_init_failed", "value": "初始化失败：%1$s" },
@@ -144,6 +145,7 @@
     { "name": "reader_hl_color_pink", "value": "粉" },
 
     { "name": "annotation_section_title", "value": "标注 (%1$d)" },
+    { "name": "annotation_note_section_title", "value": "笔记 (%1$d)" },
     { "name": "annotation_note_label", "value": "笔记" },
     { "name": "annotation_note_add", "value": "+ 笔记" },
     { "name": "annotation_comment_add", "value": "+ 评论" },

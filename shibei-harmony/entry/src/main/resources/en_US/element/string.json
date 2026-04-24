@@ -4,6 +4,7 @@
     { "name": "common_cancel", "value": "Cancel" },
     { "name": "common_confirm", "value": "Confirm" },
     { "name": "common_delete", "value": "Delete" },
+    { "name": "common_edit", "value": "Edit" },
     { "name": "common_loading", "value": "Loading…" },
     { "name": "common_initializing", "value": "Initializing…" },
     { "name": "common_init_failed", "value": "Init failed: %1$s" },
@@ -144,6 +145,7 @@
     { "name": "reader_hl_color_pink", "value": "Pink" },
 
     { "name": "annotation_section_title", "value": "Annotations (%1$d)" },
+    { "name": "annotation_note_section_title", "value": "Notes (%1$d)" },
     { "name": "annotation_note_label", "value": "Note" },
     { "name": "annotation_note_add", "value": "+ Note" },
     { "name": "annotation_comment_add", "value": "+ Comment" },
