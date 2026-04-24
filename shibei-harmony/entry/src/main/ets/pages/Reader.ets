@@ -303,7 +303,16 @@ struct Reader {
     if (!p.highlightId) {
       return;
     }
-    this.panelOpen = true;
+    this.setPanelOpen(true);
+  }
+
+  /// Toggle AnnotationPanel inside animateTo so the SideBarContainer width
+  /// and the scrim interpolate. 260ms / FastOutSlowIn matches the folder
+  /// drawer on Library for visual parity.
+  private setPanelOpen(open: boolean): void {
+    animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+      this.panelOpen = open;
+    });
   }
 
   // Shell-driven zoom settle — fired after pinch gestures resolve OR after
@@ -465,7 +474,7 @@ struct Reader {
               // Auto-close the drawer on folded / overlay layouts — user
               // expects the tap to "jump" them to the passage, and keeping
               // the drawer open covers the page they just navigated to.
-              this.panelOpen = false;
+              this.setPanelOpen(false);
               this.flashHighlight(id);
             },
             onDeleteHighlight: (id: string) => this.deleteHighlight(id),
@@ -570,7 +579,7 @@ struct Reader {
         .fontSize(14)
         .fontColor($r('sys.color.ohos_id_color_text_primary'))
         .padding({ left: 8, right: 8 }).height(44)
-        .onClick(() => { this.panelOpen = !this.panelOpen; });
+        .onClick(() => { this.setPanelOpen(!this.panelOpen); });
     }
     .width('100%')
     .backgroundColor($r('sys.color.ohos_id_color_background'))
@@ -685,7 +694,7 @@ struct Reader {
           Column()
             .width('100%').height('100%')
             .backgroundColor($r('app.color.surface_tap_invisible'))
-            .onClick(() => { this.panelOpen = false; });
+            .onClick(() => { this.setPanelOpen(false); });
         }
 
         // Floating selection action bar — shown when user has an active
@@ -786,7 +795,7 @@ struct Reader {
           Column()
             .width('100%').height('100%')
             .backgroundColor($r('app.color.surface_tap_invisible'))
-            .onClick(() => { this.panelOpen = false; });
+            .onClick(() => { this.setPanelOpen(false); });
         }
 
         if (this.pendingSelection !== null && !this.pendingSelection.collapsed) {

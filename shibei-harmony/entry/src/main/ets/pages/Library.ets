@@ -81,8 +81,17 @@ struct Library {
     // expanded device (tablet / unfolded Mate X5) the drawer is an always-
     // on side rail so dismissing it on every pick would be annoying.
     if (this.foldStatus === FoldStatus.FOLDED) {
-      this.drawerOpen = false;
+      this.setDrawerOpen(false);
     }
+  }
+
+  /// Toggle drawer state inside animateTo so the SideBarContainer width and
+  /// the scrim opacity interpolate to the new value instead of popping.
+  /// 260ms / FastOutSlowIn mirrors the HarmonyOS system drawer curve.
+  private setDrawerOpen(open: boolean): void {
+    animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+      this.drawerOpen = open;
+    });
   }
 
   private onOpenResource(id: string): void {
@@ -140,7 +149,7 @@ struct Library {
                   Text(this.drawerOpen ? '✕' : '☰')
                     .fontSize(22).fontColor($r('sys.color.ohos_id_color_text_primary'))
                     .width(44).height(44).textAlign(TextAlign.Center)
-                    .onClick(() => { this.drawerOpen = !this.drawerOpen; });
+                    .onClick(() => { this.setDrawerOpen(!this.drawerOpen); });
                 }
                 Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
@@ -186,7 +195,7 @@ struct Library {
               Column()
                 .width('100%').height('100%')
                 .backgroundColor($r('app.color.surface_tap_invisible'))
-                .onClick(() => { this.drawerOpen = false; });
+                .onClick(() => { this.setDrawerOpen(false); });
             }
           }
           .width('100%').height('100%');
