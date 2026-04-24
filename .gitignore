@@ -42,6 +42,8 @@ WixTools/
 **/.preview/
 **/oh_modules/
 **/local.properties
+**/oh-package-lock.json5
+shibei-harmony/hvigor/
 shibei-harmony/**/build/
 # libshibei_core.so is a build artifact — each dev machine generates its
 # own via `scripts/build-harmony-napi.sh release`. New contributors set up
