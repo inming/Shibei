@@ -394,7 +394,7 @@ export struct AnnotationPanel {
       // row-level tap gesture.
       ForEach(this.commentsFor(h.id), (c: Comment) => {
         Column() {
-          MarkdownText({ content: c.content, baseFontSize: 13 })
+          MarkdownText({ content: c.content })
             .width('100%');
           this.CommentEditButton(c);
         }
@@ -489,7 +489,7 @@ export struct AnnotationPanel {
 
   @Builder CommentCard(c: Comment) {
     Column() {
-      MarkdownText({ content: c.content, baseFontSize: 14 })
+      MarkdownText({ content: c.content })
         .width('100%');
       this.CommentEditButton(c);
     }

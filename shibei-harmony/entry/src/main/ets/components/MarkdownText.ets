@@ -290,7 +290,7 @@ function parseInline(text: string): MdSpan[] {
 @Component
 export struct MarkdownText {
   @Prop @Watch('reparse') content: string = '';
-  @Prop @Watch('reparse') baseFontSize: number = 14;
+  @Prop @Watch('reparse') baseFontSize: number = 13;
   @State blocks: MdBlock[] = [];
 
   aboutToAppear(): void {
@@ -301,11 +301,8 @@ export struct MarkdownText {
     this.blocks = parseBlocks(this.content, this.baseFontSize);
   }
 
-  private headingSize(level: number): number {
-    if (level <= 1) return this.baseFontSize * 1.5;
-    if (level === 2) return this.baseFontSize * 1.3;
-    if (level === 3) return this.baseFontSize * 1.15;
-    return this.baseFontSize * 1.05;
+  private headingSize(_level: number): number {
+    return this.baseFontSize;
   }
 
   private textAlignFor(a: string): TextAlign {
@@ -390,7 +387,7 @@ export struct MarkdownText {
 
   @Builder CodeBlock(b: MdBlock) {
     Text(b.text)
-      .fontSize(this.baseFontSize * 0.9)
+      .fontSize(this.baseFontSize)
       .fontFamily('HarmonyOS Sans Mono, monospace')
       .fontColor($r('sys.color.ohos_id_color_text_primary'))
       .padding({ left: 10, right: 10, top: 8, bottom: 8 })
@@ -443,9 +440,9 @@ export struct MarkdownText {
                 Text() {
                   this.InlineSpans(
                     (row[cIdx] && row[cIdx].length > 0) ? row[cIdx] : ' ',
-                    this.baseFontSize * 0.95);
+                    this.baseFontSize);
                 }
-                .fontSize(this.baseFontSize * 0.95)
+                .fontSize(this.baseFontSize)
                 .fontWeight(rIdx === 0 ? FontWeight.Bold : FontWeight.Regular)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 .textAlign(this.textAlignFor(b.tableAligns[cIdx] || 'l'))
