@@ -20,6 +20,7 @@
     { "name": "common_processing", "value": "处理中…" },
     { "name": "common_copy_success", "value": "链接已复制" },
     { "name": "common_copy_failed", "value": "复制失败" },
+    { "name": "common_open_failed", "value": "打开失败" },
     { "name": "common_load_failed", "value": "加载失败：%1$s" },
     { "name": "common_no_title", "value": "(无标题)" },
 
@@ -156,6 +157,7 @@
     { "name": "annotation_comment_add", "value": "+ 评论" },
     { "name": "annotation_empty_hint", "value": "长按页面文字创建高亮" },
     { "name": "annotation_copy_link", "value": "复制链接" },
+    { "name": "annotation_summary_label", "value": "摘要" },
 
     { "name": "lock_title", "value": "已锁定" },
     { "name": "lock_use_biometric", "value": "使用生物识别" },

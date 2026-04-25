@@ -15,6 +15,7 @@
     { "name": "common_processing", "value": "Processing…" },
     { "name": "common_copy_success", "value": "Link copied" },
     { "name": "common_copy_failed", "value": "Copy failed" },
+    { "name": "common_open_failed", "value": "Failed to open" },
     { "name": "common_load_failed", "value": "Load failed: %1$s" },
     { "name": "common_no_title", "value": "(untitled)" },
 
@@ -151,6 +152,7 @@
     { "name": "annotation_comment_add", "value": "+ Comment" },
     { "name": "annotation_empty_hint", "value": "Long-press text to create a highlight" },
     { "name": "annotation_copy_link", "value": "Copy Link" },
+    { "name": "annotation_summary_label", "value": "Summary" },
 
     { "name": "lock_title", "value": "Locked" },
     { "name": "lock_use_biometric", "value": "Use Biometric" },

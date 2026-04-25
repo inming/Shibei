@@ -1,7 +1,7 @@
 import { webview } from '@kit.ArkWeb';
 import { router } from '@kit.ArkUI';
 import { promptAction } from '@kit.ArkUI';
-import { common } from '@kit.AbilityKit';
+import { common, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { ShibeiService, Resource, Comment } from '../services/ShibeiService';
@@ -423,6 +423,41 @@ struct Reader {
     }
   }
 
+  // Implicit Want → system default browser. Errors surface as a toast so
+  // the user knows the tap registered (silent failures look like a UI
+  // bug). Used by the AnnotationPanel MetaRow's URL single-tap.
+  private openUrlExternal(url: string): void {
+    if (!url) return;
+    const ctx = getContext(this) as common.UIAbilityContext;
+    const want: Want = {
+      action: 'ohos.want.action.viewData',
+      uri: url,
+    };
+    ctx.startAbility(want).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'startAbility(viewData) fail: %{public}s', err.message);
+      promptAction.showToast({
+        message: I18n.t($r('app.string.common_open_failed')),
+      });
+    });
+  }
+
+  // Long-press URL → copy. Reuses common_copy_success which currently
+  // reads "链接已复制" — semantically fine for any link string.
+  private copyUrlToClipboard(url: string): void {
+    if (!url) return;
+    const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, url);
+    pasteboard.getSystemPasteboard().setData(data).then(() => {
+      promptAction.showToast({
+        message: I18n.t($r('app.string.common_copy_success')),
+      });
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'copy url fail: %{public}s', err.message);
+      promptAction.showToast({
+        message: I18n.t($r('app.string.common_copy_failed')),
+      });
+    });
+  }
+
   private copyHighlightLink(id: string): void {
     if (!this.resource) return;
     const url = `shibei://open/resource/${this.resource.id}?highlight=${id}`;
@@ -506,6 +541,7 @@ struct Reader {
           // We put AnnotationPanel first (drawer) and the top-bar+Web column second.
           AnnotationPanel({
             bundle: this.bundle,
+            resource: this.resource,
             focusedHighlightId: this.focusedHighlightId,
             onTapHighlight: (id: string) => {
               // Auto-close the drawer on folded / overlay layouts — user
@@ -538,6 +574,8 @@ struct Reader {
               this.commentDialogDraft = c.content;
               this.commentDialogOpen = true;
             },
+            onOpenUrl: (url: string) => this.openUrlExternal(url),
+            onCopyUrl: (url: string) => this.copyUrlToClipboard(url),
             onDeleteComment: (id: string) => {
               if (!this.resource) {
                 return;
