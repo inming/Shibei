@@ -63,6 +63,15 @@
   opacity: 0.35;
 }
 
+.highlightFlash {
+  animation: pdfHighlightFlash 0.8s ease-out;
+}
+
+@keyframes pdfHighlightFlash {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.75; box-shadow: 0 0 0 2px rgba(255, 235, 59, 0.6); }
+}
+
 [data-theme="dark"] .pageContainer {
   background: var(--bg-primary);
 }

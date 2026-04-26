@@ -248,6 +248,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
   ) {
     const { t } = useTranslation('annotation');
     const [showInput, setShowInput] = useState(false);
+    const [flashing, setFlashing] = useState(false);
     const [commentText, setCommentText] = useState("");
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editText, setEditText] = useState("");
@@ -290,12 +291,18 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
       setPreviewingNew(false);
     }
 
+    function handleClick() {
+      setFlashing(true);
+      setTimeout(() => setFlashing(false), 300);
+      onClick();
+    }
+
     return (
       <div
         ref={ref}
-        className={`${styles.highlightItem} ${isActive ? styles.highlightItemActive : ""} ${isFailed ? styles.highlightItemFailed : ""}`}
+        className={`${styles.highlightItem} ${flashing ? styles.highlightItemFlash : ""} ${isActive ? styles.highlightItemActive : ""} ${isFailed ? styles.highlightItemFailed : ""}`}
         style={{ borderLeftColor: isFailed ? "var(--color-text-muted)" : highlight.color }}
-        onClick={onClick}
+        onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
         <div className={styles.highlightText}>{highlight.text_content}</div>

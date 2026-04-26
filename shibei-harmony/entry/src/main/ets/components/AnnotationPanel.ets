@@ -36,6 +36,7 @@ export struct AnnotationPanel {
   // the border opacity — 0.3 during off-beat, 1.0 otherwise.
   @State flashingHighlightId: string = '';
   @State flashGeneration: number = 0;
+  @State activeHighlightId: string = '';
   // Summary text shown at the top of the scroll body. Populated from
   // `resource.description` when the user has manually written one;
   // otherwise lazily filled with the first 200 chars of plain_text via
@@ -128,12 +129,16 @@ export struct AnnotationPanel {
       await new Promise<void>((r) => setTimeout(r, 250));
       if (this.flashGeneration !== gen) return;
     }
+    this.activeHighlightId = id;
   }
   // @Watch target — fires each time focusedHighlightId mutates (including
   // repeated taps thanks to the ts: prefix in Reader).
   onFocusedChanged(): void {
     const id = this.parseFocusId(this.focusedHighlightId);
     if (!id) return;
+    if (this.activeHighlightId !== id) {
+      this.activeHighlightId = '';
+    }
     const idx = this.bundle.highlights.findIndex((h: Highlight) => h.id === id);
     if (idx < 0) return;
     // Scroll the target card into view. List.scrollToIndex would be cleaner
@@ -423,10 +428,12 @@ export struct AnnotationPanel {
     // wraps the state change so every toggle reads as a smooth throb.
     .backgroundColor(this.flashingHighlightId === h.id
       ? `${h.color}22`
+      : this.activeHighlightId === h.id
+      ? $r('app.color.annotation_active_bg')
       : $r('sys.color.ohos_id_color_component_normal'))
     .borderRadius(6)
     .border({
-      width: { left: this.flashingHighlightId === h.id ? 6 : 3 },
+      width: { left: this.flashingHighlightId === h.id ? 6 : this.activeHighlightId === h.id ? 4 : 3 },
       color: { left: h.color },
     })
     .animation({ duration: 250, curve: Curve.EaseInOut })

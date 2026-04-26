@@ -19,6 +19,8 @@
     { "name": "accent_danger", "value": "#D33333" },
     { "name": "accent_error_strong", "value": "#CC0000" },
 
+    { "name": "annotation_active_bg", "value": "#DBEAFE" },
+
     { "name": "border_divider", "value": "#EEEEEE" },
     { "name": "shadow_default", "value": "#40000000" },
     { "name": "surface_tap_invisible", "value": "#01000000" }

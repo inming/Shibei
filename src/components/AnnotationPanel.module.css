@@ -38,6 +38,15 @@
   background: var(--color-bg-hover);
 }
 
+.highlightItemFlash {
+  animation: highlightCardFlash 0.3s ease-in-out;
+}
+
+@keyframes highlightCardFlash {
+  0% { background: var(--color-bg-active); transform: scale(1.02); }
+  100% { background: var(--color-bg-active); transform: scale(1); }
+}
+
 .highlightItemActive {
   background: var(--color-bg-active);
 }

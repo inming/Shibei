@@ -18,7 +18,7 @@
     }
     @keyframes shibei-flash-anim {
       0%, 100% { filter: brightness(1); }
-      50% { filter: brightness(0.7); }
+      50% { filter: brightness(0.6); }
     }
     ::-webkit-scrollbar { width: 8px !important; height: 8px !important; }
     ::-webkit-scrollbar-track { background: transparent !important; }
@@ -447,7 +447,7 @@
             return;
         el.scrollIntoView({ behavior: "smooth", block: "center" });
         el.classList.add("shibei-flash");
-        setTimeout(() => el.classList.remove("shibei-flash"), 700);
+        setTimeout(() => el.classList.remove("shibei-flash"), 800);
     }
     // ── Selection detection ──
     // Only notify parent when selection is cleared (e.g. click away).

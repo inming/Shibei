@@ -270,7 +270,11 @@ export function PDFReader({
           if (hl.id === curActiveId) {
             div.style.outline = "2px solid var(--accent-color)";
           }
-          div.addEventListener("click", () => onHighlightClick(hl.id));
+          div.addEventListener("click", () => {
+            div.classList.add(styles.highlightFlash);
+            setTimeout(() => div.classList.remove(styles.highlightFlash), 800);
+            onHighlightClick(hl.id);
+          });
           pageDiv.appendChild(div);
         }
       }
@@ -624,6 +628,8 @@ export function PDFReader({
       ) as HTMLElement | null;
       if (hlDiv) {
         hlDiv.scrollIntoView({ behavior: "smooth", block: "center" });
+        hlDiv.classList.add(styles.highlightFlash);
+        setTimeout(() => hlDiv.classList.remove(styles.highlightFlash), 800);
       } else {
         pageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
       }

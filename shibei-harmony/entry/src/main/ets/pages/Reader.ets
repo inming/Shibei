@@ -549,6 +549,9 @@ struct Reader {
               // the drawer open covers the page they just navigated to.
               this.setPanelOpen(false);
               this.flashHighlight(id);
+              // Trigger panel-side flash+persist so the card stays highlighted
+              // when the drawer is reopened later.
+              this.focusedHighlightId = `${Date.now()}:${id}`;
             },
             onDeleteHighlight: (id: string) => this.deleteHighlight(id),
             onChangeHighlightColor: (id: string, color: string) =>
