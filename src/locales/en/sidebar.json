@@ -20,6 +20,8 @@
 
   "tags": "Tags",
   "tagsSubtitle": "Filter by attribute",
+  "filterTags": "Filter",
+  "searchTags": "Search tags...",
   "noTags": "No tags",
   "createTagFailed": "Failed to create tag",
   "updateTagFailed": "Failed to update tag",

@@ -162,36 +162,66 @@ pub fn list_resources_by_folder(
     sort_by: SortBy,
     sort_order: SortOrder,
     tag_ids: &[String],
+    filter_tag_ids: &[String],
 ) -> Result<Vec<Resource>, DbError> {
     let order_dir = match sort_order {
         SortOrder::Asc => "ASC",
         SortOrder::Desc => "DESC",
     };
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    // ?1 is folder_id
+    params_vec.push(Box::new(folder_id.to_string()));
+    let mut param_idx: usize = 2;
 
     let tag_filter = if tag_ids.is_empty() {
         String::new()
     } else {
-        let placeholders: Vec<String> = tag_ids
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("?{}", i + 2)) // +2 because ?1 is folder_id
+        let placeholders: Vec<String> = (0..tag_ids.len())
+            .map(|i| format!("?{}", param_idx + i))
             .collect();
-        format!(
+        let s = format!(
             " AND EXISTS (SELECT 1 FROM resource_tags rt WHERE rt.resource_id = {} AND rt.tag_id IN ({}) AND rt.deleted_at IS NULL)",
-            match sort_by {
-                SortBy::CreatedAt => "resources.id",
-                SortBy::AnnotatedAt => "r.id",
-            },
+            if matches!(sort_by, SortBy::AnnotatedAt) { "r.id" } else { "resources.id" },
             placeholders.join(", ")
-        )
+        );
+        param_idx += tag_ids.len();
+        s
     };
+    for tag_id in tag_ids {
+        params_vec.push(Box::new(tag_id.clone()));
+    }
+
+    // AND filter (INTERSECT)
+    let and_filter = if filter_tag_ids.is_empty() {
+        String::new()
+    } else {
+        let alias = if matches!(sort_by, SortBy::AnnotatedAt) { "r" } else { "resources" };
+        let mut parts: Vec<String> = Vec::with_capacity(filter_tag_ids.len());
+        for (i, _) in filter_tag_ids.iter().enumerate() {
+            parts.push(format!(
+                "SELECT resource_id FROM resource_tags WHERE tag_id = ?{} AND deleted_at IS NULL",
+                param_idx + i
+            ));
+        }
+        let s = format!(
+            " AND {}.id IN ({})",
+            alias,
+            parts.join(" INTERSECT ")
+        );
+        param_idx += filter_tag_ids.len();
+        s
+    };
+    for tag_id in filter_tag_ids {
+        params_vec.push(Box::new(tag_id.clone()));
+    }
+    let _ = param_idx;
 
     let sql = match sort_by {
         SortBy::CreatedAt => format!(
             "SELECT id, title, url, domain, author, description, folder_id, \
              resource_type, file_path, created_at, captured_at, selection_meta \
-             FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL{} ORDER BY created_at {}",
-            tag_filter, order_dir
+             FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL{}{} ORDER BY created_at {}",
+            tag_filter, and_filter, order_dir
         ),
         SortBy::AnnotatedAt => format!(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
@@ -203,17 +233,12 @@ pub fn list_resources_by_folder(
                  SELECT resource_id, created_at FROM comments WHERE deleted_at IS NULL\
                ) GROUP BY resource_id\
              ) a ON r.id = a.resource_id \
-             WHERE r.folder_id = ?1 AND r.deleted_at IS NULL{} \
+             WHERE r.folder_id = ?1 AND r.deleted_at IS NULL{}{} \
              ORDER BY COALESCE(a.last_at, r.created_at) {}",
-            tag_filter, order_dir
+            tag_filter, and_filter, order_dir
         ),
     };
 
-    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> =
-        vec![Box::new(folder_id.to_string())];
-    for tag_id in tag_ids {
-        params_vec.push(Box::new(tag_id.clone()));
-    }
     let param_refs: Vec<&dyn rusqlite::types::ToSql> =
         params_vec.iter().map(|p| p.as_ref()).collect();
 
@@ -244,36 +269,63 @@ pub fn list_all_resources(
     sort_by: SortBy,
     sort_order: SortOrder,
     tag_ids: &[String],
+    filter_tag_ids: &[String],
 ) -> Result<Vec<Resource>, DbError> {
     let order_dir = match sort_order {
         SortOrder::Asc => "ASC",
         SortOrder::Desc => "DESC",
     };
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    let mut param_idx: usize = 1;
 
     let tag_filter = if tag_ids.is_empty() {
         String::new()
     } else {
-        let placeholders: Vec<String> = tag_ids
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("?{}", i + 1)) // starts from ?1 (no folder_id)
+        let placeholders: Vec<String> = (0..tag_ids.len())
+            .map(|i| format!("?{}", param_idx + i))
             .collect();
-        format!(
+        let s = format!(
             " AND EXISTS (SELECT 1 FROM resource_tags rt WHERE rt.resource_id = {} AND rt.tag_id IN ({}) AND rt.deleted_at IS NULL)",
-            match sort_by {
-                SortBy::CreatedAt => "resources.id",
-                SortBy::AnnotatedAt => "r.id",
-            },
+            if matches!(sort_by, SortBy::AnnotatedAt) { "r.id" } else { "resources.id" },
             placeholders.join(", ")
-        )
+        );
+        param_idx += tag_ids.len();
+        s
     };
+    for tag_id in tag_ids {
+        params_vec.push(Box::new(tag_id.clone()));
+    }
+
+    let and_filter = if filter_tag_ids.is_empty() {
+        String::new()
+    } else {
+        let alias = if matches!(sort_by, SortBy::AnnotatedAt) { "r" } else { "resources" };
+        let mut parts: Vec<String> = Vec::with_capacity(filter_tag_ids.len());
+        for (i, _) in filter_tag_ids.iter().enumerate() {
+            parts.push(format!(
+                "SELECT resource_id FROM resource_tags WHERE tag_id = ?{} AND deleted_at IS NULL",
+                param_idx + i
+            ));
+        }
+        let s = format!(
+            " AND {}.id IN ({})",
+            alias,
+            parts.join(" INTERSECT ")
+        );
+        param_idx += filter_tag_ids.len();
+        s
+    };
+    for tag_id in filter_tag_ids {
+        params_vec.push(Box::new(tag_id.clone()));
+    }
+    let _ = param_idx;
 
     let sql = match sort_by {
         SortBy::CreatedAt => format!(
             "SELECT id, title, url, domain, author, description, folder_id, \
              resource_type, file_path, created_at, captured_at, selection_meta \
-             FROM resources WHERE deleted_at IS NULL{} ORDER BY created_at {}",
-            tag_filter, order_dir
+             FROM resources WHERE deleted_at IS NULL{}{} ORDER BY created_at {}",
+            tag_filter, and_filter, order_dir
         ),
         SortBy::AnnotatedAt => format!(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
@@ -285,16 +337,12 @@ pub fn list_all_resources(
                  SELECT resource_id, created_at FROM comments WHERE deleted_at IS NULL\
                ) GROUP BY resource_id\
              ) a ON r.id = a.resource_id \
-             WHERE r.deleted_at IS NULL{} \
+             WHERE r.deleted_at IS NULL{}{} \
              ORDER BY COALESCE(a.last_at, r.created_at) {}",
-            tag_filter, order_dir
+            tag_filter, and_filter, order_dir
         ),
     };
 
-    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-    for tag_id in tag_ids {
-        params_vec.push(Box::new(tag_id.clone()));
-    }
     let param_refs: Vec<&dyn rusqlite::types::ToSql> =
         params_vec.iter().map(|p| p.as_ref()).collect();
 
@@ -803,7 +851,7 @@ mod tests {
         create_test_resource(&conn, &folder.id);
         create_test_resource(&conn, &folder.id);
 
-        let resources = list_resources_by_folder(&conn, &folder.id, SortBy::CreatedAt, SortOrder::Desc, &[]).unwrap();
+        let resources = list_resources_by_folder(&conn, &folder.id, SortBy::CreatedAt, SortOrder::Desc, &[], &[]).unwrap();
         assert_eq!(resources.len(), 2);
     }
 
@@ -816,19 +864,19 @@ mod tests {
         create_test_resource(&conn, &f2.id);
         create_test_resource(&conn, &f1.id);
 
-        let all = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc, &[]).unwrap();
+        let all = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc, &[], &[]).unwrap();
         assert_eq!(all.len(), 3);
 
         // Soft-deleted resources should be excluded
         delete_resource(&conn, &all[0].id, None).unwrap();
-        let all_after = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc, &[]).unwrap();
+        let all_after = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc, &[], &[]).unwrap();
         assert_eq!(all_after.len(), 2);
     }
 
     #[test]
     fn test_list_all_resources_empty() {
         let conn = test_db();
-        let all = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc, &[]).unwrap();
+        let all = list_all_resources(&conn, SortBy::CreatedAt, SortOrder::Desc, &[], &[]).unwrap();
         assert!(all.is_empty());
     }
 
@@ -897,7 +945,7 @@ mod tests {
         let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &folder.id);
         delete_resource(&conn, &resource.id, None).unwrap();
-        let resources = list_resources_by_folder(&conn, &folder.id, SortBy::CreatedAt, SortOrder::Desc, &[]).unwrap();
+        let resources = list_resources_by_folder(&conn, &folder.id, SortBy::CreatedAt, SortOrder::Desc, &[], &[]).unwrap();
         assert!(resources.is_empty());
         let deleted_at: Option<String> = conn
             .query_row("SELECT deleted_at FROM resources WHERE id = ?1", params![resource.id], |row| row.get(0))

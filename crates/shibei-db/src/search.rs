@@ -172,6 +172,7 @@ pub fn search_resources(
     query: &str,
     folder_id: Option<&str>,
     tag_ids: &[String],
+    filter_tag_ids: &[String],
     sort_by: &str,
     sort_order: &str,
 ) -> Result<Vec<SearchResult>, DbError> {
@@ -245,6 +246,26 @@ pub fn search_resources(
             placeholders.join(", ")
         ));
         for tag_id in tag_ids {
+            param_values.push(Box::new(tag_id.clone()));
+        }
+    }
+
+    // AND filter: resource must have ALL filter_tag_ids (INTERSECT)
+    if !filter_tag_ids.is_empty() {
+        let mut parts: Vec<String> = Vec::with_capacity(filter_tag_ids.len());
+        for (_i, _) in filter_tag_ids.iter().enumerate() {
+            let ph = format!("?{}", param_index);
+            param_index += 1;
+            parts.push(format!(
+                "SELECT resource_id FROM resource_tags WHERE tag_id = {} AND deleted_at IS NULL",
+                ph
+            ));
+        }
+        sql.push_str(&format!(
+            " AND r.id IN ({})",
+            parts.join(" INTERSECT ")
+        ));
+        for tag_id in filter_tag_ids {
             param_values.push(Box::new(tag_id.clone()));
         }
     }
@@ -448,7 +469,7 @@ mod tests {
         rebuild_search_index(&conn, &_r2.id).unwrap();
 
         let results =
-            search_resources(&conn, "深度学习", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "深度学习", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r1.id);
     }
@@ -472,7 +493,7 @@ mod tests {
         rebuild_search_index(&conn, &r.id).unwrap();
 
         let results =
-            search_resources(&conn, "高亮文本", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "高亮文本", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r.id);
     }
@@ -488,7 +509,7 @@ mod tests {
         rebuild_search_index(&conn, &r.id).unwrap();
 
         let results =
-            search_resources(&conn, "启发性", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "启发性", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r.id);
     }
@@ -506,7 +527,7 @@ mod tests {
 
         // Without folder filter: both match
         let results =
-            search_resources(&conn, "Rust", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Rust", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 2);
 
         // With folder filter: only one matches
@@ -514,7 +535,7 @@ mod tests {
             &conn,
             "Rust",
             Some(&f1.id),
-            &[],
+            &[], &[],
             "created_at",
             "desc",
         )
@@ -538,7 +559,7 @@ mod tests {
 
         // Without tag filter: both match
         let results =
-            search_resources(&conn, "Article", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Article", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 2);
 
         // With tag filter: only tagged one matches
@@ -547,6 +568,7 @@ mod tests {
             "Article",
             None,
             &[tag.id.clone()],
+            &[],
             "created_at",
             "desc",
         )
@@ -564,13 +586,13 @@ mod tests {
         rebuild_search_index(&conn, &r.id).unwrap();
 
         let results =
-            search_resources(&conn, "Deleted", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Deleted", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
 
         delete_search_index(&conn, &r.id).unwrap();
 
         let results =
-            search_resources(&conn, "Deleted", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Deleted", None, &[], &[], "created_at", "desc").unwrap();
         assert!(results.is_empty());
 
         // Idempotent: second delete should not error
@@ -588,20 +610,20 @@ mod tests {
         rebuild_all_search_index(&conn).unwrap();
 
         let results =
-            search_resources(&conn, "Article", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Article", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 3);
 
         // Verify individual resources are searchable
-        let results = search_resources(&conn, "First", None, &[], "created_at", "desc").unwrap();
+        let results = search_resources(&conn, "First", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r1.id);
 
         let results =
-            search_resources(&conn, "Second", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Second", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r2.id);
 
-        let results = search_resources(&conn, "Third", None, &[], "created_at", "desc").unwrap();
+        let results = search_resources(&conn, "Third", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r3.id);
     }
@@ -616,7 +638,7 @@ mod tests {
 
         // FTS5 operators AND/OR should be escaped by quoting
         let results =
-            search_resources(&conn, "AND Rust OR", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "AND Rust OR", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r.id);
     }
@@ -632,16 +654,16 @@ mod tests {
         rebuild_search_index(&conn, &r2.id).unwrap();
 
         // 2-char Chinese query should work via LIKE fallback
-        let results = search_resources(&conn, "算法", None, &[], "created_at", "desc").unwrap();
+        let results = search_resources(&conn, "算法", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r1.id);
 
         // Single char should also work
-        let results = search_resources(&conn, "算", None, &[], "created_at", "desc").unwrap();
+        let results = search_resources(&conn, "算", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
 
         // No match
-        let results = search_resources(&conn, "AI", None, &[], "created_at", "desc").unwrap();
+        let results = search_resources(&conn, "AI", None, &[], &[], "created_at", "desc").unwrap();
         assert!(results.is_empty());
     }
 
@@ -668,7 +690,7 @@ mod tests {
         resources::set_plain_text(&conn, &r.id, "这篇文章详细介绍了量子计算的基本原理").unwrap();
         rebuild_search_index(&conn, &r.id).unwrap();
         let results =
-            search_resources(&conn, "量子计算", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "量子计算", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r.id);
     }
@@ -680,7 +702,7 @@ mod tests {
         let r = setup_resource(&conn, &folder.id, "Article Without Body", "https://a.com");
         rebuild_search_index(&conn, &r.id).unwrap();
         let results =
-            search_resources(&conn, "Without Body", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Without Body", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].resource.id, r.id);
     }
@@ -693,7 +715,7 @@ mod tests {
         resources::set_plain_text(&conn, &r.id, "深度学习神经网络反向传播算法").unwrap();
         rebuild_search_index(&conn, &r.id).unwrap();
         let results =
-            search_resources(&conn, "反向传播", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "反向传播", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].matched_body);
     }
@@ -706,7 +728,7 @@ mod tests {
         resources::set_plain_text(&conn, &r.id, "本文介绍量子计算的基础知识").unwrap();
         rebuild_search_index(&conn, &r.id).unwrap();
         let results =
-            search_resources(&conn, "量子计算", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "量子计算", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert!(!results[0].matched_body);
     }
@@ -758,7 +780,7 @@ mod tests {
         rebuild_search_index(&conn, &r.id).unwrap();
 
         let results =
-            search_resources(&conn, "Rust编程", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Rust编程", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].match_fields.contains(&"body".to_string()));
         assert!(results[0].snippet.is_some());
@@ -773,7 +795,7 @@ mod tests {
         rebuild_search_index(&conn, &r.id).unwrap();
 
         let results =
-            search_resources(&conn, "Rust入门", None, &[], "created_at", "desc").unwrap();
+            search_resources(&conn, "Rust入门", None, &[], &[], "created_at", "desc").unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].match_fields.contains(&"title".to_string()));
         assert!(!results[0].matched_body);

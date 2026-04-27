@@ -165,6 +165,7 @@ pub async fn cmd_list_resources(
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
     tag_ids: Vec<String>,
+    filter_tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
     let conn = state.conn()?;
     resources::list_resources_by_folder(
@@ -173,6 +174,7 @@ pub async fn cmd_list_resources(
         sort_by.unwrap_or(resources::SortBy::CreatedAt),
         sort_order.unwrap_or(resources::SortOrder::Desc),
         &tag_ids,
+        &filter_tag_ids,
     )
     .map_err(Into::into)
 }
@@ -236,6 +238,7 @@ pub async fn cmd_list_all_resources(
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
     tag_ids: Vec<String>,
+    filter_tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
     let conn = state.conn()?;
     resources::list_all_resources(
@@ -243,6 +246,7 @@ pub async fn cmd_list_all_resources(
         sort_by.unwrap_or(resources::SortBy::CreatedAt),
         sort_order.unwrap_or(resources::SortOrder::Desc),
         &tag_ids,
+        &filter_tag_ids,
     )
     .map_err(Into::into)
 }
@@ -255,6 +259,15 @@ pub async fn cmd_list_tags(
 ) -> Result<Vec<tags::Tag>, CommandError> {
     let conn = state.conn()?;
     tags::list_tags(&conn).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_list_tags_in_folder(
+    state: tauri::State<'_, Arc<AppState>>,
+    folder_id: Option<String>,
+) -> Result<Vec<tags::TagWithCount>, CommandError> {
+    let conn = state.conn()?;
+    tags::list_tags_in_folder(&conn, folder_id.as_deref()).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -360,6 +373,7 @@ pub async fn cmd_search_resources(
     query: String,
     folder_id: Option<String>,
     tag_ids: Vec<String>,
+    filter_tag_ids: Vec<String>,
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
 ) -> Result<Vec<db::search::SearchResult>, CommandError> {
@@ -377,6 +391,7 @@ pub async fn cmd_search_resources(
         &query,
         folder_id.as_deref(),
         &tag_ids,
+        &filter_tag_ids,
         sort_by_str,
         sort_order_str,
     )

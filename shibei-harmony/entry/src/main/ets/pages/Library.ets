@@ -5,6 +5,7 @@ import { ShibeiService, ShibeiError } from '../services/ShibeiService';
 import { I18n } from '../services/I18n';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
 import { ResourceList } from '../components/ResourceList';
+import { FilterChipsRow } from '../components/FilterChipsRow';
 import { KEY_FOLD_STATUS, KEY_PENDING_DEEP_LINK } from '../app/AppStorageKeys';
 import { FoldStatus } from '../app/FoldObserver';
 import { SessionState, SessionLibrary } from '../app/SessionState';
@@ -29,6 +30,7 @@ struct Library {
   // the first view anymore.
   @State selectedFolderId: string = '__all__';
   @State selectedFolderLabel: string = '';
+  @State selectedTagIds: string[] = [];
   // Kept in sync with FoldObserver; updates here trigger an automatic
   // re-layout between Embed / Overlay without reopening the page.
   @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
@@ -80,6 +82,9 @@ struct Library {
       if (state.library.selectedFolderId) {
         this.selectedFolderId = state.library.selectedFolderId;
         this.syncFolderLabel(state.library.selectedFolderId);
+      }
+      if (state.library.selectedTagIds && state.library.selectedTagIds.length > 0) {
+        this.selectedTagIds = [...state.library.selectedTagIds];
       }
       if (!this.restoredOnce && state.inReader && state.readerResourceId) {
         // Verify the resource still exists before pushing.
@@ -213,6 +218,7 @@ struct Library {
 
   private onFolderPick(id: string): void {
     this.selectedFolderId = id;
+    this.selectedTagIds = [];
     this.syncFolderLabel(id);
     const ctx = getContext(this) as common.UIAbilityContext;
     const lib: SessionLibrary = {
@@ -315,8 +321,14 @@ struct Library {
               .padding({ left: 4, right: 4, top: 4, bottom: 4 })
               .backgroundColor($r('sys.color.ohos_id_color_background'));
 
+              FilterChipsRow({
+                filterTagIds: $selectedTagIds,
+                folderId: this.selectedFolderId,
+              });
+
               ResourceList({
                 folderId: this.selectedFolderId,
+                tagIds: this.selectedTagIds,
                 onOpenResource: (id: string) => this.onOpenResource(id),
               });
 

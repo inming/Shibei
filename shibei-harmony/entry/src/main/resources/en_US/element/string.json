@@ -186,6 +186,9 @@
     { "name": "sidebar_folders_label", "value": "Folders" },
     { "name": "sidebar_sync_skipped", "value": "Sync skipped" },
     { "name": "sidebar_sync_failed", "value": "Sync failed: %1$s" },
+    { "name": "sidebar_filter_tags", "value": "Filter" },
+    { "name": "sidebar_search_tags", "value": "Search tags..." },
+    { "name": "sidebar_no_tags", "value": "No tags" },
 
     { "name": "resource_list_empty", "value": "No items in this folder" },
     { "name": "resource_list_empty_hint", "value": "(Items will appear after sync)" },

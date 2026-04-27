@@ -262,6 +262,7 @@ pub fn run() {
             commands::cmd_update_resource,
             commands::cmd_list_all_resources,
             commands::cmd_list_tags,
+            commands::cmd_list_tags_in_folder,
             commands::cmd_create_tag,
             commands::cmd_delete_tag,
             commands::cmd_get_tags_for_resource,

@@ -767,6 +767,7 @@ async fn handle_list_resources(
                 query,
                 q.folder_id.as_deref(),
                 &tag_ids,
+                &[],
                 sort_by_str,
                 sort_order_str,
             )
@@ -777,10 +778,10 @@ async fn handle_list_resources(
     }
 
     let results = if let Some(ref folder_id) = q.folder_id {
-        resources::list_resources_by_folder(&conn, folder_id, sort_by, sort_order, &tag_ids)
+        resources::list_resources_by_folder(&conn, folder_id, sort_by, sort_order, &tag_ids, &[])
             .map_err(map_db_error)?
     } else {
-        resources::list_all_resources(&conn, sort_by, sort_order, &tag_ids)
+        resources::list_all_resources(&conn, sort_by, sort_order, &tag_ids, &[])
             .map_err(map_db_error)?
     };
 

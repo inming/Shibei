@@ -191,6 +191,21 @@ $HVIGOR assembleHap --no-daemon 2>&1 | tee /tmp/harmony-build.log
 - 缺 `JAVA_HOME` → `Unable to locate a Java Runtime`，在 `PackageHap` 阶段失败（编译已过，仅打包不出 .hap）
 - 缺 `DEVECO_SDK_HOME` → `Invalid value of 'DEVECO_SDK_HOME'`，clean 都跑不动
 
+**Native .so 更新**（修改 Rust/NAPI 命令后必须在 assembleHap 前执行）：
+
+```bash
+export OHOS_NDK_HOME=$DEVECO_SDK_HOME/default/openharmony/native
+export PATH="$OHOS_NDK_HOME/llvm/bin:$PATH"
+export CC_aarch64_unknown_linux_ohos="aarch64-unknown-linux-ohos-clang"
+
+# 全量重新编译（rm target 强制重编，避免增量缓存导致符号丢失）
+rm -rf target/aarch64-unknown-linux-ohos
+scripts/build-harmony-napi.sh release
+```
+- `assembHap` 的 `BuildNativeWithCmake/Ninja` 步**只做 cmake wrapper，不触达 Rust 编译**；真正的 native .so 由上述脚本产出并拷贝到 `shibei-harmony/entry/libs/arm64-v8a/libshibei_core.so`
+- cmake/ninja 步 `Finished after 1 ms` 是正常现象（`.so` 已在 libs/ 下，无需重编）
+- NAPI 函数签名变更后必须 rebuild native .so，否则 ArkTS 侧 `import ... from 'libshibei_core.so'` 会报 `does not provide an export name`
+
 **编译错误（不需要再读 IDE 截图）**：
 - 全量结构化 log：`shibei-harmony/.hvigor/report/report-<YYYYMMDDHHMMSSss>.json`，取 mtime 最新一份
 - 解析：`events[].head.name` 含 `"ArkTS Compiler Error"` 或 `additional.logType == "error"` 的条目里有完整错误（带 ANSI 颜色码 `\x1b[31m` / `\x1b[39m`，strip 即可）

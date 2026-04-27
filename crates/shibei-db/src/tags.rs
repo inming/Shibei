@@ -350,6 +350,66 @@ pub fn get_resources_by_tag(
     Ok(resources)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TagWithCount {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub count: usize,
+}
+
+/// List tags present in a specific folder (or all resources when folder_id is None),
+/// each with the count of matching resources.
+pub fn list_tags_in_folder(
+    conn: &Connection,
+    folder_id: Option<&str>,
+) -> Result<Vec<TagWithCount>, DbError> {
+    if let Some(fid) = folder_id {
+        let mut stmt = conn.prepare(
+            "SELECT t.id, t.name, t.color, COUNT(DISTINCT r.id) as count
+             FROM tags t
+             JOIN resource_tags rt ON t.id = rt.tag_id
+             JOIN resources r ON r.id = rt.resource_id
+             WHERE r.folder_id = ?1
+               AND t.deleted_at IS NULL
+               AND rt.deleted_at IS NULL
+               AND r.deleted_at IS NULL
+             GROUP BY t.id
+             ORDER BY t.name",
+        )?;
+        let rows = stmt.query_map(params![fid], |row| {
+            Ok(TagWithCount {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                color: row.get(2)?,
+                count: row.get::<_, i64>(3)? as usize,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT t.id, t.name, t.color, COUNT(DISTINCT r.id) as count
+             FROM tags t
+             JOIN resource_tags rt ON t.id = rt.tag_id
+             JOIN resources r ON r.id = rt.resource_id
+             WHERE t.deleted_at IS NULL
+               AND rt.deleted_at IS NULL
+               AND r.deleted_at IS NULL
+             GROUP BY t.id
+             ORDER BY t.name",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(TagWithCount {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                color: row.get(2)?,
+                count: row.get::<_, i64>(3)? as usize,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,5 +530,68 @@ mod tests {
 
         let tags = get_tags_for_resource(&conn, &resource.id).unwrap();
         assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_list_tags_in_folder() {
+        let conn = test_db();
+
+        let folder1 = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let folder2 = folders::create_folder(&conn, "work", "__root__", None).unwrap();
+
+        let r1 = resources::create_resource(
+            &conn,
+            resources::CreateResourceInput {
+                id: None,
+                title: "r1".to_string(),
+                url: "https://a.com".to_string(),
+                domain: None, author: None, description: None,
+                folder_id: folder1.id.clone(),
+                resource_type: "webpage".to_string(),
+                file_path: "x".to_string(),
+                captured_at: "2026-01-01".to_string(),
+                selection_meta: None,
+            },
+            None,
+        ).unwrap();
+
+        let r2 = resources::create_resource(
+            &conn,
+            resources::CreateResourceInput {
+                id: None,
+                title: "r2".to_string(),
+                url: "https://b.com".to_string(),
+                domain: None, author: None, description: None,
+                folder_id: folder2.id.clone(),
+                resource_type: "webpage".to_string(),
+                file_path: "y".to_string(),
+                captured_at: "2026-01-01".to_string(),
+                selection_meta: None,
+            },
+            None,
+        ).unwrap();
+
+        let tag_a = create_tag(&conn, "alpha", "#FF0", None).unwrap();
+        let tag_b = create_tag(&conn, "beta", "#0F0", None).unwrap();
+
+        add_tag_to_resource(&conn, &r1.id, &tag_a.id, None).unwrap();
+        add_tag_to_resource(&conn, &r1.id, &tag_b.id, None).unwrap();
+        add_tag_to_resource(&conn, &r2.id, &tag_b.id, None).unwrap();
+
+        // Only tag_b is in folder2
+        let tags_f2 = list_tags_in_folder(&conn, Some(&folder2.id)).unwrap();
+        assert_eq!(tags_f2.len(), 1);
+        assert_eq!(tags_f2[0].name, "beta");
+        assert_eq!(tags_f2[0].count, 1);
+
+        // Both tags are in folder1
+        let tags_f1 = list_tags_in_folder(&conn, Some(&folder1.id)).unwrap();
+        assert_eq!(tags_f1.len(), 2);
+        assert_eq!(tags_f1[0].name, "alpha");
+        assert_eq!(tags_f1[1].name, "beta");
+
+        // All tags (no folder_id)
+        let tags_all = list_tags_in_folder(&conn, None).unwrap();
+        assert_eq!(tags_all.len(), 2);
     }
 }

@@ -14,7 +14,6 @@ import { loadSessionState, saveSessionState } from "@/lib/sessionState";
 import * as cmd from "@/lib/commands";
 import { useSync } from "@/hooks/useSync";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
-import { TagFilter } from "@/components/Sidebar/TagFilter";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { SyncStatus } from "@/components/SyncStatus";
@@ -48,6 +47,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
   );
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set(initialLibrary.selectedTagIds));
+  const [filterTagIds, setFilterTagIds] = useState<string[]>(initialLibrary.filterTagIds ?? []);
   const listScrollTopRef = useRef<number>(initialLibrary.listScrollTop ?? 0);
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -99,11 +99,12 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
       library: {
         selectedFolderId,
         selectedTagIds: Array.from(selectedTagIds),
+        filterTagIds,
         selectedResourceId: selectedResource?.id ?? null,
         listScrollTop: listScrollTopRef.current,
       },
     });
-  }, [selectedFolderId, selectedTagIds, selectedResource]);
+  }, [selectedFolderId, selectedTagIds, filterTagIds, selectedResource]);
 
   // Called from ResourceList on scroll. Writes directly without going through
   // persistLibrary so we don't trigger re-renders on every scroll event.
@@ -113,6 +114,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
       library: {
         selectedFolderId,
         selectedTagIds: Array.from(selectedTagIds),
+        filterTagIds,
         selectedResourceId: selectedResource?.id ?? null,
         listScrollTop: n,
       },
@@ -371,16 +373,8 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const handleToggleTag = useCallback((tagId: string) => {
-    setSelectedTagIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(tagId)) {
-        next.delete(tagId);
-      } else {
-        next.add(tagId);
-      }
-      return next;
-    });
+  const handleFilterTagsChange = useCallback((ids: string[]) => {
+    setFilterTagIds(ids);
   }, []);
 
   const handleTrashContextMenu = useCallback((e: React.MouseEvent) => {
@@ -424,9 +418,8 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
           <div className={styles.sidebarMain}>
             <FolderTree
               selectedFolderId={selectedFolderId}
-              onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); }}
+              onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); setFilterTagIds([]); }}
             />
-            <TagFilter selectedTagIds={selectedTagIds} onToggleTag={handleToggleTag} />
             <button
               className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
               onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
@@ -472,6 +465,8 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               folderId={selectedFolderId}
               selectedResourceIds={selectedResourceIds}
               selectedTagIds={selectedTagIds}
+              filterTagIds={filterTagIds}
+              onFilterTagsChange={handleFilterTagsChange}
               sortBy={sortBy}
               sortOrder={sortOrder}
               searchQuery={searchQuery}

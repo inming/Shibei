@@ -8,6 +8,7 @@ import { I18n } from '../services/I18n';
 @Component
 export struct ResourceList {
   @Prop @Watch('onFolderChange') folderId: string;
+  @Prop @Watch('onTagIdsChange') tagIds: string[] = [];
   onOpenResource?: (id: string) => void;
   @State resources: Resource[] = [];
   @State loading: boolean = false;
@@ -36,11 +37,15 @@ export struct ResourceList {
     this.reload();
   }
 
+  private onTagIdsChange(): void {
+    this.reload();
+  }
+
   private reload(): void {
     this.loading = true;
     this.error = '';
     try {
-      this.resources = ShibeiService.instance.listResources(this.folderId, [], { by: 'created_at', order: 'desc' });
+      this.resources = ShibeiService.instance.listResources(this.folderId, this.tagIds, [], { by: 'created_at', order: 'desc' });
       this.refreshCachedSet();
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;

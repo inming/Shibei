@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts } from "@/types";
+import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts } from "@/types";
+
+// ── Utility ──
+
+/** Convert virtual folder IDs to backend-compatible values.
+ *  __all__ → null (no folder filter), everything else → pass through. */
+export function normalizeFolderId(id: string): string | null {
+  return id === "__all__" ? null : id;
+}
 
 // ── Folders ──
 
@@ -50,12 +58,14 @@ export function listResources(
   sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
   tagIds?: string[],
+  filterTagIds?: string[],
 ): Promise<Resource[]> {
   return invoke("cmd_list_resources", {
     folderId,
     sortBy: sortBy ?? "created_at",
     sortOrder: sortOrder ?? "desc",
     tagIds: tagIds ?? [],
+    filterTagIds: filterTagIds ?? [],
   });
 }
 
@@ -63,11 +73,13 @@ export function listAllResources(
   sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
   tagIds?: string[],
+  filterTagIds?: string[],
 ): Promise<Resource[]> {
   return invoke("cmd_list_all_resources", {
     sortBy: sortBy ?? "created_at",
     sortOrder: sortOrder ?? "desc",
     tagIds: tagIds ?? [],
+    filterTagIds: filterTagIds ?? [],
   });
 }
 
@@ -75,6 +87,7 @@ export function searchResources(
   query: string,
   folderId: string | null,
   tagIds: string[],
+  filterTagIds: string[],
   sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
 ): Promise<SearchResult[]> {
@@ -82,6 +95,7 @@ export function searchResources(
     query,
     folderId,
     tagIds,
+    filterTagIds: filterTagIds ?? [],
     sortBy: sortBy ?? "created_at",
     sortOrder: sortOrder ?? "desc",
   });
@@ -118,6 +132,10 @@ export async function updateResource(id: string, title: string, description: str
 
 export function listTags(): Promise<Tag[]> {
   return invoke("cmd_list_tags");
+}
+
+export function listTagsInFolder(folderId: string | null): Promise<TagWithCount[]> {
+  return invoke("cmd_list_tags_in_folder", { folderId });
 }
 
 export function createTag(name: string, color: string): Promise<Tag> {

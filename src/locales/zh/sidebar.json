@@ -20,6 +20,8 @@
 
   "tags": "标签",
   "tagsSubtitle": "按属性筛选",
+  "filterTags": "筛选标签",
+  "searchTags": "搜索标签...",
   "noTags": "暂无标签",
   "createTagFailed": "创建标签失败",
   "updateTagFailed": "更新标签失败",

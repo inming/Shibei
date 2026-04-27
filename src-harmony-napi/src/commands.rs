@@ -509,18 +509,20 @@ pub fn list_folders() -> String {
 }
 
 /// `tag_ids_json` — JSON array of tag-id strings ("", "null", "[]" = no filter).
+/// `filter_tag_ids_json` — JSON array of tag-id strings for AND filtering.
 /// `sort_json` — `{"by":"created_at"|"annotated_at","order":"asc"|"desc"}` or "".
 /// Special folder_id `"__all__"` aggregates across every folder.
 #[shibei_napi]
-pub fn list_resources(folder_id: String, tag_ids_json: String, sort_json: String) -> String {
+pub fn list_resources(folder_id: String, tag_ids_json: String, filter_tag_ids_json: String, sort_json: String) -> String {
     use shibei_db::resources::{list_all_resources, list_resources_by_folder};
     let tag_ids = parse_tag_ids(&tag_ids_json);
+    let filter_tag_ids = parse_tag_ids(&filter_tag_ids_json);
     let (sort_by, sort_order) = parse_sort(&sort_json);
     let result = with_conn(|conn| {
         if folder_id == "__all__" {
-            list_all_resources(conn, sort_by, sort_order, &tag_ids)
+            list_all_resources(conn, sort_by, sort_order, &tag_ids, &filter_tag_ids)
         } else {
-            list_resources_by_folder(conn, &folder_id, sort_by, sort_order, &tag_ids)
+            list_resources_by_folder(conn, &folder_id, sort_by, sort_order, &tag_ids, &filter_tag_ids)
         }
     });
     match result {
@@ -533,10 +535,11 @@ pub fn list_resources(folder_id: String, tag_ids_json: String, sort_json: String
 /// queries). Sort hard-coded to `created_at DESC` for Phase 2; mobile UI
 /// doesn't expose sort controls on search results. `[]` on empty query.
 #[shibei_napi]
-pub fn search_resources(query: String, tag_ids_json: String) -> String {
+pub fn search_resources(query: String, tag_ids_json: String, filter_tag_ids_json: String) -> String {
     let tag_ids = parse_tag_ids(&tag_ids_json);
+    let filter_tag_ids = parse_tag_ids(&filter_tag_ids_json);
     let result = with_conn(|conn| {
-        shibei_db::search::search_resources(conn, &query, None, &tag_ids, "created_at", "desc")
+        shibei_db::search::search_resources(conn, &query, None, &tag_ids, &filter_tag_ids, "created_at", "desc")
     });
     match result {
         Ok(list) => to_json(&list),
@@ -547,6 +550,15 @@ pub fn search_resources(query: String, tag_ids_json: String) -> String {
 #[shibei_napi]
 pub fn list_tags() -> String {
     match with_conn(shibei_db::tags::list_tags) {
+        Ok(list) => to_json(&list),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn list_tags_in_folder(folder_id: String) -> String {
+    let fid: Option<&str> = if folder_id.is_empty() || folder_id == "__all__" { None } else { Some(&folder_id) };
+    match with_conn(|conn| shibei_db::tags::list_tags_in_folder(conn, fid)) {
         Ok(list) => to_json(&list),
         Err(e) => format!(r#"{{"error":"{e}"}}"#),
     }

@@ -14,6 +14,7 @@ export interface ReaderTabState {
 export interface LibraryState {
   selectedFolderId: string | null;
   selectedTagIds: string[];
+  filterTagIds: string[];
   selectedResourceId: string | null;
   listScrollTop?: number;
 }
@@ -32,6 +33,7 @@ export const DEFAULT_STATE: SessionState = {
   library: {
     selectedFolderId: "__all__",
     selectedTagIds: [],
+    filterTagIds: [],
     selectedResourceId: null,
   },
 };
@@ -61,6 +63,9 @@ function loadFromStorage(): SessionState {
             : DEFAULT_STATE.library.selectedFolderId,
         selectedTagIds: Array.isArray(parsed.library?.selectedTagIds)
           ? (parsed.library!.selectedTagIds as string[])
+          : [],
+        filterTagIds: Array.isArray(parsed.library?.filterTagIds)
+          ? (parsed.library!.filterTagIds as string[])
           : [],
         selectedResourceId:
           parsed.library && "selectedResourceId" in parsed.library

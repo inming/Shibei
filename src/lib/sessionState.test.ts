@@ -55,7 +55,7 @@ describe("loadSessionState", () => {
       version: 1,
       activeTabId: "r1",
       readerTabs: [{ resourceId: "r1", scrollY: 120 }],
-      library: { selectedFolderId: "__inbox__", selectedTagIds: ["t1"], selectedResourceId: "r1" },
+      library: { selectedFolderId: "__inbox__", selectedTagIds: ["t1"], filterTagIds: [], selectedResourceId: "r1" },
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     expect(loadSessionState()).toEqual(state);
@@ -89,6 +89,7 @@ describe("saveSessionState", () => {
       library: {
         selectedFolderId: "f1",
         selectedTagIds: ["t1", "t2"],
+        filterTagIds: [],
         selectedResourceId: "r1",
       },
     });
@@ -183,7 +184,7 @@ describe("pdfZoom persistence", () => {
       version: 1,
       activeTabId: "r1",
       readerTabs: [{ resourceId: "r1", pdfZoom: 1.5 }],
-      library: { selectedFolderId: null, selectedTagIds: [], selectedResourceId: null },
+      library: { selectedFolderId: null, selectedTagIds: [], filterTagIds: [], selectedResourceId: null },
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     expect(loadSessionState().readerTabs[0].pdfZoom).toBe(1.5);

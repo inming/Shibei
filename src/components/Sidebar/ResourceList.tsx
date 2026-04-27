@@ -11,6 +11,7 @@ import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
 import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
 import { ContextMenu } from "@/components/ContextMenu";
 import { importPdfToFolder } from "@/lib/importPdf";
+import { FilterChips } from "@/components/Sidebar/FilterChips";
 import toast from "react-hot-toast";
 import styles from "./ResourceList.module.css";
 
@@ -33,6 +34,8 @@ interface ResourceListProps {
   folderId: string | null;
   selectedResourceIds: Set<string>;
   selectedTagIds: Set<string>;
+  filterTagIds: string[];
+  onFilterTagsChange: (ids: string[]) => void;
   sortBy: "created_at" | "annotated_at";
   sortOrder: "asc" | "desc";
   searchQuery: string;
@@ -111,7 +114,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, filterTagIds, onFilterTagsChange, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
   const { t } = useTranslation('sidebar');
   const { t: tSearch } = useTranslation('search');
   const { t: tReader } = useTranslation('reader');
@@ -130,6 +133,7 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
     sortOrder,
     searchQuery,
     tagIdsArray,
+    filterTagIds,
   );
   const listRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -333,6 +337,11 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, so
           </button>
         )}
       </div>
+      <FilterChips
+        folderId={folderId === ALL_RESOURCES_ID ? null : folderId}
+        filterTagIds={filterTagIds}
+        onChange={onFilterTagsChange}
+      />
       <div className={styles.header}>
         <span className={styles.title}>
           {t('resources')}

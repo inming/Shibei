@@ -159,20 +159,26 @@ pub unsafe extern "C" fn shibei_ffi_list_folders() -> *mut c_char {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn shibei_ffi_list_resources(folder_id: *const c_char, tag_ids_json: *const c_char, sort_json: *const c_char) -> *mut c_char {
-    let s = crate::commands::list_resources(cstr_to_string(folder_id), cstr_to_string(tag_ids_json), cstr_to_string(sort_json));
+pub unsafe extern "C" fn shibei_ffi_list_resources(folder_id: *const c_char, tag_ids_json: *const c_char, filter_tag_ids_json: *const c_char, sort_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_resources(cstr_to_string(folder_id), cstr_to_string(tag_ids_json), cstr_to_string(filter_tag_ids_json), cstr_to_string(sort_json));
     leak_cstring(s)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn shibei_ffi_search_resources(query: *const c_char, tag_ids_json: *const c_char) -> *mut c_char {
-    let s = crate::commands::search_resources(cstr_to_string(query), cstr_to_string(tag_ids_json));
+pub unsafe extern "C" fn shibei_ffi_search_resources(query: *const c_char, tag_ids_json: *const c_char, filter_tag_ids_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::search_resources(cstr_to_string(query), cstr_to_string(tag_ids_json), cstr_to_string(filter_tag_ids_json));
     leak_cstring(s)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_list_tags() -> *mut c_char {
     let s = crate::commands::list_tags();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_tags_in_folder(folder_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_tags_in_folder(cstr_to_string(folder_id));
     leak_cstring(s)
 }
 

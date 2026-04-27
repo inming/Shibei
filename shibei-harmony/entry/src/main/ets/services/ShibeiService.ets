@@ -22,6 +22,7 @@ import {
   listResources as napiListResources,
   searchResources as napiSearchResources,
   listTags as napiListTags,
+  listTagsInFolder as napiListTagsInFolder,
   getResource as napiGetResource,
   getResourceSummary as napiGetResourceSummary,
   hello as napiHello,
@@ -430,24 +431,29 @@ export class ShibeiService {
     return parseListOrThrow<Folder>(napiListFolders(), 'listFolders');
   }
 
-  listResources(folderId: string, tagIds: string[] = [], sort?: SortInput): Resource[] {
+  listResources(folderId: string, tagIds: string[] = [], filterTagIds: string[] = [], sort?: SortInput): Resource[] {
     const tagJson = JSON.stringify(tagIds);
+    const filterTagJson = JSON.stringify(filterTagIds);
     const sortJson = sort ? JSON.stringify(sort) : '';
     return parseListOrThrow<Resource>(
-      napiListResources(folderId, tagJson, sortJson),
+      napiListResources(folderId, tagJson, filterTagJson, sortJson),
       'listResources',
     );
   }
 
-  searchResources(query: string, tagIds: string[] = []): SearchResult[] {
+  searchResources(query: string, tagIds: string[] = [], filterTagIds: string[] = []): SearchResult[] {
     return parseListOrThrow<SearchResult>(
-      napiSearchResources(query, JSON.stringify(tagIds)),
+      napiSearchResources(query, JSON.stringify(tagIds), JSON.stringify(filterTagIds)),
       'searchResources',
     );
   }
 
   listTags(): Tag[] {
     return parseListOrThrow<Tag>(napiListTags(), 'listTags');
+  }
+
+  listTagsInFolder(folderId: string): TagWithCount[] {
+    return parseListOrThrow<TagWithCount>(napiListTagsInFolder(folderId), 'listTagsInFolder');
   }
 
   getResource(id: string): Resource | null {
@@ -749,6 +755,13 @@ export interface Tag {
   name: string;
   color: string;
   created_at: string;
+}
+
+export interface TagWithCount {
+  id: string;
+  name: string;
+  color: string;
+  count: number;
 }
 
 export interface SortInput {

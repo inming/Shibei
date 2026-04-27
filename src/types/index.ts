@@ -40,6 +40,13 @@ export interface Tag {
   color: string;
 }
 
+export interface TagWithCount {
+  id: string;
+  name: string;
+  color: string;
+  count: number;
+}
+
 export interface TextPosition {
   start: number;
   end: number;
