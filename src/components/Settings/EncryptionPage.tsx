@@ -16,7 +16,7 @@ export function EncryptionPage() {
   const [encryptionEnabled, setEncryptionEnabled] = useState(false);
   const [encryptionUnlocked, setEncryptionUnlocked] = useState(false);
   const [rememberKey, setRememberKey] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState<"setup" | "unlock" | "change" | null>(null);
+  const [showPasswordDialog, setShowPasswordDialog] = useState<"setup" | "unlock" | "change" | "restore" | null>(null);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [oldPassword, setOldPassword] = useState("");
@@ -115,12 +115,16 @@ export function EncryptionPage() {
   }
 
   async function handleRestoreKeyring() {
-    const pw = window.prompt(t('restoreKeyringPrompt'));
-    if (!pw) return;
+    setShowPasswordDialog("restore");
+  }
+
+  async function handleRestoreKeyringConfirm() {
+    if (!password) return;
     setLoading(true);
     try {
-      await cmd.restoreKeyring(pw);
+      await cmd.restoreKeyring(password);
       toast.success(t('restoreKeyringSuccess'));
+      resetPasswordFields();
     } catch (err) {
       toast.error(t('restoreKeyringFailed', { error: formatError(err) }));
     } finally {
@@ -200,6 +204,7 @@ export function EncryptionPage() {
             {showPasswordDialog === "setup" && t('setupPasswordTitle')}
             {showPasswordDialog === "unlock" && t('unlockPasswordTitle')}
             {showPasswordDialog === "change" && t('changePasswordTitle')}
+            {showPasswordDialog === "restore" && t('restoreKeyringTitle')}
           </div>
           <div className={styles.form}>
             {showPasswordDialog === "change" && (
@@ -223,7 +228,7 @@ export function EncryptionPage() {
                 placeholder={t('passwordPlaceholder')}
               />
             </label>
-            {showPasswordDialog !== "unlock" && (
+            {showPasswordDialog !== "unlock" && showPasswordDialog !== "restore" && (
               <label className={styles.label}>
                 <span>{t('confirmPassword')}</span>
                 <input
@@ -248,6 +253,7 @@ export function EncryptionPage() {
               onClick={() => {
                 if (showPasswordDialog === "setup") handleSetupEncryption();
                 else if (showPasswordDialog === "unlock") handleUnlockEncryption();
+                else if (showPasswordDialog === "restore") handleRestoreKeyringConfirm();
                 else handleChangePassword();
               }}
               disabled={loading}

@@ -33,6 +33,7 @@
   "removedFromKeychain": "Removed from system keychain",
   "operationFailed": "Operation failed: {{error}}",
   "restoreKeyring": "Restore Keyring",
+  "restoreKeyringTitle": "Restore Keyring",
   "restoreKeyringPrompt": "Enter your encryption password to restore the keyring on S3:",
   "restoreKeyringSuccess": "Keyring restored to S3",
   "restoreKeyringFailed": "Failed to restore keyring: {{error}}"
