@@ -704,22 +704,13 @@ async fn build_sync_engine(
     };
 
     let backend: Arc<dyn crate::sync::backend::SyncBackend> = if encryption_enabled {
-        match encryption_state.get_key() {
-            Some(mk) => {
-                Arc::new(crate::sync::encrypted_backend::EncryptedBackend::new(
-                    Arc::new(s3_backend),
-                    mk,
-                ))
-            }
-            None => {
-                // Encryption is enabled on remote (meta/keyring.json exists) but
-                // this device hasn't unlocked yet. Fall back to raw S3 so sync
-                // can still run — the user will see a prompt to unlock encryption
-                // in the UI. Without this fallback, sync is completely blocked.
-                eprintln!("[sync] warning: encryption detected on remote but not unlocked — syncing without encryption");
-                Arc::new(s3_backend)
-            }
-        }
+        let mk = encryption_state.get_key().ok_or_else(|| CommandError {
+            message: "error.encryptionNotUnlocked".to_string(),
+        })?;
+        Arc::new(crate::sync::encrypted_backend::EncryptedBackend::new(
+            Arc::new(s3_backend),
+            mk,
+        ))
     } else {
         Arc::new(s3_backend)
     };
@@ -785,14 +776,28 @@ pub async fn cmd_setup_encryption(
     backend.upload("meta/keyring.json", keyring_json.as_bytes()).await
         .map_err(|e| CommandError { message: format!("error.keyUploadFailed: {}", e) })?;
 
-    // 3. Do NOT clear existing S3 data — clearing on a new device would
-    // destroy data uploaded by other devices. Encryption is now transparently
-    // applied to all future uploads; existing unencrypted data on S3 will be
-    // overwritten with encrypted versions when the owning device re-syncs.
-    //
-    // We still need to force a local re-upload so all sync_log entries (which
-    // were previously uploaded unencrypted) get re-uploaded encrypted.
-    // 3a. Reset local sync progress so the next sync uploads everything encrypted
+    // 3. Do NOT clear all S3 data — clearing on a new device would destroy
+    // data uploaded by other devices. Instead, only clean THIS device's old
+    // unencrypted JSONL files from sync/ — they'll be re-uploaded encrypted
+    // when Phase 1 runs on the next sync. Other devices' data is untouched.
+    // 3a. Delete this device's old JSONL from S3 (best-effort).
+    {
+        use crate::sync::backend::SyncBackend;
+        let device_id = state.device_id.as_ref()
+            .map(|d| d.clone())
+            .unwrap_or_default();
+        if !device_id.is_empty() {
+            let prefix = format!("sync/{}/", device_id);
+            if let Ok(objects) = backend.list(&prefix).await {
+                for obj in &objects {
+                    if obj.key.ends_with(".jsonl") {
+                        let _ = backend.delete(&obj.key).await;
+                    }
+                }
+            }
+        }
+    }
+    // 3b. Reset local sync progress so the next sync uploads everything encrypted
     let conn = state.conn()?;
     conn.execute("UPDATE sync_log SET uploaded = 0", [])
         .map_err(|e| CommandError { message: e.to_string() })?;

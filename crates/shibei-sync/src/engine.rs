@@ -1064,8 +1064,13 @@ impl SyncEngine {
                 let data = match self.backend.download(&file_obj.key).await {
                     Ok(d) => d,
                     Err(e) => {
-                        self.sync_diag_log(&format!("Phase 3: download FAILED {}: {}", file_obj.key, e));
-                        return Err(e.into());
+                        // Skip undecryptable files instead of aborting sync.
+                        // This handles old unencrypted JSONL files that remain
+                        // on S3 after encryption was enabled — they can't be
+                        // decrypted but shouldn't block all other entries.
+                        self.sync_diag_log(&format!("Phase 3: download FAILED {}: {} — skipping", file_obj.key, e));
+                        eprintln!("[sync] Warning: failed to download {}, skipping: {}", file_obj.key, e);
+                        continue;
                     }
                 };
                 let content = String::from_utf8_lossy(&data);
@@ -1088,9 +1093,13 @@ impl SyncEngine {
                             all_entries.push(entry);
                         }
                         Err(e) => {
-                            self.sync_diag_log(&format!("Phase 3: parse FAILED line={} first_100_chars={:?} error={}",
+                            // Skip corrupted lines instead of aborting the entire sync.
+                            // A single bad entry in a JSONL file (e.g. truncated during upload)
+                            // should not prevent all other valid entries from being applied.
+                            self.sync_diag_log(&format!("Phase 3: parse FAILED line={} first_100_chars={:?} error={} — skipping",
                                 line_idx, &line[..std::cmp::min(100, line.len())], e));
-                            return Err(SyncError::Json(e));
+                            eprintln!("[sync] Warning: skipping malformed JSONL line {} in {}: {}",
+                                line_idx, file_obj.key, e);
                         }
                     }
                 }
