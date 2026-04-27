@@ -46,7 +46,6 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     initialLibrary.selectedResourceId,
   );
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set(initialLibrary.selectedTagIds));
   const [filterTagIds, setFilterTagIds] = useState<string[]>(initialLibrary.filterTagIds ?? []);
   const listScrollTopRef = useRef<number>(initialLibrary.listScrollTop ?? 0);
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
@@ -98,13 +97,12 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     saveSessionState({
       library: {
         selectedFolderId,
-        selectedTagIds: Array.from(selectedTagIds),
         filterTagIds,
         selectedResourceId: selectedResource?.id ?? null,
         listScrollTop: listScrollTopRef.current,
       },
     });
-  }, [selectedFolderId, selectedTagIds, filterTagIds, selectedResource]);
+  }, [selectedFolderId, filterTagIds, selectedResource]);
 
   // Called from ResourceList on scroll. Writes directly without going through
   // persistLibrary so we don't trigger re-renders on every scroll event.
@@ -113,13 +111,12 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     saveSessionState({
       library: {
         selectedFolderId,
-        selectedTagIds: Array.from(selectedTagIds),
         filterTagIds,
         selectedResourceId: selectedResource?.id ?? null,
         listScrollTop: n,
       },
     });
-  }, [selectedFolderId, selectedTagIds, selectedResource]);
+  }, [selectedFolderId, selectedResource]);
 
   useEffect(() => {
     persistLibrary();
@@ -142,12 +139,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
       if (event.payload.action !== "deleted") return;
       const deletedId = event.payload.tag_id;
       if (!deletedId) return;
-      setSelectedTagIds((prev) => {
-        if (!prev.has(deletedId)) return prev;
-        const next = new Set(prev);
-        next.delete(deletedId);
-        return next;
-      });
+      setFilterTagIds((prev) => prev.filter((id) => id !== deletedId));
     });
     return () => { unlisten.then((f) => f()); };
   }, []);
@@ -464,7 +456,6 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
             <ResourceList
               folderId={selectedFolderId}
               selectedResourceIds={selectedResourceIds}
-              selectedTagIds={selectedTagIds}
               filterTagIds={filterTagIds}
               onFilterTagsChange={handleFilterTagsChange}
               sortBy={sortBy}

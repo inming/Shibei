@@ -186,3 +186,116 @@
   font-size: 13px;
   text-align: center;
 }
+
+/* ── Gear button ── */
+
+.gearBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.gearBtn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
+}
+
+/* ── Manage panel ── */
+
+.managePanel {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  min-width: 180px;
+  max-height: 40vh;
+  overflow: hidden;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+}
+
+.manageList {
+  overflow-y: auto;
+  flex: 1;
+  padding: var(--spacing-xs) 0;
+}
+
+.manageItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px var(--spacing-sm);
+  font-size: 13px;
+}
+
+.manageItem:hover {
+  background: var(--color-bg-hover);
+}
+
+.manageDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.manageName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+.manageActionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.manageActionBtn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.manageCreateBtn {
+  width: 100%;
+  padding: 6px;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.manageCreateBtn:hover {
+  background: var(--color-bg-secondary);
+}
+
+.manageEmpty {
+  padding: var(--spacing-md);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+}

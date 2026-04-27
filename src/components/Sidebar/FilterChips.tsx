@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { listen } from "@tauri-apps/api/event";
 import * as cmd from "@/lib/commands";
 import type { TagWithCount } from "@/types";
 import { useFlipPosition } from "@/hooks/useFlipPosition";
+import { FilterManagePanel } from "@/components/Sidebar/FilterManagePanel";
 import styles from "./FilterChips.module.css";
 
 interface FilterChipsProps {
@@ -14,10 +16,12 @@ interface FilterChipsProps {
 export function FilterChips({ folderId, filterTagIds, onChange }: FilterChipsProps) {
   const { t } = useTranslation("sidebar");
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const [allTags, setAllTags] = useState<TagWithCount[]>([]);
   const [searchText, setSearchText] = useState("");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const gearRef = useRef<HTMLButtonElement>(null);
 
   useFlipPosition(popoverRef, 0, 0); // position is set via CSS relative to button
 
@@ -25,10 +29,29 @@ export function FilterChips({ folderId, filterTagIds, onChange }: FilterChipsPro
     try {
       const tags = await cmd.listTagsInFolder(folderId);
       setAllTags(tags);
+      // Clean up stale filter tag IDs (tags deleted on another device via sync)
+      const validIds = new Set(tags.map((t) => t.id));
+      const cleaned = filterTagIds.filter((id) => validIds.has(id));
+      if (cleaned.length !== filterTagIds.length) {
+        onChange(cleaned);
+      }
     } catch {
       setAllTags([]);
     }
-  }, [folderId]);
+  }, [folderId, filterTagIds, onChange]);
+
+  // Refresh tag counts when data changes while popover is open
+  useEffect(() => {
+    if (!popoverOpen) return;
+    const u1 = listen("data:resource-changed", () => { loadTags(); });
+    const u2 = listen("data:tag-changed", () => { loadTags(); });
+    const u3 = listen("data:sync-completed", () => { loadTags(); });
+    return () => {
+      u1.then((f) => f());
+      u2.then((f) => f());
+      u3.then((f) => f());
+    };
+  }, [popoverOpen, loadTags]);
 
   useEffect(() => {
     if (popoverOpen) {
@@ -108,6 +131,15 @@ export function FilterChips({ folderId, filterTagIds, onChange }: FilterChipsPro
         </div>
       )}
 
+      <button
+        ref={gearRef}
+        className={styles.gearBtn}
+        title={t("manageTags")}
+        onClick={() => setManageOpen(!manageOpen)}
+      >
+        &#9881;
+      </button>
+
       {popoverOpen && (
         <div
           ref={popoverRef}
@@ -150,6 +182,14 @@ export function FilterChips({ folderId, filterTagIds, onChange }: FilterChipsPro
             )}
           </div>
         </div>
+      )}
+
+      {manageOpen && (
+        <FilterManagePanel
+          onClose={() => setManageOpen(false)}
+          anchorRef={gearRef}
+          onRefresh={() => { loadTags(); }}
+        />
       )}
     </div>
   );

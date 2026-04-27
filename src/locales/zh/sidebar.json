@@ -107,6 +107,8 @@
   "tagNamePlaceholder": "标签名称",
   "tagCancel": "取消",
   "tagSave": "保存",
+  "newTag": "新建标签",
+  "manageTags": "管理标签",
 
   "previewSummary": "摘要",
   "previewNoDescription": "暂无摘要",

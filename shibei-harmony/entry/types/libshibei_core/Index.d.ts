@@ -18,6 +18,8 @@ export const listResources: (folderId: string, tagIdsJson: string, filterTagIdsJ
 export const searchResources: (query: string, tagIdsJson: string, filterTagIdsJson: string) => string;
 export const listTags: () => string;
 export const listTagsInFolder: (folderId: string) => string;
+export const createTag: (name: string, color: string) => string;
+export const deleteTag: (tagId: string) => string;
 export const getResource: (id: string) => string;
 export const getResourceSummary: (id: string, maxChars: number) => string;
 export const getResourceHtml: (id: string) => string;

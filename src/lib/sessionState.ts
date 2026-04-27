@@ -13,7 +13,7 @@ export interface ReaderTabState {
 
 export interface LibraryState {
   selectedFolderId: string | null;
-  selectedTagIds: string[];
+  selectedTagIds?: string[]; // deprecated, kept for backward compat with stored data
   filterTagIds: string[];
   selectedResourceId: string | null;
   listScrollTop?: number;

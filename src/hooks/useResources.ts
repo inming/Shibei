@@ -11,7 +11,6 @@ export function useResources(
   sortBy: "created_at" | "annotated_at" = "created_at",
   sortOrder: "asc" | "desc" = "desc",
   searchQuery: string = "",
-  selectedTagIds: string[] = [],
   filterTagIds: string[] = [],
 ) {
   const { t } = useTranslation('lock');
@@ -43,7 +42,6 @@ export function useResources(
         const searchResults: SearchResult[] = await cmd.searchResources(
           searchQuery,
           folderId === ALL_RESOURCES_ID ? null : folderId,
-          selectedTagIds,
           filterTagIds,
           sortBy,
           sortOrder,
@@ -55,9 +53,9 @@ export function useResources(
           matchFields[sr.id] = sr.matchFields;
         }
       } else if (folderId === ALL_RESOURCES_ID) {
-        list = await cmd.listAllResources(sortBy, sortOrder, selectedTagIds, filterTagIds);
+        list = await cmd.listAllResources(sortBy, sortOrder, filterTagIds);
       } else {
-        list = await cmd.listResources(folderId, sortBy, sortOrder, selectedTagIds, filterTagIds);
+        list = await cmd.listResources(folderId, sortBy, sortOrder, filterTagIds);
       }
       setResources(list);
       setMatchedBodyMap(bodyMap);
@@ -83,7 +81,7 @@ export function useResources(
     } finally {
       setLoading(false);
     }
-  }, [folderId, sortBy, sortOrder, searchQuery, selectedTagIds, filterTagIds]);
+  }, [folderId, sortBy, sortOrder, searchQuery, filterTagIds]);
 
   useEffect(() => {
     refresh();

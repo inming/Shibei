@@ -107,6 +107,8 @@
   "tagNamePlaceholder": "Tag name",
   "tagCancel": "Cancel",
   "tagSave": "Save",
+  "newTag": "New Tag",
+  "manageTags": "Manage Tags",
 
   "previewSummary": "Summary",
   "previewNoDescription": "No summary",

@@ -189,6 +189,11 @@
     { "name": "sidebar_filter_tags", "value": "Filter" },
     { "name": "sidebar_search_tags", "value": "Search tags..." },
     { "name": "sidebar_no_tags", "value": "No tags" },
+    { "name": "sidebar_manage_tags", "value": "Manage" },
+    { "name": "sidebar_tag_name", "value": "Tag name" },
+    { "name": "sidebar_tag_save", "value": "Save" },
+    { "name": "sidebar_delete_tag", "value": "Delete tag" },
+    { "name": "sidebar_delete_tag_confirm", "value": "Delete tag \"%1$s\"?" },
 
     { "name": "resource_list_empty", "value": "No items in this folder" },
     { "name": "resource_list_empty_hint", "value": "(Items will appear after sync)" },

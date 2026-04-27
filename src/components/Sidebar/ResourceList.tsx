@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "react-i18next";
 import { useResources } from "@/hooks/useResources";
@@ -33,7 +33,6 @@ function highlightMatch(text: string, query: string): React.ReactNode {
 interface ResourceListProps {
   folderId: string | null;
   selectedResourceIds: Set<string>;
-  selectedTagIds: Set<string>;
   filterTagIds: string[];
   onFilterTagsChange: (ids: string[]) => void;
   sortBy: "created_at" | "annotated_at";
@@ -114,7 +113,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, filterTagIds, onFilterTagsChange, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFilterTagsChange, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
   const { t } = useTranslation('sidebar');
   const { t: tSearch } = useTranslation('search');
   const { t: tReader } = useTranslation('reader');
@@ -122,17 +121,11 @@ export function ResourceList({ folderId, selectedResourceIds, selectedTagIds, fi
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const composingRef = useRef(false);
 
-  // Convert Set to stable array for hook — serialize to key for stable reference
-  const tagIdsKey = Array.from(selectedTagIds).sort().join(",");
-  const tagIdsArray = useMemo(() => Array.from(selectedTagIds), [tagIdsKey]);
-
-  // Pass tag filtering to backend via hook
   const { resources, resourceTags, annotationCounts, snippetMap, matchFieldsMap, loading } = useResources(
     folderId,
     sortBy,
     sortOrder,
     searchQuery,
-    tagIdsArray,
     filterTagIds,
   );
   const listRef = useRef<HTMLDivElement>(null);

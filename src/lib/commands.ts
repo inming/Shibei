@@ -57,14 +57,12 @@ export function listResources(
   folderId: string,
   sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
-  tagIds?: string[],
   filterTagIds?: string[],
 ): Promise<Resource[]> {
   return invoke("cmd_list_resources", {
     folderId,
     sortBy: sortBy ?? "created_at",
     sortOrder: sortOrder ?? "desc",
-    tagIds: tagIds ?? [],
     filterTagIds: filterTagIds ?? [],
   });
 }
@@ -72,13 +70,11 @@ export function listResources(
 export function listAllResources(
   sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
-  tagIds?: string[],
   filterTagIds?: string[],
 ): Promise<Resource[]> {
   return invoke("cmd_list_all_resources", {
     sortBy: sortBy ?? "created_at",
     sortOrder: sortOrder ?? "desc",
-    tagIds: tagIds ?? [],
     filterTagIds: filterTagIds ?? [],
   });
 }
@@ -86,7 +82,6 @@ export function listAllResources(
 export function searchResources(
   query: string,
   folderId: string | null,
-  tagIds: string[],
   filterTagIds: string[],
   sortBy?: "created_at" | "annotated_at",
   sortOrder?: "asc" | "desc",
@@ -94,7 +89,6 @@ export function searchResources(
   return invoke("cmd_search_resources", {
     query,
     folderId,
-    tagIds,
     filterTagIds: filterTagIds ?? [],
     sortBy: sortBy ?? "created_at",
     sortOrder: sortOrder ?? "desc",

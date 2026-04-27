@@ -23,6 +23,8 @@ import {
   searchResources as napiSearchResources,
   listTags as napiListTags,
   listTagsInFolder as napiListTagsInFolder,
+  createTag as napiCreateTag,
+  deleteTag as napiDeleteTag,
   getResource as napiGetResource,
   getResourceSummary as napiGetResourceSummary,
   hello as napiHello,
@@ -456,6 +458,16 @@ export class ShibeiService {
     return parseListOrThrow<TagWithCount>(napiListTagsInFolder(folderId), 'listTagsInFolder');
   }
 
+  createTag(name: string, color: string): Tag {
+    return parseSingleOrThrow<Tag>(napiCreateTag(name, color), 'createTag');
+  }
+
+  deleteTag(id: string): void {
+    const raw = napiDeleteTag(id);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+  }
+
   getResource(id: string): Resource | null {
     const raw: string = napiGetResource(id);
     const parsed = JSON.parse(raw) as GetResourceEnvelope;
@@ -849,6 +861,15 @@ function parseListOrThrow<T>(raw: string, label: string): T[] {
     throw new ShibeiError(`${label}: unexpected response shape`);
   }
   return parsed as T[];
+}
+
+function parseSingleOrThrow<T>(raw: string, label: string): T {
+  const parsed = JSON.parse(raw) as Object;
+  const envelope = parsed as ErrorEnvelope;
+  if (envelope.error) {
+    throw new ShibeiError(envelope.error);
+  }
+  return parsed as T;
 }
 
 // ── S3 creds JSON helpers (Phase 4, Task 8) ───────────────────

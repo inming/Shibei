@@ -189,6 +189,11 @@
     { "name": "sidebar_filter_tags", "value": "筛选标签" },
     { "name": "sidebar_search_tags", "value": "搜索标签..." },
     { "name": "sidebar_no_tags", "value": "暂无标签" },
+    { "name": "sidebar_manage_tags", "value": "管理" },
+    { "name": "sidebar_tag_name", "value": "标签名称" },
+    { "name": "sidebar_tag_save", "value": "保存" },
+    { "name": "sidebar_delete_tag", "value": "删除标签" },
+    { "name": "sidebar_delete_tag_confirm", "value": "确定删除标签「%1$s」？" },
 
     { "name": "resource_list_empty", "value": "当前文件夹没有资料" },
     { "name": "resource_list_empty_hint", "value": "（同步完成后会自动出现）" },

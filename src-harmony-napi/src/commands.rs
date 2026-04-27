@@ -564,6 +564,22 @@ pub fn list_tags_in_folder(folder_id: String) -> String {
     }
 }
 
+#[shibei_napi]
+pub fn create_tag(name: String, color: String) -> String {
+    match with_conn(|conn| shibei_db::tags::create_tag(conn, &name, &color, None)) {
+        Ok(tag) => to_json(&tag),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn delete_tag(tag_id: String) -> String {
+    match with_conn(|conn| shibei_db::tags::delete_tag(conn, &tag_id, None)) {
+        Ok(_) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
 /// Returns `{"resource": Resource} | {"resource": null}`. ArkTS callers
 /// JSON.parse and read `.resource`. Not-found is a normal condition
 /// (stale deep link, soft-deleted entry) so we fold it to null.

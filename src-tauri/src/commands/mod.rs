@@ -164,7 +164,6 @@ pub async fn cmd_list_resources(
     folder_id: String,
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
-    tag_ids: Vec<String>,
     filter_tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
     let conn = state.conn()?;
@@ -173,7 +172,7 @@ pub async fn cmd_list_resources(
         &folder_id,
         sort_by.unwrap_or(resources::SortBy::CreatedAt),
         sort_order.unwrap_or(resources::SortOrder::Desc),
-        &tag_ids,
+        &[],
         &filter_tag_ids,
     )
     .map_err(Into::into)
@@ -237,7 +236,6 @@ pub async fn cmd_list_all_resources(
     state: tauri::State<'_, Arc<AppState>>,
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
-    tag_ids: Vec<String>,
     filter_tag_ids: Vec<String>,
 ) -> Result<Vec<resources::Resource>, CommandError> {
     let conn = state.conn()?;
@@ -245,7 +243,7 @@ pub async fn cmd_list_all_resources(
         &conn,
         sort_by.unwrap_or(resources::SortBy::CreatedAt),
         sort_order.unwrap_or(resources::SortOrder::Desc),
-        &tag_ids,
+        &[],
         &filter_tag_ids,
     )
     .map_err(Into::into)
@@ -372,7 +370,6 @@ pub async fn cmd_search_resources(
     state: tauri::State<'_, Arc<AppState>>,
     query: String,
     folder_id: Option<String>,
-    tag_ids: Vec<String>,
     filter_tag_ids: Vec<String>,
     sort_by: Option<resources::SortBy>,
     sort_order: Option<resources::SortOrder>,
@@ -390,7 +387,7 @@ pub async fn cmd_search_resources(
         &conn,
         &query,
         folder_id.as_deref(),
-        &tag_ids,
+        &[],
         &filter_tag_ids,
         sort_by_str,
         sort_order_str,
