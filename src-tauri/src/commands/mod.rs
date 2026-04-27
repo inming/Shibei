@@ -536,9 +536,9 @@ pub async fn cmd_sync_now(
 ) -> Result<String, CommandError> {
     let _ = app.emit(events::SYNC_STARTED, ());
 
-    // Self-heal: if encryption is enabled but first post-encryption sync never completed,
-    // reset sync state to force full snapshot import. This repairs devices that went
-    // through the buggy unlock flow where sync state was not properly reset.
+    // Self-heal: if encryption is enabled but the first post-encryption sync
+    // never completed, reset sync state to force full re-sync. Run BEFORE
+    // build_sync_engine so Phase 0 picks up the reset last_sync_at.
     {
         let conn = state.conn()?;
         let encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?

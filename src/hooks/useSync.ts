@@ -94,13 +94,11 @@ export function useSync() {
       setLastSyncAt(new Date().toISOString());
       setError("");
       setSyncProgress(null);
-      syncingRef.current = false;
     });
     const u2 = listen<SyncFailedPayload>(SyncEvents.FAILED, (event) => {
       setStatus("error");
       setError(event.payload.message);
       setSyncProgress(null);
-      syncingRef.current = false;
     });
     const u3 = listen(SyncEvents.STARTED, () => {
       setStatus("syncing");
@@ -136,6 +134,7 @@ export function useSync() {
         ? String((err as { message: string }).message)
         : String(err);
       toast.error(t('syncFailed', { error: msg }));
+    } finally {
       syncingRef.current = false;
     }
   }, [t]);
