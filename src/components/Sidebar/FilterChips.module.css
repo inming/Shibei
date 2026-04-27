@@ -26,10 +26,25 @@
   border-color: var(--color-accent);
 }
 
-.filterBtnText {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
+.filterBtnIcon {
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  position: relative;
+  margin-right: 3px;
+}
+.filterBtnIcon::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .chips {
