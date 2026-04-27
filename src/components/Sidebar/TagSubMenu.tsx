@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useTags } from "@/hooks/useTags";
 import * as cmd from "@/lib/commands";
+import { FilterManagePanel } from "@/components/Sidebar/FilterManagePanel";
 import toast from "react-hot-toast";
 import styles from "./TagSubMenu.module.css";
 
@@ -13,8 +14,9 @@ interface TagSubMenuProps {
 
 export function TagSubMenu({ resourceIds, onClose, onTagsChanged }: TagSubMenuProps) {
   const { t } = useTranslation('sidebar');
-  const { tags } = useTags();
+  const { tags, refresh } = useTags();
   const [assignedTagIds, setAssignedTagIds] = useState<Set<string>>(new Set());
+  const [manageOpen, setManageOpen] = useState(false);
 
   const loadAssigned = useCallback(async () => {
     if (resourceIds.length === 1) {
@@ -50,23 +52,33 @@ export function TagSubMenu({ resourceIds, onClose, onTagsChanged }: TagSubMenuPr
     }
   }, [resourceIds, assignedTagIds, onTagsChanged, onClose]);
 
-  if (tags.length === 0) {
-    return <div className={styles.empty}>{t('noTags')}</div>;
-  }
-
   return (
-    <div className={styles.submenu}>
-      {tags.map((tag) => (
+    <>
+      <div className={styles.submenu}>
+        {tags.map((tag) => (
+          <button
+            key={tag.id}
+            className={styles.item}
+            onClick={() => handleToggle(tag.id)}
+          >
+            <span className={styles.dot} style={{ backgroundColor: tag.color }} />
+            <span className={styles.label}>{tag.name}</span>
+            {assignedTagIds.has(tag.id) && <span className={styles.check}>✓</span>}
+          </button>
+        ))}
+        <div className={styles.separator} />
         <button
-          key={tag.id}
-          className={styles.item}
-          onClick={() => handleToggle(tag.id)}
+          className={styles.manageEntry}
+          onClick={() => setManageOpen(true)}
         >
-          <span className={styles.dot} style={{ backgroundColor: tag.color }} />
-          <span className={styles.label}>{tag.name}</span>
-          {assignedTagIds.has(tag.id) && <span className={styles.check}>✓</span>}
+          {t("manageTags")}…
         </button>
-      ))}
-    </div>
+      </div>
+      {manageOpen && (
+        <FilterManagePanel
+          onClose={() => { setManageOpen(false); refresh(); }}
+        />
+      )}
+    </>
   );
 }

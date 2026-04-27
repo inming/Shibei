@@ -41,3 +41,27 @@
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
 }
+
+.separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--color-border);
+}
+
+.manageEntry {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.manageEntry:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}

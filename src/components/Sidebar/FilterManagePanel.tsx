@@ -1,22 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import * as cmd from "@/lib/commands";
 import type { Tag } from "@/types";
-import { useFlipPosition } from "@/hooks/useFlipPosition";
+import { Modal } from "@/components/Modal";
 import styles from "./FilterChips.module.css";
 
-interface ManagePanelProps {
+interface ManageDialogProps {
   onClose: () => void;
-  anchorRef: React.RefObject<HTMLElement | null>;
-  onRefresh?: () => void;
 }
 
-export function FilterManagePanel({ onClose, anchorRef, onRefresh }: ManagePanelProps) {
+export function FilterManagePanel({ onClose }: ManageDialogProps) {
   const { t } = useTranslation("sidebar");
   const [tags, setTags] = useState<Tag[]>([]);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useFlipPosition(ref, 0, 0);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
 
   const loadTags = useCallback(async () => {
     try { setTags(await cmd.listTags()); } catch { /* ignore */ }
@@ -24,60 +21,59 @@ export function FilterManagePanel({ onClose, anchorRef, onRefresh }: ManagePanel
 
   useEffect(() => { loadTags(); }, [loadTags]);
 
-  // Close on Escape
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(t("deleteTagConfirm", { name }))) return;
-    try { await cmd.deleteTag(id); loadTags(); onRefresh?.(); } catch { /* toast via event */ }
+    try { await cmd.deleteTag(id); loadTags(); } catch { /* ignore */ }
   };
 
   const handleCreate = async () => {
-    const name = prompt(t("tagNamePlaceholder"));
-    if (!name || !name.trim()) return;
-    try {
-      await cmd.createTag(name.trim(), "#888888");
-      loadTags();
-      onRefresh?.();
-    } catch { /* toast via event */ }
+    const name = newName.trim();
+    if (!name) return;
+    try { await cmd.createTag(name, "#888888"); setNewName(""); setCreating(false); loadTags(); } catch { /* ignore */ }
   };
 
   return (
-    <div
-      ref={ref}
-      className={styles.managePanel}
-      style={{
-        position: "fixed",
-        top: (anchorRef.current?.getBoundingClientRect().bottom ?? 0) + 4,
-        right: (anchorRef.current?.getBoundingClientRect().right ?? 0),
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className={styles.manageList}>
-        {tags.length === 0 && (
-          <div className={styles.manageEmpty}>{t("noTags")}</div>
-        )}
-        {tags.map((tag) => (
-          <div key={tag.id} className={styles.manageItem}>
-            <span className={styles.manageDot} style={{ backgroundColor: tag.color }} />
-            <span className={styles.manageName}>{tag.name}</span>
-            <button
-              className={styles.manageActionBtn}
-              title={t("deleteTag")}
-              onClick={() => handleDelete(tag.id, tag.name)}
-            >
-              &#10005;
+    <Modal title={t("manageTags")} onClose={onClose}>
+      <div className={styles.manageDialog}>
+        <div className={styles.manageList}>
+          {tags.length === 0 && (
+            <div className={styles.manageEmpty}>{t("noTags")}</div>
+          )}
+          {tags.map((tag) => (
+            <div key={tag.id} className={styles.manageItem}>
+              <span className={styles.manageDot} style={{ backgroundColor: tag.color }} />
+              <span className={styles.manageName}>{tag.name}</span>
+              <button
+                className={styles.manageDeleteBtn}
+                onClick={() => handleDelete(tag.id, tag.name)}
+                title={t("deleteTag")}
+              >
+                &#128465;
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className={styles.manageFooter}>
+          {creating ? (
+            <div className={styles.manageCreateRow}>
+              <input
+                className={styles.manageNameInput}
+                placeholder={t("tagNamePlaceholder")}
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") setCreating(false); }}
+                autoFocus
+              />
+              <button className={styles.manageSaveBtn} onClick={handleCreate}>{t("tagSave")}</button>
+              <button className={styles.manageCancelBtn} onClick={() => setCreating(false)}>{t("tagCancel")}</button>
+            </div>
+          ) : (
+            <button className={styles.manageCreateBtn} onClick={() => setCreating(true)}>
+              + {t("newTag")}
             </button>
-          </div>
-        ))}
+          )}
+        </div>
       </div>
-      <button className={styles.manageCreateBtn} onClick={handleCreate}>
-        + {t("newTag")}
-      </button>
-    </div>
+    </Modal>
   );
 }
