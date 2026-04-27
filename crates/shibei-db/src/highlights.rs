@@ -74,7 +74,7 @@ pub fn get_highlights_for_resource(
     let mut stmt = conn.prepare(
         "SELECT id, resource_id, text_content, anchor, color, created_at
          FROM highlights WHERE resource_id = ?1 AND deleted_at IS NULL
-         ORDER BY created_at",
+         ORDER BY color, created_at",
     )?;
     let highlights = stmt
         .query_map(params![resource_id], |row| {
