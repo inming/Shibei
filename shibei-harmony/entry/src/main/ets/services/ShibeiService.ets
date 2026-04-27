@@ -24,7 +24,11 @@ import {
   listTags as napiListTags,
   listTagsInFolder as napiListTagsInFolder,
   createTag as napiCreateTag,
+  updateTag as napiUpdateTag,
   deleteTag as napiDeleteTag,
+  getTagsForResource as napiGetTagsForResource,
+  addTagToResource as napiAddTagToResource,
+  removeTagFromResource as napiRemoveTagFromResource,
   getResource as napiGetResource,
   getResourceSummary as napiGetResourceSummary,
   hello as napiHello,
@@ -459,13 +463,41 @@ export class ShibeiService {
   }
 
   createTag(name: string, color: string): Tag {
-    return parseSingleOrThrow<Tag>(napiCreateTag(name, color), 'createTag');
+    const tag = parseSingleOrThrow<Tag>(napiCreateTag(name, color), 'createTag');
+    this.notifyDataChanged();
+    return tag;
+  }
+
+  updateTag(id: string, name: string, color: string): void {
+    const raw = napiUpdateTag(id, name, color);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
   }
 
   deleteTag(id: string): void {
     const raw = napiDeleteTag(id);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
+  }
+
+  getTagsForResource(resourceId: string): Tag[] {
+    return parseListOrThrow<Tag>(napiGetTagsForResource(resourceId), 'getTagsForResource');
+  }
+
+  addTagToResource(resourceId: string, tagId: string): void {
+    const raw = napiAddTagToResource(resourceId, tagId);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
+  }
+
+  removeTagFromResource(resourceId: string, tagId: string): void {
+    const raw = napiRemoveTagFromResource(resourceId, tagId);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
   }
 
   getResource(id: string): Resource | null {

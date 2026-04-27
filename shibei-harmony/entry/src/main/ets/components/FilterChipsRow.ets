@@ -8,9 +8,21 @@ export struct FilterChipsRow {
   @State allTags: TagWithCount[] = [];
   @State showSheet: boolean = false;
   @State searchText: string = '';
+  private unsubDataChanged?: () => void;
 
   aboutToAppear(): void {
     this.loadTags();
+    // Counts in the filter chips depend on tag-resource links and can shift
+    // after sync, after long-press tag assign, and after manage edits — all
+    // of which fire `notifyDataChanged` from ShibeiService.
+    this.unsubDataChanged = ShibeiService.instance.onDataChanged(() => this.loadTags());
+  }
+
+  aboutToDisappear(): void {
+    if (this.unsubDataChanged) {
+      this.unsubDataChanged();
+      this.unsubDataChanged = undefined;
+    }
   }
 
   private loadTags(): void {

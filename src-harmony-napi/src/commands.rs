@@ -566,16 +566,77 @@ pub fn list_tags_in_folder(folder_id: String) -> String {
 
 #[shibei_napi]
 pub fn create_tag(name: String, color: String) -> String {
-    match with_conn(|conn| shibei_db::tags::create_tag(conn, &name, &color, None)) {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| shibei_db::tags::create_tag(conn, &name, &color, Some(&ctx))) {
         Ok(tag) => to_json(&tag),
         Err(e) => format!(r#"{{"error":"{e}"}}"#),
     }
 }
 
 #[shibei_napi]
+pub fn update_tag(id: String, name: String, color: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| shibei_db::tags::update_tag(conn, &id, &name, &color, Some(&ctx))) {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
 pub fn delete_tag(tag_id: String) -> String {
-    match with_conn(|conn| shibei_db::tags::delete_tag(conn, &tag_id, None)) {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| shibei_db::tags::delete_tag(conn, &tag_id, Some(&ctx))) {
         Ok(_) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn get_tags_for_resource(resource_id: String) -> String {
+    match with_conn(|conn| shibei_db::tags::get_tags_for_resource(conn, &resource_id)) {
+        Ok(tags) => to_json(&tags),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn add_tag_to_resource(resource_id: String, tag_id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| {
+        shibei_db::tags::add_tag_to_resource(conn, &resource_id, &tag_id, Some(&ctx))
+    }) {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn remove_tag_from_resource(resource_id: String, tag_id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| {
+        shibei_db::tags::remove_tag_from_resource(conn, &resource_id, &tag_id, Some(&ctx))
+    }) {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
         Err(e) => format!(r#"{{"error":"{e}"}}"#),
     }
 }

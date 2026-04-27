@@ -3,6 +3,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { ResourceItem } from './ResourceItem';
+import { TagAssignSheet } from './TagAssignSheet';
+import { TagManageSheet } from './TagManageSheet';
 import { I18n } from '../services/I18n';
 
 @Component
@@ -18,6 +20,15 @@ export struct ResourceList {
   // ArkUI change detection on Set is flaky, so we keep a parallel string
   // as the diff trigger and resolve `isCached(id)` in build().
   @State cachedKey: string = '';
+  // Tag-assign sheet state — flipped on by the long-press menu's "标签…" entry.
+  // The sheet binds to a hidden Stack inside TagAssignSheet itself; ResourceList
+  // only owns the open flag + which resource we're editing.
+  @State tagSheetOpen: boolean = false;
+  @State tagSheetResId: string = '';
+  // Tag-management sheet — opened from the assign sheet's "管理标签…"
+  // footer. Mirrors desktop: TagSubMenu → FilterManagePanel handoff. Lives
+  // here (not in FilterChipsRow) so the same instance serves both flows.
+  @State tagManageOpen: boolean = false;
   private cachedSet: Set<string> = new Set<string>();
   private unsubDataChanged?: () => void;
 
@@ -74,25 +85,43 @@ export struct ResourceList {
     }
   }
 
-  /// Long-press on a row: offer to cache-this + cache-entire-folder. We
-  /// keep it as two rows rather than a dialog so the primary action (cache
-  /// one) is a single tap.
+  /// Long-press on a row: offer cache-this / cache-folder / 标签 / copy-link.
+  /// Tags entry was added 2026-04-27 — it opens a bottom sheet so users can
+  /// (un)assign tags from the same gesture they use for caching.
   private onLongPress(id: string): void {
     promptAction.showDialog({
       title: I18n.t($r('app.string.cache_menu_title')),
       buttons: [
         { text: I18n.t($r('app.string.cache_action_this_resource')), color: $r('app.color.accent_primary') },
         { text: I18n.t($r('app.string.cache_action_this_folder')), color: $r('app.color.accent_primary_alt') },
+        { text: I18n.t($r('app.string.tag_assign_action')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.annotation_copy_link')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
       ],
     }).then((r) => {
       if (r.index === 0) this.preloadOne(id);
       else if (r.index === 1) this.preloadFolder();
-      else if (r.index === 2) this.copyLink(id);
+      else if (r.index === 2) this.openTagSheet(id);
+      else if (r.index === 3) this.copyLink(id);
     }).catch((err: Error) => {
       hilog.warn(0x0000, 'shibei', 'cache dialog dismissed: %{public}s', err.message);
     });
+  }
+
+  // Set the resource id BEFORE flipping `open` so TagAssignSheet's
+  // @Watch('onOpenChanged') sees the right id on its first reload.
+  private openTagSheet(id: string): void {
+    this.tagSheetResId = id;
+    this.tagSheetOpen = true;
+  }
+
+  // Hand-off from assign sheet's "管理标签…" footer. We close assign first
+  // so two bottom sheets aren't stacked, then open manage. ArkUI's bindSheet
+  // handles its own close animation — flipping both flags in the same tick
+  // is fine.
+  private openManageFromAssign(): void {
+    this.tagSheetOpen = false;
+    this.tagManageOpen = true;
   }
 
   private copyLink(id: string): void {
@@ -163,6 +192,16 @@ export struct ResourceList {
   build() {
     Refresh({ refreshing: $$this.refreshing }) {
       Column() {
+        // Hidden host for the tag-assign sheet — the bindSheet lives inside
+        // the component itself, this just keeps it in the build tree.
+        TagAssignSheet({
+          open: $tagSheetOpen,
+          resourceId: this.tagSheetResId,
+          onOpenManage: () => this.openManageFromAssign(),
+        });
+        // Sibling host for the manage sheet — opened either via assign
+        // sheet's footer or, in the future, from a Settings entry.
+        TagManageSheet({ open: $tagManageOpen });
         if (this.error) {
           Column() {
             Text(I18n.t($r('app.string.resource_list_error'), this.error))

@@ -30,7 +30,11 @@ extern char* shibei_ffi_search_resources(const char* query, const char* tag_ids_
 extern char* shibei_ffi_list_tags(void);
 extern char* shibei_ffi_list_tags_in_folder(const char* folder_id);
 extern char* shibei_ffi_create_tag(const char* name, const char* color);
+extern char* shibei_ffi_update_tag(const char* id, const char* name, const char* color);
 extern char* shibei_ffi_delete_tag(const char* tag_id);
+extern char* shibei_ffi_get_tags_for_resource(const char* resource_id);
+extern char* shibei_ffi_add_tag_to_resource(const char* resource_id, const char* tag_id);
+extern char* shibei_ffi_remove_tag_from_resource(const char* resource_id, const char* tag_id);
 extern char* shibei_ffi_get_resource(const char* id);
 extern char* shibei_ffi_get_resource_summary(const char* id, int32_t max_chars);
 extern char* shibei_ffi_get_resource_html(const char* id);
@@ -394,6 +398,23 @@ static napi_value create_tag_wrap(napi_env env, napi_callback_info info) {
     return result;
 }
 
+static napi_value update_tag_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char buf_name[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_name, sizeof(buf_name), &len); }
+    char buf_color[4096] = {0};
+    if (2 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[2], buf_color, sizeof(buf_color), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_update_tag(buf_id, buf_name, buf_color);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
 static napi_value delete_tag_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
@@ -402,6 +423,49 @@ static napi_value delete_tag_wrap(napi_env env, napi_callback_info info) {
     if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_tag_id, sizeof(buf_tag_id), &len); }
     napi_value result = NULL;
     char* ret = shibei_ffi_delete_tag(buf_tag_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value get_tags_for_resource_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_resource_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_get_tags_for_resource(buf_resource_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value add_tag_to_resource_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_resource_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
+    char buf_tag_id[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_tag_id, sizeof(buf_tag_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_add_tag_to_resource(buf_resource_id, buf_tag_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value remove_tag_from_resource_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char buf_resource_id[4096] = {0};
+    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
+    char buf_tag_id[4096] = {0};
+    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_tag_id, sizeof(buf_tag_id), &len); }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_remove_tag_from_resource(buf_resource_id, buf_tag_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
     return result;
@@ -1026,7 +1090,11 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"listTags", NULL, list_tags_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listTagsInFolder", NULL, list_tags_in_folder_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"createTag", NULL, create_tag_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"updateTag", NULL, update_tag_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"deleteTag", NULL, delete_tag_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"getTagsForResource", NULL, get_tags_for_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"addTagToResource", NULL, add_tag_to_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"removeTagFromResource", NULL, remove_tag_from_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResource", NULL, get_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceSummary", NULL, get_resource_summary_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceHtml", NULL, get_resource_html_wrap, NULL, NULL, NULL, napi_default, NULL},

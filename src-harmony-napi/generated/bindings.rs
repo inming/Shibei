@@ -189,8 +189,32 @@ pub unsafe extern "C" fn shibei_ffi_create_tag(name: *const c_char, color: *cons
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_update_tag(id: *const c_char, name: *const c_char, color: *const c_char) -> *mut c_char {
+    let s = crate::commands::update_tag(cstr_to_string(id), cstr_to_string(name), cstr_to_string(color));
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_delete_tag(tag_id: *const c_char) -> *mut c_char {
     let s = crate::commands::delete_tag(cstr_to_string(tag_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_get_tags_for_resource(resource_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::get_tags_for_resource(cstr_to_string(resource_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_add_tag_to_resource(resource_id: *const c_char, tag_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::add_tag_to_resource(cstr_to_string(resource_id), cstr_to_string(tag_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_remove_tag_from_resource(resource_id: *const c_char, tag_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::remove_tag_from_resource(cstr_to_string(resource_id), cstr_to_string(tag_id));
     leak_cstring(s)
 }
 
