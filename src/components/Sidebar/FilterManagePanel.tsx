@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import * as cmd from "@/lib/commands";
-import type { TagWithCount } from "@/types";
 import { Modal } from "@/components/Modal";
 import styles from "./FilterChips.module.css";
 
@@ -9,14 +8,33 @@ interface ManageDialogProps {
   onClose: () => void;
 }
 
+interface TagEntry {
+  id: string;
+  name: string;
+  color: string;
+  count: number;
+}
+
 export function FilterManagePanel({ onClose }: ManageDialogProps) {
   const { t } = useTranslation("sidebar");
-  const [tags, setTags] = useState<TagWithCount[]>([]);
+  const [tags, setTags] = useState<TagEntry[]>([]);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
 
   const loadTags = useCallback(async () => {
-    try { setTags(await cmd.listTagsInFolder(null)); } catch { /* ignore */ }
+    try {
+      const [allTags, tagsWithCount] = await Promise.all([
+        cmd.listTags(),
+        cmd.listTagsInFolder(null),
+      ]);
+      const countMap = new Map(tagsWithCount.map((t) => [t.id, t.count]));
+      setTags(allTags.map((t) => ({
+        id: t.id,
+        name: t.name,
+        color: t.color,
+        count: countMap.get(t.id) ?? 0,
+      })));
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => { loadTags(); }, [loadTags]);
