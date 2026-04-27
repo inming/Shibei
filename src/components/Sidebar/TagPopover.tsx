@@ -79,13 +79,23 @@ export function TagPopover({
           }
         }}
       />
-      <div className={styles.colorGrid}>
+      <div className={styles.colorGrid} role="radiogroup" aria-label={t('tagColorLabel')}>
         {PRESET_COLORS.map((c) => (
           <button
             key={c}
+            type="button"
+            role="radio"
+            aria-checked={c === color}
+            aria-label={c}
             className={`${styles.colorDot} ${c === color ? styles.selected : ""}`}
             style={{ backgroundColor: c }}
             onClick={() => setColor(c)}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                setColor(c);
+              }
+            }}
           />
         ))}
       </div>

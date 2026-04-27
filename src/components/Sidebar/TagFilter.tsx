@@ -88,12 +88,23 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
     <div className={styles.section}>
       <div
         className={styles.sectionHeader}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
         onClick={() => setCollapsed(!collapsed)}
+        onKeyDown={(e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            setCollapsed(!collapsed);
+          }
+        }}
       >
         <span className={styles.sectionHeaderIcon}>🏷️</span>
         <span className={styles.sectionHeaderLabel}>{t('tags')}</span>
         <button
+          type="button"
           className={styles.addBtn}
+          aria-label={t('newTag')}
           onClick={(e) => { e.stopPropagation(); handleAddClick(e); }}
         >
           +
@@ -104,13 +115,21 @@ export function TagFilter({ selectedTagIds, onToggleTag }: TagFilterProps) {
           {tags.length === 0 ? (
             <div className={styles.empty}>{t('noTags')}</div>
           ) : (
-            <div className={styles.tagList}>
+            <div className={styles.tagList} role="group" aria-label={t('tags')}>
               {tags.map((tag) => (
                 <button
                   key={tag.id}
+                  type="button"
+                  aria-pressed={selectedTagIds.has(tag.id)}
                   className={`${styles.tag} ${selectedTagIds.has(tag.id) ? styles.selected : ""}`}
                   onClick={() => onToggleTag(tag.id)}
                   onContextMenu={(e) => handleContextMenu(e, tag)}
+                  onKeyDown={(e) => {
+                    if (e.key === " " || e.key === "Enter") {
+                      e.preventDefault();
+                      onToggleTag(tag.id);
+                    }
+                  }}
                 >
                   <span
                     className={styles.dot}
