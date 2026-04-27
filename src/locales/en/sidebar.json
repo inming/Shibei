@@ -109,6 +109,9 @@
   "tagSave": "Save",
   "newTag": "New Tag",
   "manageTags": "Manage Tags",
+  "tagColorLabel": "Tag color",
+  "editTags": "Tags",
+  "editTagsHint": "Click a tag to assign or unassign",
 
   "previewSummary": "Summary",
   "previewNoDescription": "No summary",

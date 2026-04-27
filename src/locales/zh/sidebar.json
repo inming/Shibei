@@ -109,6 +109,9 @@
   "tagSave": "保存",
   "newTag": "新建标签",
   "manageTags": "管理标签",
+  "tagColorLabel": "标签颜色",
+  "editTags": "标签",
+  "editTagsHint": "点击标签即可分配/取消",
 
   "previewSummary": "摘要",
   "previewNoDescription": "暂无摘要",

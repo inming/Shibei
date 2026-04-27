@@ -43,6 +43,48 @@
   border-color: var(--color-accent);
 }
 
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.tagEmpty {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  padding: 4px 0;
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.tagChip:hover {
+  background: var(--color-bg-secondary);
+}
+
+.tagChipSelected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle, var(--color-bg-secondary));
+}
+
+.tagDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;
