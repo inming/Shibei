@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import * as cmd from "@/lib/commands";
-import type { Tag } from "@/types";
+import type { TagWithCount } from "@/types";
 import { Modal } from "@/components/Modal";
 import styles from "./FilterChips.module.css";
 
@@ -11,12 +11,12 @@ interface ManageDialogProps {
 
 export function FilterManagePanel({ onClose }: ManageDialogProps) {
   const { t } = useTranslation("sidebar");
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [tags, setTags] = useState<TagWithCount[]>([]);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
 
   const loadTags = useCallback(async () => {
-    try { setTags(await cmd.listTags()); } catch { /* ignore */ }
+    try { setTags(await cmd.listTagsInFolder(null)); } catch { /* ignore */ }
   }, []);
 
   useEffect(() => { loadTags(); }, [loadTags]);
@@ -43,12 +43,13 @@ export function FilterManagePanel({ onClose }: ManageDialogProps) {
             <div key={tag.id} className={styles.manageItem}>
               <span className={styles.manageDot} style={{ backgroundColor: tag.color }} />
               <span className={styles.manageName}>{tag.name}</span>
+              <span className={styles.manageCount}>{tag.count}</span>
               <button
                 className={styles.manageDeleteBtn}
                 onClick={() => handleDelete(tag.id, tag.name)}
                 title={t("deleteTag")}
               >
-                &#128465;
+                &#10005;
               </button>
             </div>
           ))}

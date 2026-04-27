@@ -267,6 +267,14 @@
   white-space: nowrap;
 }
 
+.manageCount {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  min-width: 18px;
+  text-align: right;
+  margin-right: 4px;
+}
+
 .manageDeleteBtn {
   display: inline-flex;
   align-items: center;
