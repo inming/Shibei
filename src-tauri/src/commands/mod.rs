@@ -571,9 +571,7 @@ pub async fn cmd_sync_now(
         }));
     });
 
-    let result = engine.sync(Some(&on_progress)).await.inspect_err(|e| {
-        eprintln!("[sync_diag] sync FAILED: {}", e);
-    }).map_err(|e| {
+    let result = engine.sync(Some(&on_progress)).await.map_err(|e| {
         let msg = e.to_string();
         let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": msg }));
         CommandError { message: e.to_string() }
@@ -680,8 +678,6 @@ async fn build_sync_engine(
         access_key,
         secret_key,
     };
-    eprintln!("[sync_diag] build_sync_engine: bucket={} region={} endpoint={:?} encryption_enabled={}",
-        bucket, region, if endpoint.is_empty() { "default" } else { &endpoint }, local_encryption_enabled);
     let s3_backend = crate::sync::backend::S3Backend::new(s3_config)
         .map_err(|e| CommandError { message: e.to_string() })?;
 

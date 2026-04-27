@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::io::Read as _;
-use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -163,17 +162,6 @@ impl SyncEngine {
         pool.get().map_err(DbError::Pool).map_err(SyncError::Db)
     }
 
-    fn sync_diag_log(&self, msg: &str) {
-        let path = self.base_dir.join("sync_diag.log");
-        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-        let line = format!("[{ts}] {msg}\n");
-        let _ = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .and_then(|mut f| f.write_all(line.as_bytes()));
-    }
-
     /// Run the full sync cycle: upload local changes, download and apply remote changes.
     pub async fn sync(&self, on_progress: Option<&ProgressCallback>) -> Result<SyncResult, SyncError> {
         // Try lock — skip if already syncing
@@ -181,8 +169,6 @@ impl SyncEngine {
             Ok(guard) => guard,
             Err(_) => return Err(SyncError::AlreadyRunning),
         };
-
-        self.sync_diag_log(&format!("=== SYNC START === device_id={}", self.device_id));
 
         // Auto-migrate uncompressed snapshots (one-time)
         self.migrate_snapshots_to_gzip().await?;
@@ -217,15 +203,10 @@ impl SyncEngine {
             // Don't fail the sync for compaction errors
         }
 
-        self.sync_diag_log(&format!(
-            "[sync] Done: uploaded={}, downloaded={}, applied={} (snapshot={})",
-            uploaded, downloaded, applied, snapshot_imported
-        ));
         eprintln!(
             "[sync] Done: uploaded={}, downloaded={}, applied={} (snapshot={})",
             uploaded, downloaded, applied, snapshot_imported
         );
-        self.sync_diag_log(&format!("=== SYNC END === result=Success uploaded={} downloaded={} applied={} snapshot_imported={}", uploaded, downloaded, applied, snapshot_imported));
         Ok(SyncResult::Success {
             uploaded,
             downloaded,
@@ -487,7 +468,6 @@ impl SyncEngine {
         {
             let conn = self.conn()?;
             if sync_state::get(&conn, "last_sync_at")?.is_some() {
-                self.sync_diag_log("Phase 0: last_sync_at already set, skipping initial snapshot");
                 return Ok(());
             }
         }
@@ -536,10 +516,6 @@ impl SyncEngine {
         }
 
         eprintln!("[sync] Initial snapshot uploaded ({} resources)", resource_ids.len());
-        self.sync_diag_log(&format!(
-            "Phase 0: uploaded initial snapshot key={} resources={}",
-            key, resource_ids.len()
-        ));
         Ok(())
     }
 
@@ -575,7 +551,6 @@ impl SyncEngine {
         };
 
         if pending.is_empty() {
-            self.sync_diag_log("Phase 1: no pending sync_log entries, nothing to upload");
             eprintln!("[sync] Phase 1: no pending changes to upload");
             return Ok(0);
         }
@@ -641,9 +616,6 @@ impl SyncEngine {
         {
             let conn = self.conn()?;
             if sync_state::get(&conn, "last_sync_at")?.is_some() {
-                self.sync_diag_log("Phase 1.5: last_sync_at already set, skipping snapshot import");
-                // DIAG: still list and inspect snapshots to understand S3 state
-                self.diag_inspect_snapshots().await;
                 return Ok(0);
             }
         }
@@ -652,13 +624,7 @@ impl SyncEngine {
         // Older snapshots are subsets of newer ones (each is a full state export),
         // so importing them all wastes time and can cause stale-data interference.
         let snapshots = self.backend.list("state/snapshot-").await?;
-        self.sync_diag_log(&format!(
-            "Phase 1.5: list('state/snapshot-') returned {} snapshots: {:?}",
-            snapshots.len(),
-            snapshots.iter().map(|o| &o.key).collect::<Vec<_>>()
-        ));
         if snapshots.is_empty() {
-            self.sync_diag_log("Phase 1.5: no snapshots found on remote, returning 0");
             return Ok(0);
         }
 
@@ -686,18 +652,8 @@ impl SyncEngine {
             // Skip own snapshots — we already have our own data locally.
             if snapshot.device_id == self.device_id {
                 eprintln!("[sync] Skipping own snapshot (device {})", self.device_id);
-                self.sync_diag_log(&format!(
-                    "Phase 1.5: skipping own snapshot (device={} key={})",
-                    self.device_id, snapshot_key
-                ));
                 continue;
             }
-            self.sync_diag_log(&format!(
-                "Phase 1.5: found FOREIGN snapshot device={} key={} resources={}",
-                snapshot.device_id,
-                snapshot_key,
-                snapshot.resources.len()
-            ));
             // Keep latest per device (sort order ensures last = newest)
             latest_per_device.insert(snapshot.device_id.clone(), (snapshot_key.clone(), snapshot));
         }
@@ -821,68 +777,10 @@ impl SyncEngine {
         Ok(imported)
     }
 
-    /// Diagnostic: list and download all state snapshots to understand what devices exist on S3.
-    async fn diag_inspect_snapshots(&self) {
-        let snapshots = match self.backend.list("state/snapshot-").await {
-            Ok(objs) => objs,
-            Err(e) => {
-                self.sync_diag_log(&format!("DIAG: list snapshots error: {}", e));
-                return;
-            }
-        };
-        if snapshots.is_empty() {
-            self.sync_diag_log("DIAG: no snapshots on S3");
-            return;
-        }
-        for obj in &snapshots {
-            match self.backend.download(&obj.key).await {
-                Ok(data) => {
-                    match serde_json::from_slice::<serde_json::Value>(&data) {
-                        Ok(val) => {
-                            let device_id = val["device_id"].as_str().unwrap_or("?");
-                            let resource_count = val["resources"].as_array().map(|a| a.len()).unwrap_or(0);
-                            let folder_count = val["folders"].as_array().map(|a| a.len()).unwrap_or(0);
-                            self.sync_diag_log(&format!(
-                                "DIAG: snapshot key={} device_id={} resources={} folders={}",
-                                obj.key, device_id, resource_count, folder_count
-                            ));
-                        }
-                        Err(e) => {
-                            self.sync_diag_log(&format!("DIAG: snapshot {} parse error: {}", obj.key, e));
-                        }
-                    }
-                }
-                Err(e) => {
-                    self.sync_diag_log(&format!("DIAG: snapshot {} download error: {}", obj.key, e));
-                }
-            }
-        }
-        self.sync_diag_log(&format!("DIAG: inspected {} snapshots total", snapshots.len()));
-    }
-
     /// Phase 2+3: Download remote changes and apply with LWW.
     async fn download_and_apply(&self, on_progress: Option<&ProgressCallback>) -> Result<(usize, usize), SyncError> {
         // List all device directories under sync/
         let objects = self.backend.list("sync/").await?;
-
-        self.sync_diag_log(&format!(
-            "Phase 2: list('sync/') returned {} objects: {:?}",
-            objects.len(),
-            objects.iter().map(|o| &o.key).collect::<Vec<_>>()
-        ));
-
-        // Also try listing other prefixes to understand S3 state
-        for pf in &["state/", "snapshots/"] {
-            match self.backend.list(pf).await {
-                Ok(objs) => self.sync_diag_log(&format!(
-                    "Phase 2: list('{}') returned {} objects: {:?}",
-                    pf,
-                    objs.len(),
-                    objs.iter().map(|o| &o.key).take(20).collect::<Vec<_>>()
-                )),
-                Err(e) => self.sync_diag_log(&format!("Phase 2: list('{}') ERROR: {}", pf, e)),
-            }
-        }
 
         // Extract unique device IDs from keys like "sync/<device_id>/..."
         let mut remote_devices: Vec<String> = objects
@@ -925,25 +823,18 @@ impl SyncEngine {
                                     if let Some(did) = val["device_id"].as_str() {
                                         if !did.is_empty() && did != self.device_id {
                                             remote_devices.push(did.to_string());
-                                            self.sync_diag_log(&format!(
-                                                "Phase 2: found foreign device {} via snapshot {} (fallback)",
-                                                did, obj.key
-                                            ));
                                         }
                                     }
                                 }
                             }
-                            Err(e) => {
-                                self.sync_diag_log(&format!(
-                                    "Phase 2: snapshot {} download error during device detection: {}",
-                                    obj.key, e
-                                ));
+                            Err(_) => {
+                                // skip undecryptable snapshots
                             }
                         }
                     }
                 }
-                Err(e) => {
-                    self.sync_diag_log(&format!("Phase 2: list state/ error during device detection: {}", e));
+                Err(_) => {
+                    // skip if listing fails
                 }
             }
         }
@@ -953,10 +844,6 @@ impl SyncEngine {
 
         // Skip self
         remote_devices.retain(|d| d != &self.device_id);
-        self.sync_diag_log(&format!(
-            "Phase 2: after filtering (skip self={}), remote_devices={:?}",
-            self.device_id, remote_devices
-        ));
         eprintln!("[sync] Phase 2: found {} remote device(s)", remote_devices.len());
 
         // Pre-collect per-device file lists for progress counting
@@ -1036,16 +923,8 @@ impl SyncEngine {
                 // sync_log entries were already marked uploaded). Import the
                 // snapshot directly instead of waiting for JSONL.
                 eprintln!("[sync] Phase 2: device {} has no JSONL files (first sync), falling back to snapshot import", device);
-                self.sync_diag_log(&format!(
-                    "Phase 2: device {} has no JSONL, importing snapshot",
-                    device
-                ));
                 if let Err(e) = self.import_device_snapshot(device).await {
                     eprintln!("[sync] Warning: snapshot import failed for device {}: {}", device, e);
-                    self.sync_diag_log(&format!(
-                        "Phase 2: snapshot import FAILED for device {}: {}",
-                        device, e
-                    ));
                 }
             }
             total_files += files.len();
@@ -1062,7 +941,6 @@ impl SyncEngine {
             let mut latest_seq: Option<String> = None;
 
             for file_obj in &df.files {
-                self.sync_diag_log(&format!("Phase 3: downloading {}", file_obj.key));
                 let data = match self.backend.download(&file_obj.key).await {
                     Ok(d) => d,
                     Err(e) => {
@@ -1070,13 +948,11 @@ impl SyncEngine {
                         // This handles old unencrypted JSONL files that remain
                         // on S3 after encryption was enabled — they can't be
                         // decrypted but shouldn't block all other entries.
-                        self.sync_diag_log(&format!("Phase 3: download FAILED {}: {} — skipping", file_obj.key, e));
                         eprintln!("[sync] Warning: failed to download {}, skipping: {}", file_obj.key, e);
                         continue;
                     }
                 };
                 let content = String::from_utf8_lossy(&data);
-                self.sync_diag_log(&format!("Phase 3: downloaded {} bytes from {}", data.len(), file_obj.key));
                 total_downloaded += 1;
 
                 if let Some(cb) = on_progress {
@@ -1090,16 +966,12 @@ impl SyncEngine {
                     }
                     match serde_json::from_str::<SyncLogEntry>(line) {
                         Ok(entry) => {
-                            self.sync_diag_log(&format!("Phase 3: parsed entry line={} entity_id={} entity_type={} op={}",
-                                line_idx, entry.entity_id, entry.entity_type, entry.operation));
                             all_entries.push(entry);
                         }
                         Err(e) => {
                             // Skip corrupted lines instead of aborting the entire sync.
                             // A single bad entry in a JSONL file (e.g. truncated during upload)
                             // should not prevent all other valid entries from being applied.
-                            self.sync_diag_log(&format!("Phase 3: parse FAILED line={} first_100_chars={:?} error={} — skipping",
-                                line_idx, &line[..std::cmp::min(100, line.len())], e));
                             eprintln!("[sync] Warning: skipping malformed JSONL line {} in {}: {}",
                                 line_idx, file_obj.key, e);
                         }
@@ -1120,16 +992,8 @@ impl SyncEngine {
         }
 
         // Phase 3: Apply with topo-sort
-        self.sync_diag_log(&format!("Phase 3: applying {} entries", all_entries.len()));
         eprintln!("[sync] Phase 3: applying {} remote entries", all_entries.len());
-        let applied = match self.apply_entries(all_entries) {
-            Ok(n) => n,
-            Err(e) => {
-                self.sync_diag_log(&format!("Phase 3: apply FAILED: {}", e));
-                return Err(e);
-            }
-        };
-        self.sync_diag_log(&format!("Phase 3: applied {} entries", applied));
+        let applied = self.apply_entries(all_entries)?;
         eprintln!("[sync] Phase 3: applied {} entries (rest skipped by LWW)", applied);
 
         Ok((total_downloaded, applied))
