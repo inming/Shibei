@@ -42,8 +42,10 @@ export function FilterManagePanel({ onClose }: ManageDialogProps) {
           {tags.map((tag) => (
             <div key={tag.id} className={styles.manageItem}>
               <span className={styles.manageDot} style={{ backgroundColor: tag.color }} />
-              <span className={styles.manageName}>{tag.name}</span>
-              <span className={styles.manageCount}>({tag.count})</span>
+              <span className={styles.manageName}>
+                {tag.name}
+                <span className={styles.manageCount}>({tag.count})</span>
+              </span>
               <button
                 className={styles.manageDeleteBtn}
                 onClick={() => handleDelete(tag.id, tag.name)}
