@@ -1027,6 +1027,24 @@ impl SyncEngine {
 
             if !files.is_empty() {
                 eprintln!("[sync] Phase 2: device {} has {} new file(s)", device, files.len());
+            } else if last_seq.is_none() {
+                // First sync with this device and no JSONL files exist.
+                // This happens when the remote device only uploaded a state
+                // snapshot (Phase 0) but not JSONL (Phase 1 skipped because
+                // sync_log entries were already marked uploaded). Import the
+                // snapshot directly instead of waiting for JSONL.
+                eprintln!("[sync] Phase 2: device {} has no JSONL files (first sync), falling back to snapshot import", device);
+                self.sync_diag_log(&format!(
+                    "Phase 2: device {} has no JSONL, importing snapshot",
+                    device
+                ));
+                if let Err(e) = self.import_device_snapshot(device).await {
+                    eprintln!("[sync] Warning: snapshot import failed for device {}: {}", device, e);
+                    self.sync_diag_log(&format!(
+                        "Phase 2: snapshot import FAILED for device {}: {}",
+                        device, e
+                    ));
+                }
             }
             total_files += files.len();
             device_file_list.push(DeviceFiles {

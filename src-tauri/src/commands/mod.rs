@@ -947,9 +947,31 @@ pub async fn cmd_get_encryption_status(
     encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
 ) -> Result<serde_json::Value, CommandError> {
     let conn = state.conn()?;
-    let enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+    let mut enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
         .map(|v| v == "true")
         .unwrap_or(false);
+
+    // If not locally configured, check S3 for keyring.json so the frontend
+    // can guide the user to unlock encryption before the first sync.
+    if !enabled {
+        if let (Ok(Some(region)), Ok(Some(bucket))) = (
+            crate::sync::sync_state::get(&conn, "config:s3_region"),
+            crate::sync::sync_state::get(&conn, "config:s3_bucket"),
+        ) {
+            if !region.is_empty() && !bucket.is_empty() {
+                if let Ok(backend) = build_raw_s3_backend(&state) {
+                    use crate::sync::backend::SyncBackend;
+                    if backend.head("meta/keyring.json").await
+                        .map(|m| m.is_some())
+                        .unwrap_or(false)
+                    {
+                        enabled = true;
+                    }
+                }
+            }
+        }
+    }
+
     let unlocked = encryption_state.is_unlocked();
     let remember_key = if enabled {
         crate::sync::sync_state::get(&conn, "config:remember_encryption_key")?
