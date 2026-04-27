@@ -95,7 +95,7 @@ export struct FilterChipsRow {
   build() {
     Row() {
       Row() {
-        Text(`🏷️ +`).fontSize(12);
+        Text(`+`).fontSize(14).fontWeight(FontWeight.Bold);
       }
       .padding({ left: 8, right: 8, top: 2, bottom: 2 })
       .backgroundColor($r('app.color.bg_secondary'))

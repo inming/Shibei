@@ -85,8 +85,7 @@ export function FilterChips({ folderId, filterTagIds, onChange }: FilterChipsPro
         onClick={() => setPopoverOpen(!popoverOpen)}
         title={t("filterTags")}
       >
-        <span className={styles.filterIcon}>&#127991;</span>
-        <span>+</span>
+        <span className={styles.filterBtnText}>+</span>
       </button>
 
       {selectedTags.length > 0 && (
