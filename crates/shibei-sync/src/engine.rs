@@ -791,10 +791,12 @@ impl SyncEngine {
             if !rid.is_empty() && !tid.is_empty() {
                 let rt_hlc = rt["hlc"].as_str().unwrap_or("");
                 conn.execute(
-                    "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc)
+                    "INSERT INTO resource_tags (resource_id, tag_id, hlc)
                      SELECT ?1, ?2, ?3
                      WHERE EXISTS (SELECT 1 FROM tags WHERE id = ?2)
-                       AND EXISTS (SELECT 1 FROM resources WHERE id = ?1)",
+                       AND EXISTS (SELECT 1 FROM resources WHERE id = ?1)
+                     ON CONFLICT(resource_id, tag_id) DO UPDATE SET hlc = excluded.hlc
+                     WHERE excluded.hlc > COALESCE(resource_tags.hlc, '')",
                     params![rid, tid, rt_hlc],
                 )?;
             }
@@ -1404,23 +1406,53 @@ impl SyncEngine {
             params![id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, hlc],
         )?;
 
-        // Handle tag_ids if present
+        // Handle tag_ids if present.
+        // Uses LWW-aware upsert per-tag rather than DELETE+re-INSERT, so
+        // concurrent tag additions on different devices don't lose each
+        // other's work. Tags with HLC > the entry's HLC are preserved
+        // (they were added by a higher-priority concurrent change).
         if let Some(tag_ids) = payload["tag_ids"].as_array() {
-            // Delete existing resource_tags for this resource
-            conn.execute(
-                "DELETE FROM resource_tags WHERE resource_id = ?1",
-                params![id],
-            )?;
-
-            // Re-insert tag associations (only if tag exists, to avoid orphans)
+            // Upsert each tag in the payload (LWW: only if our HLC is newer)
             for tag_val in tag_ids {
                 if let Some(tag_id) = tag_val.as_str() {
                     conn.execute(
-                        "INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, hlc)
-                         SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM tags WHERE id = ?2)",
+                        "INSERT INTO resource_tags (resource_id, tag_id, hlc)
+                         SELECT ?1, ?2, ?3
+                         WHERE EXISTS (SELECT 1 FROM tags WHERE id = ?2)
+                         ON CONFLICT(resource_id, tag_id) DO UPDATE SET hlc = excluded.hlc
+                         WHERE excluded.hlc > COALESCE(resource_tags.hlc, '')",
                         params![id, tag_id, hlc],
                     )?;
                 }
+            }
+            // Remove tags not in the payload, but only if their HLC is not
+            // newer than this entry — a newer HLC means another device added
+            // this tag concurrently and its change should win.
+            let tag_placeholders: Vec<String> = tag_ids
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| format!("'{}'", s.replace('\'', "''"))))
+                .collect();
+            if !tag_placeholders.is_empty() {
+                let tag_list = tag_placeholders.join(",");
+                let sql = format!(
+                    "UPDATE resource_tags SET deleted_at = ?1, hlc = ?2
+                     WHERE resource_id = ?3 AND deleted_at IS NULL
+                       AND (hlc IS NULL OR hlc < ?2)
+                       AND tag_id NOT IN ({})",
+                    tag_list
+                );
+                let now = shibei_db::now_iso8601();
+                conn.execute(&sql, params![now, hlc, id])?;
+            }
+            // If all tags removed (tag_ids is empty), delete all remaining
+            if tag_ids.is_empty() {
+                let now = shibei_db::now_iso8601();
+                conn.execute(
+                    "UPDATE resource_tags SET deleted_at = ?1, hlc = ?2
+                     WHERE resource_id = ?3 AND deleted_at IS NULL
+                       AND (hlc IS NULL OR hlc < ?2)",
+                    params![now, hlc, id],
+                )?;
             }
         }
 
@@ -1546,21 +1578,21 @@ impl SyncEngine {
 
         for rid in &resource_ids {
             conn.execute(
-                "UPDATE resource_tags SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL",
+                "UPDATE resource_tags SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
                 params![deleted_at, hlc, rid],
             )?;
             conn.execute(
-                "UPDATE highlights SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL",
+                "UPDATE highlights SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
                 params![deleted_at, hlc, rid],
             )?;
             conn.execute(
-                "UPDATE comments SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL",
+                "UPDATE comments SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
                 params![deleted_at, hlc, rid],
             )?;
         }
 
         conn.execute(
-            "UPDATE resources SET deleted_at = ?1, hlc = ?2 WHERE folder_id = ?3 AND deleted_at IS NULL",
+            "UPDATE resources SET deleted_at = ?1, hlc = ?2 WHERE folder_id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
             params![deleted_at, hlc, folder_id],
         )?;
 
