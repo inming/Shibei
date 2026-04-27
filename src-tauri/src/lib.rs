@@ -297,6 +297,7 @@ pub fn run() {
             commands::cmd_setup_encryption,
             commands::cmd_unlock_encryption,
             commands::cmd_change_encryption_password,
+            commands::cmd_restore_keyring,
             commands::cmd_get_encryption_status,
             commands::cmd_auto_unlock,
             commands::cmd_set_remember_key,

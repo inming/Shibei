@@ -293,6 +293,10 @@ export function changeEncryptionPassword(oldPassword: string, newPassword: strin
   return invoke("cmd_change_encryption_password", { oldPassword, newPassword });
 }
 
+export function restoreKeyring(password: string): Promise<void> {
+  return invoke("cmd_restore_keyring", { password });
+}
+
 export function getEncryptionStatus(): Promise<EncryptionStatus> {
   return invoke("cmd_get_encryption_status");
 }

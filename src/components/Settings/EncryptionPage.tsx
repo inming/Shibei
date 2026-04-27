@@ -114,6 +114,20 @@ export function EncryptionPage() {
     }
   }
 
+  async function handleRestoreKeyring() {
+    const pw = window.prompt(t('restoreKeyringPrompt'));
+    if (!pw) return;
+    setLoading(true);
+    try {
+      await cmd.restoreKeyring(pw);
+      toast.success(t('restoreKeyringSuccess'));
+    } catch (err) {
+      toast.error(t('restoreKeyringFailed', { error: formatError(err) }));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <>
       <h2 className={styles.heading}>{t('title')}</h2>
@@ -168,6 +182,13 @@ export function EncryptionPage() {
               onClick={() => setShowPasswordDialog("change")}
             >
               {t('changePassword')}
+            </button>
+            <button
+              className={styles.secondary}
+              onClick={handleRestoreKeyring}
+              disabled={loading}
+            >
+              {t('restoreKeyring')}
             </button>
           </div>
         </>

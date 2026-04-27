@@ -31,5 +31,9 @@
   "changeFailed": "Failed to change password: {{error}}",
   "savedToKeychain": "Saved to system keychain",
   "removedFromKeychain": "Removed from system keychain",
-  "operationFailed": "Operation failed: {{error}}"
+  "operationFailed": "Operation failed: {{error}}",
+  "restoreKeyring": "Restore Keyring",
+  "restoreKeyringPrompt": "Enter your encryption password to restore the keyring on S3:",
+  "restoreKeyringSuccess": "Keyring restored to S3",
+  "restoreKeyringFailed": "Failed to restore keyring: {{error}}"
 }

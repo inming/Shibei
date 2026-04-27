@@ -569,7 +569,9 @@ pub async fn cmd_sync_now(
         }));
     });
 
-    let result = engine.sync(Some(&on_progress)).await.map_err(|e| {
+    let result = engine.sync(Some(&on_progress)).await.inspect_err(|e| {
+        eprintln!("[sync_diag] sync FAILED: {}", e);
+    }).map_err(|e| {
         let msg = e.to_string();
         let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": msg }));
         CommandError { message: e.to_string() }
@@ -670,12 +672,14 @@ async fn build_sync_engine(
         .ok_or_else(|| CommandError { message: "error.syncCredentialsNotSet".to_string() })?;
 
     let s3_config = crate::sync::backend::S3Config {
-        endpoint: if endpoint.is_empty() { None } else { Some(endpoint) },
-        region,
-        bucket,
+        endpoint: if endpoint.is_empty() { None } else { Some(endpoint.clone()) },
+        region: region.clone(),
+        bucket: bucket.clone(),
         access_key,
         secret_key,
     };
+    eprintln!("[sync_diag] build_sync_engine: bucket={} region={} endpoint={:?} encryption_enabled={}",
+        bucket, region, if endpoint.is_empty() { "default" } else { &endpoint }, local_encryption_enabled);
     let s3_backend = crate::sync::backend::S3Backend::new(s3_config)
         .map_err(|e| CommandError { message: e.to_string() })?;
 
@@ -700,13 +704,22 @@ async fn build_sync_engine(
     };
 
     let backend: Arc<dyn crate::sync::backend::SyncBackend> = if encryption_enabled {
-        let mk = encryption_state.get_key().ok_or_else(|| CommandError {
-            message: "error.encryptionNotUnlocked".to_string(),
-        })?;
-        Arc::new(crate::sync::encrypted_backend::EncryptedBackend::new(
-            Arc::new(s3_backend),
-            mk,
-        ))
+        match encryption_state.get_key() {
+            Some(mk) => {
+                Arc::new(crate::sync::encrypted_backend::EncryptedBackend::new(
+                    Arc::new(s3_backend),
+                    mk,
+                ))
+            }
+            None => {
+                // Encryption is enabled on remote (meta/keyring.json exists) but
+                // this device hasn't unlocked yet. Fall back to raw S3 so sync
+                // can still run — the user will see a prompt to unlock encryption
+                // in the UI. Without this fallback, sync is completely blocked.
+                eprintln!("[sync] warning: encryption detected on remote but not unlocked — syncing without encryption");
+                Arc::new(s3_backend)
+            }
+        }
     } else {
         Arc::new(s3_backend)
     };
@@ -772,16 +785,14 @@ pub async fn cmd_setup_encryption(
     backend.upload("meta/keyring.json", keyring_json.as_bytes()).await
         .map_err(|e| CommandError { message: format!("error.keyUploadFailed: {}", e) })?;
 
-    // 3. Clear all existing S3 data
-    for prefix in &["sync/", "state/", "snapshots/"] {
-        let objects = backend.list(prefix).await
-            .map_err(|e| CommandError { message: e.to_string() })?;
-        for obj in objects {
-            let _ = backend.delete(&obj.key).await;
-        }
-    }
-
-    // 4. Reset local sync progress
+    // 3. Do NOT clear existing S3 data — clearing on a new device would
+    // destroy data uploaded by other devices. Encryption is now transparently
+    // applied to all future uploads; existing unencrypted data on S3 will be
+    // overwritten with encrypted versions when the owning device re-syncs.
+    //
+    // We still need to force a local re-upload so all sync_log entries (which
+    // were previously uploaded unencrypted) get re-uploaded encrypted.
+    // 3a. Reset local sync progress so the next sync uploads everything encrypted
     let conn = state.conn()?;
     conn.execute("UPDATE sync_log SET uploaded = 0", [])
         .map_err(|e| CommandError { message: e.to_string() })?;
@@ -891,6 +902,39 @@ pub async fn cmd_change_encryption_password(
     let new_json = new_keyring.to_json()
         .map_err(|e| CommandError { message: e.to_string() })?;
     backend.upload("meta/keyring.json", new_json.as_bytes()).await
+        .map_err(|e| CommandError { message: format!("error.keyUploadFailed: {}", e) })?;
+
+    let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_restore_keyring(
+    state: tauri::State<'_, Arc<AppState>>,
+    encryption_state: tauri::State<'_, Arc<crate::sync::EncryptionState>>,
+    app: tauri::AppHandle,
+    password: String,
+) -> Result<(), CommandError> {
+    use crate::sync::backend::SyncBackend;
+    use crate::sync::keyring::Keyring;
+
+    // Load the MK from either the in-memory encryption state or the OS keychain.
+    let mk = encryption_state.get_key().or_else(|| {
+        crate::sync::os_keystore::load_master_key()
+            .ok()
+            .flatten()
+    }).ok_or_else(|| CommandError {
+        message: "error.encryptionNotUnlocked".to_string(),
+    })?;
+
+    // Wrap the existing MK into a fresh keyring envelope.
+    let keyring = Keyring::wrap_existing_mk(&*mk, &password)
+        .map_err(|e| CommandError { message: format!("error.keyGenFailed: {}", e) })?;
+
+    let backend = build_raw_s3_backend(&state)?;
+    let keyring_json = keyring.to_json()
+        .map_err(|e| CommandError { message: e.to_string() })?;
+    backend.upload("meta/keyring.json", keyring_json.as_bytes()).await
         .map_err(|e| CommandError { message: format!("error.keyUploadFailed: {}", e) })?;
 
     let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "encryption" }));

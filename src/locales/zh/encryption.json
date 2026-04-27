@@ -31,5 +31,9 @@
   "changeFailed": "修改密码失败：{{error}}",
   "savedToKeychain": "已保存到系统钥匙串",
   "removedFromKeychain": "已从系统钥匙串移除",
-  "operationFailed": "操作失败：{{error}}"
+  "operationFailed": "操作失败：{{error}}",
+  "restoreKeyring": "恢复密钥文件",
+  "restoreKeyringPrompt": "请输入加密密码以恢复 S3 上的密钥文件：",
+  "restoreKeyringSuccess": "密钥文件已恢复到 S3",
+  "restoreKeyringFailed": "恢复密钥文件失败：{{error}}"
 }

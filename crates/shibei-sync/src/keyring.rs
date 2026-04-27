@@ -88,6 +88,37 @@ pub fn compute_verification_hash(mk: &[u8; KEY_LEN]) -> [u8; VERIFICATION_HASH_L
 }
 
 impl Keyring {
+    /// Wrap an existing Master Key into a new keyring, sealed with the given password.
+    /// Unlike `generate()`, this preserves the given MK — only the salt and wrapping
+    /// envelope are new. Use this to re-upload a keyring when the S3 copy was lost
+    /// but the MK still lives in a device's OS keychain.
+    pub fn wrap_existing_mk(mk: &[u8; KEY_LEN], password: &str) -> Result<Self, KeyringError> {
+        let mut salt = [0u8; SALT_LEN];
+        OsRng.fill_bytes(&mut salt);
+
+        let params = Argon2Params {
+            m_cost: ARGON2_M_COST,
+            t_cost: ARGON2_T_COST,
+            p_cost: ARGON2_P_COST,
+        };
+
+        let pdk = derive_pdk(password, &salt, &params)?;
+        let wrapped = crypto::encrypt(mk, &pdk, b"shibei-keyring")?;
+        let nonce = &wrapped[1..1 + 24];
+        let ciphertext_with_tag = &wrapped[1 + 24..];
+        let verification_hash = compute_verification_hash(mk);
+
+        Ok(Keyring {
+            version: KEYRING_VERSION,
+            kdf: "argon2id".to_string(),
+            argon2_params: params,
+            salt: base64_encode(&salt),
+            wrapped_master_key: base64_encode(ciphertext_with_tag),
+            wrapped_master_key_nonce: base64_encode(nonce),
+            verification_hash: base64_encode(&verification_hash),
+        })
+    }
+
     /// Generate a new keyring with a random MK, wrapped by the given password.
     pub fn generate(password: &str) -> Result<Self, KeyringError> {
         // Generate random salt and MK
