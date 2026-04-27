@@ -757,6 +757,18 @@ pub async fn cmd_setup_encryption(
     app: tauri::AppHandle,
     password: String,
 ) -> Result<(), CommandError> {
+    // Guard: if encryption is already enabled, reject. Re-setup would
+    // generate a new random MK, overwrite keyring.json on S3, and render
+    // all existing encrypted data permanently undecryptable.
+    {
+        let conn = state.conn()?;
+        if crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
+            .map(|v| v == "true").unwrap_or(false)
+        {
+            return Err(CommandError { message: "error.encryptionAlreadyEnabled".to_string() });
+        }
+    }
+
     // Clear any stale keychain entry (old MK is now invalid)
     let _ = crate::sync::os_keystore::delete_master_key();
 
@@ -808,6 +820,14 @@ pub async fn cmd_setup_encryption(
     crate::sync::sync_state::delete(&conn, "last_sync_at")?;
 
     // 5. Store MK and mark encryption enabled
+    // If remember_key is enabled, persist MK to OS keychain so it
+    // survives restart. Must be before set_key() which may consume mk.
+    if crate::sync::sync_state::get(&conn, "config:remember_encryption_key")?
+        .map(|v| v == "true")
+        .unwrap_or(false)
+    {
+        let _ = crate::sync::os_keystore::save_master_key(&mk);
+    }
     encryption_state.set_key(mk);
     crate::sync::sync_state::set(&conn, "config:encryption_enabled", "true")?;
     // Reset completion flag so next sync does full re-sync
