@@ -1428,21 +1428,27 @@ impl SyncEngine {
             // Remove tags not in the payload, but only if their HLC is not
             // newer than this entry — a newer HLC means another device added
             // this tag concurrently and its change should win.
-            let tag_placeholders: Vec<String> = tag_ids
+            let exclude_ids: Vec<&str> = tag_ids
                 .iter()
-                .filter_map(|v| v.as_str().map(|s| format!("'{}'", s.replace('\'', "''"))))
+                .filter_map(|v| v.as_str())
                 .collect();
-            if !tag_placeholders.is_empty() {
-                let tag_list = tag_placeholders.join(",");
+            if !exclude_ids.is_empty() {
+                let placeholders: Vec<&str> = vec!["?"; exclude_ids.len()];
                 let sql = format!(
                     "UPDATE resource_tags SET deleted_at = ?1, hlc = ?2
                      WHERE resource_id = ?3 AND deleted_at IS NULL
                        AND (hlc IS NULL OR hlc < ?2)
                        AND tag_id NOT IN ({})",
-                    tag_list
+                    placeholders.join(",")
                 );
-                let now = shibei_db::now_iso8601();
-                conn.execute(&sql, params![now, hlc, id])?;
+                let params: Vec<Box<dyn rusqlite::types::ToSql + '_>> = std::iter::empty()
+                    .chain(Some(Box::new(shibei_db::now_iso8601()) as Box<dyn rusqlite::types::ToSql>))
+                    .chain(Some(Box::new(hlc.to_string()) as Box<dyn rusqlite::types::ToSql>))
+                    .chain(Some(Box::new(id.to_string()) as Box<dyn rusqlite::types::ToSql>))
+                    .chain(exclude_ids.iter().map(|&tid| Box::new(tid.to_string()) as Box<dyn rusqlite::types::ToSql>))
+                    .collect();
+                let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                conn.execute(&sql, param_refs.as_slice())?;
             }
             // If all tags removed (tag_ids is empty), delete all remaining
             if tag_ids.is_empty() {
@@ -1606,7 +1612,7 @@ impl SyncEngine {
 
         for child_id in &child_ids {
             conn.execute(
-                "UPDATE folders SET deleted_at = ?1, hlc = ?2 WHERE id = ?3 AND deleted_at IS NULL",
+                "UPDATE folders SET deleted_at = ?1, hlc = ?2 WHERE id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
                 params![deleted_at, hlc, child_id],
             )?;
             self.cascade_folder_delete(conn, child_id, deleted_at, hlc)?;

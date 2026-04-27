@@ -536,9 +536,14 @@ pub async fn cmd_sync_now(
 ) -> Result<String, CommandError> {
     let _ = app.emit(events::SYNC_STARTED, ());
 
+    let engine = build_sync_engine(&state, &encryption_state).await.inspect_err(|e| {
+        let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": e.message }));
+    })?;
+
     // Self-heal: if encryption is enabled but the first post-encryption sync
-    // never completed, reset sync state to force full re-sync. Run BEFORE
-    // build_sync_engine so Phase 0 picks up the reset last_sync_at.
+    // never completed, reset sync state to force full re-sync. Runs AFTER
+    // build_sync_engine (so we know credentials + unlock work) but BEFORE
+    // engine.sync() so the reset takes effect on this sync.
     {
         let conn = state.conn()?;
         let encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
@@ -557,9 +562,6 @@ pub async fn cmd_sync_now(
         }
     }
 
-    let engine = build_sync_engine(&state, &encryption_state).await.inspect_err(|e| {
-        let _ = app.emit(events::SYNC_FAILED, serde_json::json!({ "message": e.message }));
-    })?;
     let app_clone = app.clone();
     let on_progress: crate::sync::engine::ProgressCallback = Box::new(move |phase, current, total| {
         let _ = app_clone.emit(events::SYNC_PROGRESS, serde_json::json!({
@@ -795,16 +797,13 @@ pub async fn cmd_setup_encryption(
     // 3a. Delete this device's old JSONL from S3 (best-effort).
     {
         use crate::sync::backend::SyncBackend;
-        let device_id = state.device_id.as_ref()
-            .map(|d| d.clone())
-            .unwrap_or_default();
-        if !device_id.is_empty() {
-            let prefix = format!("sync/{}/", device_id);
-            if let Ok(objects) = backend.list(&prefix).await {
-                for obj in &objects {
-                    if obj.key.ends_with(".jsonl") {
-                        let _ = backend.delete(&obj.key).await;
-                    }
+        let device_id = state.device_id.as_deref()
+            .ok_or_else(|| CommandError { message: "error.deviceIdNotInitialized".to_string() })?;
+        let prefix = format!("sync/{}/", device_id);
+        if let Ok(objects) = backend.list(&prefix).await {
+            for obj in &objects {
+                if obj.key.ends_with(".jsonl") {
+                    let _ = backend.delete(&obj.key).await;
                 }
             }
         }
