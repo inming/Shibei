@@ -11,6 +11,7 @@ export struct FilterChipsRow {
   @State searchText: string = '';
   @State manageMode: boolean = false;
   @State newTagName: string = '';
+  @State allManageTags: TagWithCount[] = [];
 
   aboutToAppear(): void {
     this.loadTags();
@@ -21,6 +22,30 @@ export struct FilterChipsRow {
       this.allTags = ShibeiService.instance.listTagsInFolder(this.folderId);
     } catch (_e) {
       this.allTags = [];
+    }
+  }
+
+  private loadManageTags(): void {
+    try {
+      // Merge all tags with folder-scoped counts
+      const all = ShibeiService.instance.listTags();
+      const withCount = ShibeiService.instance.listTagsInFolder('');
+      const countMap: Record<string, number> = {};
+      for (let i = 0; i < withCount.length; i++) {
+        countMap[withCount[i].id] = withCount[i].count;
+      }
+      const result: TagWithCount[] = [];
+      for (let i = 0; i < all.length; i++) {
+        result.push({
+          id: all[i].id,
+          name: all[i].name,
+          color: all[i].color,
+          count: countMap[all[i].id] ?? 0,
+        });
+      }
+      this.allManageTags = result;
+    } catch (_e) {
+      this.allManageTags = [];
     }
   }
 
@@ -54,6 +79,14 @@ export struct FilterChipsRow {
     return this.allTags.filter((t) => t.name.toLowerCase().indexOf(q) !== -1);
   }
 
+  private manageTags(): TagWithCount[] {
+    if (!this.searchText) {
+      return this.allManageTags;
+    }
+    const q = this.searchText.toLowerCase();
+    return this.allManageTags.filter((t) => t.name.toLowerCase().indexOf(q) !== -1);
+  }
+
   private async doCreateTag(): Promise<void> {
     const name = this.newTagName.trim();
     if (!name) return;
@@ -61,6 +94,7 @@ export struct FilterChipsRow {
       ShibeiService.instance.createTag(name, '#888888');
       this.newTagName = '';
       this.loadTags();
+      this.loadManageTags();
     } catch (_e) {
       /* ignore */
     }
@@ -79,6 +113,7 @@ export struct FilterChipsRow {
         try {
           ShibeiService.instance.deleteTag(tagId);
           this.loadTags();
+          this.loadManageTags();
         } catch (_e) {
           /* ignore */
         }
@@ -96,7 +131,7 @@ export struct FilterChipsRow {
           .margin({ bottom: 8 });
       }
       List() {
-        ForEach(this.filteredTags(), (tag: TagWithCount) => {
+        ForEach(this.manageMode ? this.manageTags() : this.filteredTags(), (tag: TagWithCount) => {
           ListItem() {
             Row() {
               Circle({ width: 12, height: 12 })
@@ -105,7 +140,7 @@ export struct FilterChipsRow {
               Text(tag.name)
                 .fontSize(14)
                 .layoutWeight(1);
-              Text(`${tag.count}`)
+              Text(`(${tag.count})`)
                 .fontSize(12)
                 .fontColor($r('app.color.text_secondary'));
               if (this.filterTagIds.indexOf(tag.id) !== -1) {
@@ -122,7 +157,7 @@ export struct FilterChipsRow {
           }
         });
       }
-      if (this.filteredTags().length === 0) {
+      if ((this.manageMode ? this.manageTags() : this.filteredTags()).length === 0) {
         Text(I18n.t($r('app.string.sidebar_no_tags')))
           .fontSize(13)
           .fontColor($r('app.color.text_secondary'))
@@ -150,6 +185,9 @@ export struct FilterChipsRow {
           .onClick(() => {
             this.manageMode = !this.manageMode;
             this.newTagName = '';
+            if (this.manageMode) {
+              this.loadManageTags();
+            }
           });
       }
       .width('100%')
