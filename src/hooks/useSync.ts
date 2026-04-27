@@ -40,7 +40,7 @@ export function useSync() {
         setTimeout(() => {
           if (!syncingRef.current) {
             syncingRef.current = true;
-            cmd.syncNow().catch(() => { syncingRef.current = false; });
+            cmd.syncNow().finally(() => { syncingRef.current = false; });
           }
         }, 500);
       }
