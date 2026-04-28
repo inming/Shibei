@@ -6,10 +6,13 @@
 //!     (see bindings.rs) and back
 //!
 //! The ABI between C and Rust is deliberately minimal: all non-primitive data
-//! passes through NUL-terminated C strings (arg strings with a 4 KiB cap; ret
-//! strings are heap-allocated by Rust, printed by C, then freed via a single
-//! shared `shibei_ffi_free_cstring`). Async/event callbacks carry a `void*`
-//! context pointer produced by C and opaque to Rust.
+//! passes through NUL-terminated C strings. Argument strings are sized via
+//! the standard NAPI two-call protocol (probe length, malloc, fill, free
+//! after the Rust call returns) so payloads of any size — base64-encoded
+//! PDFs, full HTML snapshots — survive the JS→Rust hop. Returned strings
+//! stay heap-owned by Rust and are reclaimed by `shibei_ffi_free_cstring`.
+//! Async/event callbacks carry a `void*` context pointer produced by C and
+//! opaque to Rust.
 
 use crate::parse::{Command, Kind, ScalarType};
 use std::fmt::Write;
@@ -140,10 +143,7 @@ fn emit_sync_wrapper(out: &mut String, cmd: &Command) {
         let _ = writeln!(w, "    napi_get_cb_info(env, info, &argc, args, NULL, NULL);");
         for (i, a) in cmd.args.iter().enumerate() {
             match a.ty {
-                ScalarType::String => {
-                    let _ = writeln!(w, "    char buf_{}[4096] = {{0}};", a.rust_name);
-                    let _ = writeln!(w, "    if ({i} < argc) {{ size_t len = 0; napi_get_value_string_utf8(env, args[{i}], buf_{}, sizeof(buf_{}), &len); }}", a.rust_name, a.rust_name);
-                }
+                ScalarType::String => emit_string_arg_decode(&mut w, i, &a.rust_name),
                 ScalarType::I32 => {
                     let _ = writeln!(w, "    int32_t v_{} = 0; if ({i} < argc) napi_get_value_int32(env, args[{i}], &v_{});", a.rust_name, a.rust_name);
                 }
@@ -187,9 +187,40 @@ fn emit_sync_wrapper(out: &mut String, cmd: &Command) {
             let _ = writeln!(w, "    napi_get_undefined(env, &result);");
         }
     }
+    // Free heap-allocated string args (Rust has finished reading from them
+    // synchronously, so it's safe to release once the FFI call returns).
+    for a in &cmd.args {
+        if matches!(a.ty, ScalarType::String) {
+            let _ = writeln!(w, "    free(buf_{});", a.rust_name);
+        }
+    }
     let _ = writeln!(w, "    return result;");
     let _ = writeln!(w, "}}");
     out.push_str(&w);
+}
+
+/// Emit the dynamic-allocation idiom for a single string argument:
+///   1. Probe the JS string's UTF-8 byte length with NULL/0.
+///   2. malloc(len + 1).
+///   3. Fill the buffer.
+///   4. NUL-terminate explicitly.
+///
+/// Caller is responsible for `free(buf_...)` after the FFI call returns.
+fn emit_string_arg_decode(w: &mut String, i: usize, name: &str) {
+    let _ = writeln!(w, "    char* buf_{name} = NULL;");
+    let _ = writeln!(w, "    if ({i} < argc) {{");
+    let _ = writeln!(w, "        size_t need = 0;");
+    let _ = writeln!(w, "        napi_get_value_string_utf8(env, args[{i}], NULL, 0, &need);");
+    let _ = writeln!(w, "        buf_{name} = (char*)malloc(need + 1);");
+    let _ = writeln!(w, "        if (buf_{name}) {{");
+    let _ = writeln!(w, "            size_t got = 0;");
+    let _ = writeln!(w, "            napi_get_value_string_utf8(env, args[{i}], buf_{name}, need + 1, &got);");
+    let _ = writeln!(w, "            buf_{name}[got] = 0;");
+    let _ = writeln!(w, "        }}");
+    let _ = writeln!(w, "    }}");
+    // Defensive empty string when malloc fails or arg missing — keeps the
+    // FFI signature alive instead of passing NULL to Rust's CStr layer.
+    let _ = writeln!(w, "    if (!buf_{name}) {{ buf_{name} = (char*)malloc(1); if (buf_{name}) buf_{name}[0] = 0; }}");
 }
 
 fn emit_async_wrapper(out: &mut String, cmd: &Command) {
@@ -205,10 +236,7 @@ fn emit_async_wrapper(out: &mut String, cmd: &Command) {
     let _ = writeln!(w, "    napi_get_cb_info(env, info, &argc, args, NULL, NULL);");
     for (i, a) in cmd.args.iter().enumerate() {
         match a.ty {
-            ScalarType::String => {
-                let _ = writeln!(w, "    char buf_{}[4096] = {{0}};", a.rust_name);
-                let _ = writeln!(w, "    if ({i} < argc) {{ size_t len = 0; napi_get_value_string_utf8(env, args[{i}], buf_{}, sizeof(buf_{}), &len); }}", a.rust_name, a.rust_name);
-            }
+            ScalarType::String => emit_string_arg_decode(&mut w, i, &a.rust_name),
             ScalarType::I32 => {
                 let _ = writeln!(w, "    int32_t v_{} = 0; if ({i} < argc) napi_get_value_int32(env, args[{i}], &v_{});", a.rust_name, a.rust_name);
             }
@@ -233,6 +261,13 @@ fn emit_async_wrapper(out: &mut String, cmd: &Command) {
         _ => format!("v_{}", a.rust_name),
     }).chain(std::iter::once("ctx".to_string())).collect::<Vec<_>>().join(", ");
     let _ = writeln!(w, "    shibei_ffi_{}({call_args});", cmd.rust_ident);
+    // Async FFI clones the strings into Rust before returning, so it's safe
+    // to free immediately after the call dispatches the worker.
+    for a in &cmd.args {
+        if matches!(a.ty, ScalarType::String) {
+            let _ = writeln!(w, "    free(buf_{});", a.rust_name);
+        }
+    }
     let _ = writeln!(w, "    return promise;");
     let _ = writeln!(w, "}}");
     out.push_str(&w);
@@ -257,10 +292,7 @@ fn emit_event_wrapper(out: &mut String, cmd: &Command) {
             ScalarType::Bool => {
                 let _ = writeln!(w, "    bool v_{} = false; if ({i} < argc) napi_get_value_bool(env, args[{i}], &v_{});", a.rust_name, a.rust_name);
             }
-            ScalarType::String => {
-                let _ = writeln!(w, "    char buf_{}[4096] = {{0}};", a.rust_name);
-                let _ = writeln!(w, "    if ({i} < argc) {{ size_t len = 0; napi_get_value_string_utf8(env, args[{i}], buf_{}, sizeof(buf_{}), &len); }}", a.rust_name, a.rust_name);
-            }
+            ScalarType::String => emit_string_arg_decode(&mut w, i, &a.rust_name),
             ScalarType::VoidReturn => unreachable!(),
         }
     }
@@ -278,6 +310,14 @@ fn emit_event_wrapper(out: &mut String, cmd: &Command) {
         _ => format!("v_{}", a.rust_name),
     }).chain(std::iter::once("ctx".to_string())).collect::<Vec<_>>().join(", ");
     let _ = writeln!(w, "    ctx->token = shibei_ffi_{}({call_args});", cmd.rust_ident);
+    // Free heap-allocated string args after the subscribe FFI returns;
+    // bindings.rs clones them into Rust-owned Strings before crossing the
+    // async boundary.
+    for a in &cmd.args {
+        if matches!(a.ty, ScalarType::String) {
+            let _ = writeln!(w, "    free(buf_{});", a.rust_name);
+        }
+    }
     let _ = writeln!(w, "    // Return a JS fn that unsubscribes when invoked.");
     let _ = writeln!(w, "    napi_value unsubscribe = NULL;");
     let _ = writeln!(w, "    napi_create_function(env, \"unsubscribe\", NAPI_AUTO_LENGTH, {}_unsubscribe_wrap, ctx, &unsubscribe);", cmd.rust_ident);

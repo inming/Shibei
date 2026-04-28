@@ -3,6 +3,7 @@
 
 export const KEY_FOLD_STATUS = 'foldStatus';           // FoldStatus enum
 export const KEY_PENDING_DEEP_LINK = 'pendingDeepLink'; // string URL
+export const KEY_PENDING_SHARE_URL = 'pendingShareUrl'; // string URL captured by share intent while locked
 export const KEY_SUSPENDED_AT = 'suspendedAt';          // epoch ms, written on onBackground
 export const KEY_SYNC_PROGRESS = 'syncProgress';        // { current, total }
 

@@ -23,6 +23,16 @@
           {
             "actions": ["ohos.want.action.viewData"],
             "uris": [{ "scheme": "shibei", "host": "open" }]
+          },
+          {
+            // System share target — receives http(s) URLs and plain text
+            // (which we sniff for an embedded URL). Capture flow handles
+            // the rest in EntryAbility.onNewWant / extractShareUrl.
+            "actions": ["ohos.want.action.share", "ohos.want.action.sendData"],
+            "uris": [
+              { "scheme": "https" },
+              { "scheme": "http" }
+            ]
           }
         ]
       }

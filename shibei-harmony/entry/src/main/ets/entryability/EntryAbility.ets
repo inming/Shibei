@@ -7,7 +7,7 @@ import { LockService, LockState } from '../services/LockService';
 import { I18n } from '../services/I18n';
 import { loadTheme, applyTheme } from '../app/ThemeManager';
 import { FoldObserver } from '../app/FoldObserver';
-import { KEY_PENDING_DEEP_LINK } from '../app/AppStorageKeys';
+import { KEY_PENDING_DEEP_LINK, KEY_PENDING_SHARE_URL } from '../app/AppStorageKeys';
 import { SessionState } from '../app/SessionState';
 
 // Cold-start routing (Track C/F + Phase 4):
@@ -33,6 +33,14 @@ export default class EntryAbility extends UIAbility {
     const uri = want?.uri;
     if (uri && uri.startsWith('shibei://')) {
       AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
+    }
+    // Stash any share-intent URL — Library.aboutToAppear consumes after
+    // unlock. We still stash on cold start (rather than route directly)
+    // because routing decisions happen in onWindowStageCreate based on
+    // lock state; pushing CapturePage here would race with that.
+    const sharedUrl = extractShareUrl(want);
+    if (sharedUrl) {
+      AppStorage.setOrCreate<string>(KEY_PENDING_SHARE_URL, sharedUrl);
     }
     // Register the `shibei-pdf://` scheme BEFORE any Web component is
     // created. ArkWeb's Chromium blocks fetches to unknown schemes at the
@@ -122,26 +130,83 @@ export default class EntryAbility extends UIAbility {
   }
 
   onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    // Branch 1: shibei:// deep link (existing behavior).
     const uri = want?.uri;
-    if (!uri || !uri.startsWith('shibei://')) return;
+    if (uri && uri.startsWith('shibei://')) {
+      if (LockService.instance.getState() === LockState.Locked ||
+          !ShibeiService.instance.isUnlocked()) {
+        AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
+      } else {
+        const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
+        if (!match) return;
+        const resourceId = match[1];
+        const highlightId = match[2] || undefined;
+        SessionState.save(this.context, { inReader: true, readerResourceId: resourceId }).then(() => {
+          router.pushUrl({
+            url: 'pages/Reader',
+            params: { resourceId, highlightId },
+          }).catch((err: Error) => {
+            hilog.warn(0x0000, 'shibei', 'deep link pushUrl fail: %{public}s', err.message);
+          });
+        }).catch((err: Error) => {
+          hilog.warn(0x0000, 'shibei', 'deep link session save fail: %{public}s', err.message);
+        });
+      }
+      return;
+    }
+    // Branch 2: system share intent — http(s) URL we should route to
+    // CapturePage. Same lock-aware policy: stash for Library if locked,
+    // otherwise push directly.
+    const sharedUrl = extractShareUrl(want);
+    if (!sharedUrl) return;
     if (LockService.instance.getState() === LockState.Locked ||
         !ShibeiService.instance.isUnlocked()) {
-      AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
-    } else {
-      const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
-      if (!match) return;
-      const resourceId = match[1];
-      const highlightId = match[2] || undefined;
-      SessionState.save(this.context, { inReader: true, readerResourceId: resourceId }).then(() => {
-        router.pushUrl({
-          url: 'pages/Reader',
-          params: { resourceId, highlightId },
-        }).catch((err: Error) => {
-          hilog.warn(0x0000, 'shibei', 'deep link pushUrl fail: %{public}s', err.message);
-        });
-      }).catch((err: Error) => {
-        hilog.warn(0x0000, 'shibei', 'deep link session save fail: %{public}s', err.message);
-      });
+      AppStorage.setOrCreate<string>(KEY_PENDING_SHARE_URL, sharedUrl);
+      return;
     }
+    router.pushUrl({
+      url: 'pages/CapturePage',
+      params: { url: sharedUrl },
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'share intent pushUrl fail: %{public}s', err.message);
+    });
   }
+}
+
+/// Pull a shareable http(s) URL out of a system share Want.
+///
+/// HarmonyOS share intents may carry the URL in any of:
+///   - `want.uri` directly (newer browsers / OneDrive-style apps)
+///   - `want.parameters['ability.params.stream']` (file URIs in
+///     stream form — we only accept http(s) here)
+///   - `want.parameters.text` / `parameters['content']` (fallback for
+///     plain-text share that happens to contain a URL)
+///
+/// Returns `null` when nothing useful is found. We deliberately do NOT
+/// log the URL itself — share targets shouldn't accumulate user reading
+/// history in hilog.
+function extractShareUrl(want: Want | undefined): string | null {
+  if (!want) return null;
+  const direct = want.uri;
+  if (direct && /^https?:\/\//i.test(direct)) return direct;
+
+  const params = want.parameters;
+  if (!params) return null;
+  const candidateKeys: string[] = [
+    'ability.params.stream',
+    'text',
+    'content',
+    'shareText',
+  ];
+  for (const key of candidateKeys) {
+    const raw = params[key];
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    // Some share targets prepend a label, e.g.
+    // "Look at this: https://example.com". Pluck the first http(s) URL.
+    const match = trimmed.match(/https?:\/\/[^\s]+/i);
+    if (match) return match[0];
+  }
+  return null;
 }

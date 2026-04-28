@@ -6,7 +6,8 @@ import { I18n } from '../services/I18n';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
 import { ResourceList } from '../components/ResourceList';
 import { FilterChipsRow } from '../components/FilterChipsRow';
-import { KEY_FOLD_STATUS, KEY_PENDING_DEEP_LINK } from '../app/AppStorageKeys';
+import { KEY_FOLD_STATUS, KEY_PENDING_DEEP_LINK, KEY_PENDING_SHARE_URL } from '../app/AppStorageKeys';
+import { AddByUrlDialog } from '../components/AddByUrlDialog';
 import { FoldStatus } from '../app/FoldObserver';
 import { SessionState, SessionLibrary } from '../app/SessionState';
 
@@ -38,6 +39,11 @@ struct Library {
   // Guard to prevent re-pushing Reader when the user navigates back from
   // Settings / Search to Library (aboutToAppear fires again).
   private restoredOnce: boolean = false;
+
+  // FAB-driven AddByUrlDialog open state. Single source of truth lives
+  // here so the share-intent consumer can also drive it (an arriving URL
+  // routes straight into CapturePage; the dialog is only the manual path).
+  @State addByUrlOpen: boolean = false;
 
   async aboutToAppear(): Promise<void> {
     // I18n is wired in EntryAbility.onWindowStageCreate before any page
@@ -111,6 +117,27 @@ struct Library {
     }
     // Consume any deep link that was stashed during lock-screen / onboard.
     this.consumePendingDeepLink();
+    // Consume any share-intent URL stashed during locked startup. Shape is
+    // a plain URL string (NOT a shibei:// deep link), so we route to
+    // CapturePage directly without the deep-link regex.
+    this.consumePendingShareUrl();
+  }
+
+  private consumePendingShareUrl(): void {
+    try {
+      const url = AppStorage.get<string>(KEY_PENDING_SHARE_URL);
+      if (!url || url === '') return;
+      AppStorage.setOrCreate<string>(KEY_PENDING_SHARE_URL, '');
+      router.pushUrl({
+        url: 'pages/CapturePage',
+        params: { url },
+      }).catch((err: Error) => {
+        hilog.error(0x0000, 'shibei', 'share-intent pushUrl fail: %{public}s', err.message);
+      });
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'consumePendingShareUrl fail: %{public}s',
+        (err as Error).message);
+    }
   }
 
   private syncFolderLabel(id: string): void {
@@ -346,6 +373,28 @@ struct Library {
                 .backgroundColor($r('app.color.surface_tap_invisible'))
                 .onClick(() => { this.setDrawerOpen(false); });
             }
+
+            // Floating action button → opens AddByUrlDialog. We hide it
+            // when the drawer scrim is up so it can't get tapped through
+            // the dim layer; restoring on drawer close is automatic since
+            // `drawerOpen` already drives the scrim's visibility.
+            if (!(this.foldStatus === FoldStatus.FOLDED && this.drawerOpen)) {
+              Text('+')
+                .fontSize(28)
+                .fontColor(Color.White)
+                .width(56).height(56)
+                .borderRadius(28)
+                .backgroundColor($r('app.color.accent_primary'))
+                .textAlign(TextAlign.Center)
+                .position({ right: 20, bottom: 24 })
+                .shadow({
+                  radius: 12,
+                  color: $r('app.color.shadow_default'),
+                  offsetX: 0,
+                  offsetY: 4,
+                })
+                .onClick(() => { this.addByUrlOpen = true; });
+            }
           }
           .width('100%').height('100%');
         }
@@ -365,6 +414,10 @@ struct Library {
         .maxSideBarWidth(320)
         .showControlButton(false)
         .width('100%').height('100%');
+
+        // Modal mounted at root so it overlays the SideBarContainer +
+        // FAB without z-index drama. Self-renders nothing when closed.
+        AddByUrlDialog({ open: $addByUrlOpen, initialUrl: '' });
       }
     }
     .width('100%').height('100%');

@@ -41,6 +41,8 @@ extern char* shibei_ffi_get_resource_html(const char* id);
 extern char* shibei_ffi_get_pdf_bytes(const char* id);
 extern void shibei_ffi_ensure_pdf_downloaded(const char* id, void* ctx);
 extern void shibei_ffi_ensure_html_downloaded(const char* id, void* ctx);
+extern char* shibei_ffi_save_html_snapshot(const char* url, const char* title, const char* html, const char* folder_id);
+extern char* shibei_ffi_save_pdf_snapshot(const char* url, const char* title, const char* pdf_b64, const char* folder_id);
 extern char* shibei_ffi_cache_stats(void);
 extern char* shibei_ffi_cache_list(void);
 extern char* shibei_ffi_cached_ids(const char* ids_json);
@@ -171,14 +173,36 @@ static napi_value init_app_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_data_dir[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_data_dir, sizeof(buf_data_dir), &len); }
-    char buf_ca_bundle_path[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_ca_bundle_path, sizeof(buf_ca_bundle_path), &len); }
+    char* buf_data_dir = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_data_dir = (char*)malloc(need + 1);
+        if (buf_data_dir) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_data_dir, need + 1, &got);
+            buf_data_dir[got] = 0;
+        }
+    }
+    if (!buf_data_dir) { buf_data_dir = (char*)malloc(1); if (buf_data_dir) buf_data_dir[0] = 0; }
+    char* buf_ca_bundle_path = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_ca_bundle_path = (char*)malloc(need + 1);
+        if (buf_ca_bundle_path) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_ca_bundle_path, need + 1, &got);
+            buf_ca_bundle_path[got] = 0;
+        }
+    }
+    if (!buf_ca_bundle_path) { buf_ca_bundle_path = (char*)malloc(1); if (buf_ca_bundle_path) buf_ca_bundle_path[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_init_app(buf_data_dir, buf_ca_bundle_path);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_data_dir);
+    free(buf_ca_bundle_path);
     return result;
 }
 
@@ -227,14 +251,36 @@ static napi_value decrypt_pairing_payload_wrap(napi_env env, napi_callback_info 
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_pin[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
-    char buf_envelope_json[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_envelope_json, sizeof(buf_envelope_json), &len); }
+    char* buf_pin = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_pin = (char*)malloc(need + 1);
+        if (buf_pin) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_pin, need + 1, &got);
+            buf_pin[got] = 0;
+        }
+    }
+    if (!buf_pin) { buf_pin = (char*)malloc(1); if (buf_pin) buf_pin[0] = 0; }
+    char* buf_envelope_json = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_envelope_json = (char*)malloc(need + 1);
+        if (buf_envelope_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_envelope_json, need + 1, &got);
+            buf_envelope_json[got] = 0;
+        }
+    }
+    if (!buf_envelope_json) { buf_envelope_json = (char*)malloc(1); if (buf_envelope_json) buf_envelope_json[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_decrypt_pairing_payload(buf_pin, buf_envelope_json);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_pin);
+    free(buf_envelope_json);
     return result;
 }
 
@@ -242,12 +288,23 @@ static napi_value set_s3_config_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_config_json[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_config_json, sizeof(buf_config_json), &len); }
+    char* buf_config_json = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_config_json = (char*)malloc(need + 1);
+        if (buf_config_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_config_json, need + 1, &got);
+            buf_config_json[got] = 0;
+        }
+    }
+    if (!buf_config_json) { buf_config_json = (char*)malloc(1); if (buf_config_json) buf_config_json[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_set_s3_config(buf_config_json);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_config_json);
     return result;
 }
 
@@ -255,8 +312,18 @@ static napi_value set_e2ee_password_wrap(napi_env env, napi_callback_info info) 
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_password[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_password, sizeof(buf_password), &len); }
+    char* buf_password = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_password = (char*)malloc(need + 1);
+        if (buf_password) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_password, need + 1, &got);
+            buf_password[got] = 0;
+        }
+    }
+    if (!buf_password) { buf_password = (char*)malloc(1); if (buf_password) buf_password[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -264,6 +331,7 @@ static napi_value set_e2ee_password_wrap(napi_env env, napi_callback_info info) 
     napi_create_string_utf8(env, "setE2eePassword_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_set_e2ee_password(buf_password, ctx);
+    free(buf_password);
     return promise;
 }
 
@@ -329,18 +397,62 @@ static napi_value list_resources_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 4;
     napi_value args[4] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_folder_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_folder_id, sizeof(buf_folder_id), &len); }
-    char buf_tag_ids_json[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_tag_ids_json, sizeof(buf_tag_ids_json), &len); }
-    char buf_filter_tag_ids_json[4096] = {0};
-    if (2 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[2], buf_filter_tag_ids_json, sizeof(buf_filter_tag_ids_json), &len); }
-    char buf_sort_json[4096] = {0};
-    if (3 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[3], buf_sort_json, sizeof(buf_sort_json), &len); }
+    char* buf_folder_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_folder_id = (char*)malloc(need + 1);
+        if (buf_folder_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_folder_id, need + 1, &got);
+            buf_folder_id[got] = 0;
+        }
+    }
+    if (!buf_folder_id) { buf_folder_id = (char*)malloc(1); if (buf_folder_id) buf_folder_id[0] = 0; }
+    char* buf_tag_ids_json = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_tag_ids_json = (char*)malloc(need + 1);
+        if (buf_tag_ids_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_tag_ids_json, need + 1, &got);
+            buf_tag_ids_json[got] = 0;
+        }
+    }
+    if (!buf_tag_ids_json) { buf_tag_ids_json = (char*)malloc(1); if (buf_tag_ids_json) buf_tag_ids_json[0] = 0; }
+    char* buf_filter_tag_ids_json = NULL;
+    if (2 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[2], NULL, 0, &need);
+        buf_filter_tag_ids_json = (char*)malloc(need + 1);
+        if (buf_filter_tag_ids_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[2], buf_filter_tag_ids_json, need + 1, &got);
+            buf_filter_tag_ids_json[got] = 0;
+        }
+    }
+    if (!buf_filter_tag_ids_json) { buf_filter_tag_ids_json = (char*)malloc(1); if (buf_filter_tag_ids_json) buf_filter_tag_ids_json[0] = 0; }
+    char* buf_sort_json = NULL;
+    if (3 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[3], NULL, 0, &need);
+        buf_sort_json = (char*)malloc(need + 1);
+        if (buf_sort_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[3], buf_sort_json, need + 1, &got);
+            buf_sort_json[got] = 0;
+        }
+    }
+    if (!buf_sort_json) { buf_sort_json = (char*)malloc(1); if (buf_sort_json) buf_sort_json[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_list_resources(buf_folder_id, buf_tag_ids_json, buf_filter_tag_ids_json, buf_sort_json);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_folder_id);
+    free(buf_tag_ids_json);
+    free(buf_filter_tag_ids_json);
+    free(buf_sort_json);
     return result;
 }
 
@@ -348,16 +460,49 @@ static napi_value search_resources_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value args[3] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_query[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_query, sizeof(buf_query), &len); }
-    char buf_tag_ids_json[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_tag_ids_json, sizeof(buf_tag_ids_json), &len); }
-    char buf_filter_tag_ids_json[4096] = {0};
-    if (2 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[2], buf_filter_tag_ids_json, sizeof(buf_filter_tag_ids_json), &len); }
+    char* buf_query = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_query = (char*)malloc(need + 1);
+        if (buf_query) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_query, need + 1, &got);
+            buf_query[got] = 0;
+        }
+    }
+    if (!buf_query) { buf_query = (char*)malloc(1); if (buf_query) buf_query[0] = 0; }
+    char* buf_tag_ids_json = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_tag_ids_json = (char*)malloc(need + 1);
+        if (buf_tag_ids_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_tag_ids_json, need + 1, &got);
+            buf_tag_ids_json[got] = 0;
+        }
+    }
+    if (!buf_tag_ids_json) { buf_tag_ids_json = (char*)malloc(1); if (buf_tag_ids_json) buf_tag_ids_json[0] = 0; }
+    char* buf_filter_tag_ids_json = NULL;
+    if (2 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[2], NULL, 0, &need);
+        buf_filter_tag_ids_json = (char*)malloc(need + 1);
+        if (buf_filter_tag_ids_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[2], buf_filter_tag_ids_json, need + 1, &got);
+            buf_filter_tag_ids_json[got] = 0;
+        }
+    }
+    if (!buf_filter_tag_ids_json) { buf_filter_tag_ids_json = (char*)malloc(1); if (buf_filter_tag_ids_json) buf_filter_tag_ids_json[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_search_resources(buf_query, buf_tag_ids_json, buf_filter_tag_ids_json);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_query);
+    free(buf_tag_ids_json);
+    free(buf_filter_tag_ids_json);
     return result;
 }
 
@@ -374,12 +519,23 @@ static napi_value list_tags_in_folder_wrap(napi_env env, napi_callback_info info
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_folder_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_folder_id, sizeof(buf_folder_id), &len); }
+    char* buf_folder_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_folder_id = (char*)malloc(need + 1);
+        if (buf_folder_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_folder_id, need + 1, &got);
+            buf_folder_id[got] = 0;
+        }
+    }
+    if (!buf_folder_id) { buf_folder_id = (char*)malloc(1); if (buf_folder_id) buf_folder_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_list_tags_in_folder(buf_folder_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_folder_id);
     return result;
 }
 
@@ -387,14 +543,36 @@ static napi_value create_tag_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_name[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_name, sizeof(buf_name), &len); }
-    char buf_color[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_color, sizeof(buf_color), &len); }
+    char* buf_name = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_name = (char*)malloc(need + 1);
+        if (buf_name) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_name, need + 1, &got);
+            buf_name[got] = 0;
+        }
+    }
+    if (!buf_name) { buf_name = (char*)malloc(1); if (buf_name) buf_name[0] = 0; }
+    char* buf_color = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_color = (char*)malloc(need + 1);
+        if (buf_color) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_color, need + 1, &got);
+            buf_color[got] = 0;
+        }
+    }
+    if (!buf_color) { buf_color = (char*)malloc(1); if (buf_color) buf_color[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_create_tag(buf_name, buf_color);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_name);
+    free(buf_color);
     return result;
 }
 
@@ -402,16 +580,49 @@ static napi_value update_tag_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 3;
     napi_value args[3] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
-    char buf_name[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_name, sizeof(buf_name), &len); }
-    char buf_color[4096] = {0};
-    if (2 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[2], buf_color, sizeof(buf_color), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    char* buf_name = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_name = (char*)malloc(need + 1);
+        if (buf_name) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_name, need + 1, &got);
+            buf_name[got] = 0;
+        }
+    }
+    if (!buf_name) { buf_name = (char*)malloc(1); if (buf_name) buf_name[0] = 0; }
+    char* buf_color = NULL;
+    if (2 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[2], NULL, 0, &need);
+        buf_color = (char*)malloc(need + 1);
+        if (buf_color) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[2], buf_color, need + 1, &got);
+            buf_color[got] = 0;
+        }
+    }
+    if (!buf_color) { buf_color = (char*)malloc(1); if (buf_color) buf_color[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_update_tag(buf_id, buf_name, buf_color);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    free(buf_name);
+    free(buf_color);
     return result;
 }
 
@@ -419,12 +630,23 @@ static napi_value delete_tag_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_tag_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_tag_id, sizeof(buf_tag_id), &len); }
+    char* buf_tag_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_tag_id = (char*)malloc(need + 1);
+        if (buf_tag_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_tag_id, need + 1, &got);
+            buf_tag_id[got] = 0;
+        }
+    }
+    if (!buf_tag_id) { buf_tag_id = (char*)malloc(1); if (buf_tag_id) buf_tag_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_delete_tag(buf_tag_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_tag_id);
     return result;
 }
 
@@ -432,12 +654,23 @@ static napi_value get_tags_for_resource_wrap(napi_env env, napi_callback_info in
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_resource_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
+    char* buf_resource_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_resource_id = (char*)malloc(need + 1);
+        if (buf_resource_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_resource_id, need + 1, &got);
+            buf_resource_id[got] = 0;
+        }
+    }
+    if (!buf_resource_id) { buf_resource_id = (char*)malloc(1); if (buf_resource_id) buf_resource_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_get_tags_for_resource(buf_resource_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_resource_id);
     return result;
 }
 
@@ -445,14 +678,36 @@ static napi_value add_tag_to_resource_wrap(napi_env env, napi_callback_info info
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_resource_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
-    char buf_tag_id[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_tag_id, sizeof(buf_tag_id), &len); }
+    char* buf_resource_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_resource_id = (char*)malloc(need + 1);
+        if (buf_resource_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_resource_id, need + 1, &got);
+            buf_resource_id[got] = 0;
+        }
+    }
+    if (!buf_resource_id) { buf_resource_id = (char*)malloc(1); if (buf_resource_id) buf_resource_id[0] = 0; }
+    char* buf_tag_id = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_tag_id = (char*)malloc(need + 1);
+        if (buf_tag_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_tag_id, need + 1, &got);
+            buf_tag_id[got] = 0;
+        }
+    }
+    if (!buf_tag_id) { buf_tag_id = (char*)malloc(1); if (buf_tag_id) buf_tag_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_add_tag_to_resource(buf_resource_id, buf_tag_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_resource_id);
+    free(buf_tag_id);
     return result;
 }
 
@@ -460,14 +715,36 @@ static napi_value remove_tag_from_resource_wrap(napi_env env, napi_callback_info
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_resource_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
-    char buf_tag_id[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_tag_id, sizeof(buf_tag_id), &len); }
+    char* buf_resource_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_resource_id = (char*)malloc(need + 1);
+        if (buf_resource_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_resource_id, need + 1, &got);
+            buf_resource_id[got] = 0;
+        }
+    }
+    if (!buf_resource_id) { buf_resource_id = (char*)malloc(1); if (buf_resource_id) buf_resource_id[0] = 0; }
+    char* buf_tag_id = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_tag_id = (char*)malloc(need + 1);
+        if (buf_tag_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_tag_id, need + 1, &got);
+            buf_tag_id[got] = 0;
+        }
+    }
+    if (!buf_tag_id) { buf_tag_id = (char*)malloc(1); if (buf_tag_id) buf_tag_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_remove_tag_from_resource(buf_resource_id, buf_tag_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_resource_id);
+    free(buf_tag_id);
     return result;
 }
 
@@ -475,12 +752,23 @@ static napi_value get_resource_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_get_resource(buf_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
     return result;
 }
 
@@ -488,13 +776,24 @@ static napi_value get_resource_summary_wrap(napi_env env, napi_callback_info inf
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     int32_t v_max_chars = 0; if (1 < argc) napi_get_value_int32(env, args[1], &v_max_chars);
     napi_value result = NULL;
     char* ret = shibei_ffi_get_resource_summary(buf_id, v_max_chars);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
     return result;
 }
 
@@ -502,12 +801,23 @@ static napi_value get_resource_html_wrap(napi_env env, napi_callback_info info) 
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_get_resource_html(buf_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
     return result;
 }
 
@@ -515,12 +825,23 @@ static napi_value get_pdf_bytes_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_get_pdf_bytes(buf_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
     return result;
 }
 
@@ -528,8 +849,18 @@ static napi_value ensure_pdf_downloaded_wrap(napi_env env, napi_callback_info in
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -537,6 +868,7 @@ static napi_value ensure_pdf_downloaded_wrap(napi_env env, napi_callback_info in
     napi_create_string_utf8(env, "ensurePdfDownloaded_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_ensure_pdf_downloaded(buf_id, ctx);
+    free(buf_id);
     return promise;
 }
 
@@ -544,8 +876,18 @@ static napi_value ensure_html_downloaded_wrap(napi_env env, napi_callback_info i
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -553,7 +895,134 @@ static napi_value ensure_html_downloaded_wrap(napi_env env, napi_callback_info i
     napi_create_string_utf8(env, "ensureHtmlDownloaded_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_ensure_html_downloaded(buf_id, ctx);
+    free(buf_id);
     return promise;
+}
+
+static napi_value save_html_snapshot_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 4;
+    napi_value args[4] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_url = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_url = (char*)malloc(need + 1);
+        if (buf_url) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_url, need + 1, &got);
+            buf_url[got] = 0;
+        }
+    }
+    if (!buf_url) { buf_url = (char*)malloc(1); if (buf_url) buf_url[0] = 0; }
+    char* buf_title = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_title = (char*)malloc(need + 1);
+        if (buf_title) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_title, need + 1, &got);
+            buf_title[got] = 0;
+        }
+    }
+    if (!buf_title) { buf_title = (char*)malloc(1); if (buf_title) buf_title[0] = 0; }
+    char* buf_html = NULL;
+    if (2 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[2], NULL, 0, &need);
+        buf_html = (char*)malloc(need + 1);
+        if (buf_html) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[2], buf_html, need + 1, &got);
+            buf_html[got] = 0;
+        }
+    }
+    if (!buf_html) { buf_html = (char*)malloc(1); if (buf_html) buf_html[0] = 0; }
+    char* buf_folder_id = NULL;
+    if (3 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[3], NULL, 0, &need);
+        buf_folder_id = (char*)malloc(need + 1);
+        if (buf_folder_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[3], buf_folder_id, need + 1, &got);
+            buf_folder_id[got] = 0;
+        }
+    }
+    if (!buf_folder_id) { buf_folder_id = (char*)malloc(1); if (buf_folder_id) buf_folder_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_save_html_snapshot(buf_url, buf_title, buf_html, buf_folder_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_url);
+    free(buf_title);
+    free(buf_html);
+    free(buf_folder_id);
+    return result;
+}
+
+static napi_value save_pdf_snapshot_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 4;
+    napi_value args[4] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_url = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_url = (char*)malloc(need + 1);
+        if (buf_url) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_url, need + 1, &got);
+            buf_url[got] = 0;
+        }
+    }
+    if (!buf_url) { buf_url = (char*)malloc(1); if (buf_url) buf_url[0] = 0; }
+    char* buf_title = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_title = (char*)malloc(need + 1);
+        if (buf_title) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_title, need + 1, &got);
+            buf_title[got] = 0;
+        }
+    }
+    if (!buf_title) { buf_title = (char*)malloc(1); if (buf_title) buf_title[0] = 0; }
+    char* buf_pdf_b64 = NULL;
+    if (2 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[2], NULL, 0, &need);
+        buf_pdf_b64 = (char*)malloc(need + 1);
+        if (buf_pdf_b64) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[2], buf_pdf_b64, need + 1, &got);
+            buf_pdf_b64[got] = 0;
+        }
+    }
+    if (!buf_pdf_b64) { buf_pdf_b64 = (char*)malloc(1); if (buf_pdf_b64) buf_pdf_b64[0] = 0; }
+    char* buf_folder_id = NULL;
+    if (3 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[3], NULL, 0, &need);
+        buf_folder_id = (char*)malloc(need + 1);
+        if (buf_folder_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[3], buf_folder_id, need + 1, &got);
+            buf_folder_id[got] = 0;
+        }
+    }
+    if (!buf_folder_id) { buf_folder_id = (char*)malloc(1); if (buf_folder_id) buf_folder_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_save_pdf_snapshot(buf_url, buf_title, buf_pdf_b64, buf_folder_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_url);
+    free(buf_title);
+    free(buf_pdf_b64);
+    free(buf_folder_id);
+    return result;
 }
 
 static napi_value cache_stats_wrap(napi_env env, napi_callback_info info) {
@@ -578,12 +1047,23 @@ static napi_value cached_ids_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_ids_json[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_ids_json, sizeof(buf_ids_json), &len); }
+    char* buf_ids_json = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_ids_json = (char*)malloc(need + 1);
+        if (buf_ids_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_ids_json, need + 1, &got);
+            buf_ids_json[got] = 0;
+        }
+    }
+    if (!buf_ids_json) { buf_ids_json = (char*)malloc(1); if (buf_ids_json) buf_ids_json[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_cached_ids(buf_ids_json);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_ids_json);
     return result;
 }
 
@@ -627,12 +1107,23 @@ static napi_value set_auto_sync_mode_wrap(napi_env env, napi_callback_info info)
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_mode[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_mode, sizeof(buf_mode), &len); }
+    char* buf_mode = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_mode = (char*)malloc(need + 1);
+        if (buf_mode) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_mode, need + 1, &got);
+            buf_mode[got] = 0;
+        }
+    }
+    if (!buf_mode) { buf_mode = (char*)malloc(1); if (buf_mode) buf_mode[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_set_auto_sync_mode(buf_mode);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_mode);
     return result;
 }
 
@@ -652,8 +1143,18 @@ static napi_value preload_resource_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -661,6 +1162,7 @@ static napi_value preload_resource_wrap(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "preloadResource_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_preload_resource(buf_id, ctx);
+    free(buf_id);
     return promise;
 }
 
@@ -668,8 +1170,18 @@ static napi_value preload_folder_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_folder_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_folder_id, sizeof(buf_folder_id), &len); }
+    char* buf_folder_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_folder_id = (char*)malloc(need + 1);
+        if (buf_folder_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_folder_id, need + 1, &got);
+            buf_folder_id[got] = 0;
+        }
+    }
+    if (!buf_folder_id) { buf_folder_id = (char*)malloc(1); if (buf_folder_id) buf_folder_id[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -677,6 +1189,7 @@ static napi_value preload_folder_wrap(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "preloadFolder_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_preload_folder(buf_folder_id, ctx);
+    free(buf_folder_id);
     return promise;
 }
 
@@ -684,12 +1197,23 @@ static napi_value list_annotations_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_resource_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_resource_id, sizeof(buf_resource_id), &len); }
+    char* buf_resource_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_resource_id = (char*)malloc(need + 1);
+        if (buf_resource_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_resource_id, need + 1, &got);
+            buf_resource_id[got] = 0;
+        }
+    }
+    if (!buf_resource_id) { buf_resource_id = (char*)malloc(1); if (buf_resource_id) buf_resource_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_list_annotations(buf_resource_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_resource_id);
     return result;
 }
 
@@ -697,12 +1221,23 @@ static napi_value create_highlight_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_input_json[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_input_json, sizeof(buf_input_json), &len); }
+    char* buf_input_json = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_input_json = (char*)malloc(need + 1);
+        if (buf_input_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_input_json, need + 1, &got);
+            buf_input_json[got] = 0;
+        }
+    }
+    if (!buf_input_json) { buf_input_json = (char*)malloc(1); if (buf_input_json) buf_input_json[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_create_highlight(buf_input_json);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_input_json);
     return result;
 }
 
@@ -710,12 +1245,23 @@ static napi_value delete_highlight_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_delete_highlight(buf_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
     return result;
 }
 
@@ -723,14 +1269,36 @@ static napi_value update_highlight_color_wrap(napi_env env, napi_callback_info i
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
-    char buf_color[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_color, sizeof(buf_color), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    char* buf_color = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_color = (char*)malloc(need + 1);
+        if (buf_color) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_color, need + 1, &got);
+            buf_color[got] = 0;
+        }
+    }
+    if (!buf_color) { buf_color = (char*)malloc(1); if (buf_color) buf_color[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_update_highlight_color(buf_id, buf_color);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    free(buf_color);
     return result;
 }
 
@@ -738,12 +1306,23 @@ static napi_value create_comment_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_input_json[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_input_json, sizeof(buf_input_json), &len); }
+    char* buf_input_json = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_input_json = (char*)malloc(need + 1);
+        if (buf_input_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_input_json, need + 1, &got);
+            buf_input_json[got] = 0;
+        }
+    }
+    if (!buf_input_json) { buf_input_json = (char*)malloc(1); if (buf_input_json) buf_input_json[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_create_comment(buf_input_json);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_input_json);
     return result;
 }
 
@@ -751,14 +1330,36 @@ static napi_value update_comment_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
-    char buf_content[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_content, sizeof(buf_content), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    char* buf_content = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_content = (char*)malloc(need + 1);
+        if (buf_content) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_content, need + 1, &got);
+            buf_content[got] = 0;
+        }
+    }
+    if (!buf_content) { buf_content = (char*)malloc(1); if (buf_content) buf_content[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_update_comment(buf_id, buf_content);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    free(buf_content);
     return result;
 }
 
@@ -766,12 +1367,23 @@ static napi_value delete_comment_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_id[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_id, sizeof(buf_id), &len); }
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_delete_comment(buf_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
     return result;
 }
 
@@ -800,20 +1412,75 @@ static napi_value s3_smoke_test_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 5;
     napi_value args[5] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_endpoint[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_endpoint, sizeof(buf_endpoint), &len); }
-    char buf_region[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_region, sizeof(buf_region), &len); }
-    char buf_bucket[4096] = {0};
-    if (2 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[2], buf_bucket, sizeof(buf_bucket), &len); }
-    char buf_access_key[4096] = {0};
-    if (3 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[3], buf_access_key, sizeof(buf_access_key), &len); }
-    char buf_secret_key[4096] = {0};
-    if (4 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[4], buf_secret_key, sizeof(buf_secret_key), &len); }
+    char* buf_endpoint = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_endpoint = (char*)malloc(need + 1);
+        if (buf_endpoint) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_endpoint, need + 1, &got);
+            buf_endpoint[got] = 0;
+        }
+    }
+    if (!buf_endpoint) { buf_endpoint = (char*)malloc(1); if (buf_endpoint) buf_endpoint[0] = 0; }
+    char* buf_region = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_region = (char*)malloc(need + 1);
+        if (buf_region) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_region, need + 1, &got);
+            buf_region[got] = 0;
+        }
+    }
+    if (!buf_region) { buf_region = (char*)malloc(1); if (buf_region) buf_region[0] = 0; }
+    char* buf_bucket = NULL;
+    if (2 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[2], NULL, 0, &need);
+        buf_bucket = (char*)malloc(need + 1);
+        if (buf_bucket) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[2], buf_bucket, need + 1, &got);
+            buf_bucket[got] = 0;
+        }
+    }
+    if (!buf_bucket) { buf_bucket = (char*)malloc(1); if (buf_bucket) buf_bucket[0] = 0; }
+    char* buf_access_key = NULL;
+    if (3 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[3], NULL, 0, &need);
+        buf_access_key = (char*)malloc(need + 1);
+        if (buf_access_key) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[3], buf_access_key, need + 1, &got);
+            buf_access_key[got] = 0;
+        }
+    }
+    if (!buf_access_key) { buf_access_key = (char*)malloc(1); if (buf_access_key) buf_access_key[0] = 0; }
+    char* buf_secret_key = NULL;
+    if (4 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[4], NULL, 0, &need);
+        buf_secret_key = (char*)malloc(need + 1);
+        if (buf_secret_key) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[4], buf_secret_key, need + 1, &got);
+            buf_secret_key[got] = 0;
+        }
+    }
+    if (!buf_secret_key) { buf_secret_key = (char*)malloc(1); if (buf_secret_key) buf_secret_key[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_s3_smoke_test(buf_endpoint, buf_region, buf_bucket, buf_access_key, buf_secret_key);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_endpoint);
+    free(buf_region);
+    free(buf_bucket);
+    free(buf_access_key);
+    free(buf_secret_key);
     return result;
 }
 
@@ -821,8 +1488,18 @@ static napi_value echo_async_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_text[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_text, sizeof(buf_text), &len); }
+    char* buf_text = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_text = (char*)malloc(need + 1);
+        if (buf_text) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_text, need + 1, &got);
+            buf_text[got] = 0;
+        }
+    }
+    if (!buf_text) { buf_text = (char*)malloc(1); if (buf_text) buf_text[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -830,6 +1507,7 @@ static napi_value echo_async_wrap(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "echoAsync_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_echo_async(buf_text, ctx);
+    free(buf_text);
     return promise;
 }
 
@@ -897,8 +1575,18 @@ static napi_value lock_setup_pin_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_pin[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
+    char* buf_pin = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_pin = (char*)malloc(need + 1);
+        if (buf_pin) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_pin, need + 1, &got);
+            buf_pin[got] = 0;
+        }
+    }
+    if (!buf_pin) { buf_pin = (char*)malloc(1); if (buf_pin) buf_pin[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -906,6 +1594,7 @@ static napi_value lock_setup_pin_wrap(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "lockSetupPin_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_lock_setup_pin(buf_pin, ctx);
+    free(buf_pin);
     return promise;
 }
 
@@ -913,8 +1602,18 @@ static napi_value lock_unlock_with_pin_wrap(napi_env env, napi_callback_info inf
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_pin[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
+    char* buf_pin = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_pin = (char*)malloc(need + 1);
+        if (buf_pin) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_pin, need + 1, &got);
+            buf_pin[got] = 0;
+        }
+    }
+    if (!buf_pin) { buf_pin = (char*)malloc(1); if (buf_pin) buf_pin[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -922,6 +1621,7 @@ static napi_value lock_unlock_with_pin_wrap(napi_env env, napi_callback_info inf
     napi_create_string_utf8(env, "lockUnlockWithPin_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_lock_unlock_with_pin(buf_pin, ctx);
+    free(buf_pin);
     return promise;
 }
 
@@ -929,8 +1629,18 @@ static napi_value lock_disable_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_pin[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_pin, sizeof(buf_pin), &len); }
+    char* buf_pin = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_pin = (char*)malloc(need + 1);
+        if (buf_pin) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_pin, need + 1, &got);
+            buf_pin[got] = 0;
+        }
+    }
+    if (!buf_pin) { buf_pin = (char*)malloc(1); if (buf_pin) buf_pin[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -938,6 +1648,7 @@ static napi_value lock_disable_wrap(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "lockDisable_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_lock_disable(buf_pin, ctx);
+    free(buf_pin);
     return promise;
 }
 
@@ -945,8 +1656,18 @@ static napi_value lock_enable_bio_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_bio_wrapped_mk_b64[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_bio_wrapped_mk_b64, sizeof(buf_bio_wrapped_mk_b64), &len); }
+    char* buf_bio_wrapped_mk_b64 = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_bio_wrapped_mk_b64 = (char*)malloc(need + 1);
+        if (buf_bio_wrapped_mk_b64) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_bio_wrapped_mk_b64, need + 1, &got);
+            buf_bio_wrapped_mk_b64[got] = 0;
+        }
+    }
+    if (!buf_bio_wrapped_mk_b64) { buf_bio_wrapped_mk_b64 = (char*)malloc(1); if (buf_bio_wrapped_mk_b64) buf_bio_wrapped_mk_b64[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -954,6 +1675,7 @@ static napi_value lock_enable_bio_wrap(napi_env env, napi_callback_info info) {
     napi_create_string_utf8(env, "lockEnableBio_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_lock_enable_bio(buf_bio_wrapped_mk_b64, ctx);
+    free(buf_bio_wrapped_mk_b64);
     return promise;
 }
 
@@ -970,8 +1692,18 @@ static napi_value lock_push_unwrapped_mk_wrap(napi_env env, napi_callback_info i
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_mk_b64[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_mk_b64, sizeof(buf_mk_b64), &len); }
+    char* buf_mk_b64 = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_mk_b64 = (char*)malloc(need + 1);
+        if (buf_mk_b64) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_mk_b64, need + 1, &got);
+            buf_mk_b64[got] = 0;
+        }
+    }
+    if (!buf_mk_b64) { buf_mk_b64 = (char*)malloc(1); if (buf_mk_b64) buf_mk_b64[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -979,6 +1711,7 @@ static napi_value lock_push_unwrapped_mk_wrap(napi_env env, napi_callback_info i
     napi_create_string_utf8(env, "lockPushUnwrappedMk_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_lock_push_unwrapped_mk(buf_mk_b64, ctx);
+    free(buf_mk_b64);
     return promise;
 }
 
@@ -986,10 +1719,30 @@ static napi_value lock_recover_with_e2ee_wrap(napi_env env, napi_callback_info i
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_password[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_password, sizeof(buf_password), &len); }
-    char buf_new_pin[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_new_pin, sizeof(buf_new_pin), &len); }
+    char* buf_password = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_password = (char*)malloc(need + 1);
+        if (buf_password) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_password, need + 1, &got);
+            buf_password[got] = 0;
+        }
+    }
+    if (!buf_password) { buf_password = (char*)malloc(1); if (buf_password) buf_password[0] = 0; }
+    char* buf_new_pin = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_new_pin = (char*)malloc(need + 1);
+        if (buf_new_pin) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_new_pin, need + 1, &got);
+            buf_new_pin[got] = 0;
+        }
+    }
+    if (!buf_new_pin) { buf_new_pin = (char*)malloc(1); if (buf_new_pin) buf_new_pin[0] = 0; }
     AsyncCtx* ctx = (AsyncCtx*)calloc(1, sizeof(AsyncCtx));
     napi_value promise = NULL;
     napi_create_promise(env, &ctx->deferred, &promise);
@@ -997,6 +1750,8 @@ static napi_value lock_recover_with_e2ee_wrap(napi_env env, napi_callback_info i
     napi_create_string_utf8(env, "lockRecoverWithE2ee_tsfn", NAPI_AUTO_LENGTH, &res_name);
     napi_create_threadsafe_function(env, NULL, NULL, res_name, 0, 1, NULL, NULL, NULL, async_complete_cb, &ctx->tsfn);
     shibei_ffi_lock_recover_with_e2ee(buf_password, buf_new_pin, ctx);
+    free(buf_password);
+    free(buf_new_pin);
     return promise;
 }
 
@@ -1027,12 +1782,23 @@ static napi_value s3_creds_write_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_wrapped_b64[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_wrapped_b64, sizeof(buf_wrapped_b64), &len); }
+    char* buf_wrapped_b64 = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_wrapped_b64 = (char*)malloc(need + 1);
+        if (buf_wrapped_b64) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_wrapped_b64, need + 1, &got);
+            buf_wrapped_b64[got] = 0;
+        }
+    }
+    if (!buf_wrapped_b64) { buf_wrapped_b64 = (char*)malloc(1); if (buf_wrapped_b64) buf_wrapped_b64[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_s3_creds_write(buf_wrapped_b64);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_wrapped_b64);
     return result;
 }
 
@@ -1058,14 +1824,36 @@ static napi_value set_s3_creds_runtime_wrap(napi_env env, napi_callback_info inf
     size_t argc = 2;
     napi_value args[2] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
-    char buf_access_key[4096] = {0};
-    if (0 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[0], buf_access_key, sizeof(buf_access_key), &len); }
-    char buf_secret_key[4096] = {0};
-    if (1 < argc) { size_t len = 0; napi_get_value_string_utf8(env, args[1], buf_secret_key, sizeof(buf_secret_key), &len); }
+    char* buf_access_key = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_access_key = (char*)malloc(need + 1);
+        if (buf_access_key) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_access_key, need + 1, &got);
+            buf_access_key[got] = 0;
+        }
+    }
+    if (!buf_access_key) { buf_access_key = (char*)malloc(1); if (buf_access_key) buf_access_key[0] = 0; }
+    char* buf_secret_key = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_secret_key = (char*)malloc(need + 1);
+        if (buf_secret_key) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_secret_key, need + 1, &got);
+            buf_secret_key[got] = 0;
+        }
+    }
+    if (!buf_secret_key) { buf_secret_key = (char*)malloc(1); if (buf_secret_key) buf_secret_key[0] = 0; }
     napi_value result = NULL;
     char* ret = shibei_ffi_set_s3_creds_runtime(buf_access_key, buf_secret_key);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_access_key);
+    free(buf_secret_key);
     return result;
 }
 
@@ -1101,6 +1889,8 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"getPdfBytes", NULL, get_pdf_bytes_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"ensurePdfDownloaded", NULL, ensure_pdf_downloaded_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"ensureHtmlDownloaded", NULL, ensure_html_downloaded_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"saveHtmlSnapshot", NULL, save_html_snapshot_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"savePdfSnapshot", NULL, save_pdf_snapshot_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"cacheStats", NULL, cache_stats_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"cacheList", NULL, cache_list_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"cachedIds", NULL, cached_ids_wrap, NULL, NULL, NULL, napi_default, NULL},

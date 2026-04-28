@@ -283,6 +283,18 @@ pub unsafe extern "C" fn shibei_ffi_ensure_html_downloaded(id: *const c_char, ct
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_save_html_snapshot(url: *const c_char, title: *const c_char, html: *const c_char, folder_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::save_html_snapshot(cstr_to_string(url), cstr_to_string(title), cstr_to_string(html), cstr_to_string(folder_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_save_pdf_snapshot(url: *const c_char, title: *const c_char, pdf_b64: *const c_char, folder_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::save_pdf_snapshot(cstr_to_string(url), cstr_to_string(title), cstr_to_string(pdf_b64), cstr_to_string(folder_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_cache_stats() -> *mut c_char {
     let s = crate::commands::cache_stats();
     leak_cstring(s)

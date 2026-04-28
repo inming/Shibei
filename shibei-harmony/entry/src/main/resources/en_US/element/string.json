@@ -276,6 +276,29 @@
     { "name": "unlock_e2ee_toast_ok", "value": "Encryption unlocked" },
     { "name": "unlock_e2ee_gate_title", "value": "Encryption enabled" },
     { "name": "unlock_e2ee_gate_subtitle", "value": "Enter your encryption password to continue" },
-    { "name": "library_back_confirm_exit", "value": "Swipe again to exit" }
+    { "name": "library_back_confirm_exit", "value": "Swipe again to exit" },
+
+    { "name": "capture_add_by_url", "value": "Add web page" },
+    { "name": "capture_url_placeholder", "value": "https://..." },
+    { "name": "capture_url_paste_label", "value": "Paste from clipboard: %1$s" },
+    { "name": "capture_url_invalid", "value": "Enter a valid URL" },
+    { "name": "capture_open", "value": "Open" },
+    { "name": "capture_save", "value": "Save" },
+    { "name": "capture_save_pdf", "value": "Save PDF" },
+    { "name": "capture_scroll_to_bottom", "value": "Scroll to bottom" },
+    { "name": "capture_scrolling", "value": "Scrolling…" },
+    { "name": "capture_saving", "value": "Saving…" },
+    { "name": "capture_saved", "value": "Saved to %1$s" },
+    { "name": "capture_view", "value": "View" },
+    { "name": "capture_login_required", "value": "Sign in first if the page requires login" },
+    { "name": "capture_load_failed", "value": "Failed to load page" },
+    { "name": "capture_save_failed", "value": "Save failed: %1$s" },
+    { "name": "capture_too_large", "value": "Page too large; try saving as PDF instead" },
+    { "name": "capture_retry", "value": "Retry" },
+    { "name": "capture_target_folder", "value": "Save to" },
+    { "name": "capture_abandon_confirm", "value": "Save in progress, abandon?" },
+    { "name": "capture_pdf_detected", "value": "PDF detected" },
+    { "name": "capture_singlefile_failed", "value": "Couldn't bundle the page, try again" },
+    { "name": "capture_fab_add", "value": "Add" }
   ]
 }

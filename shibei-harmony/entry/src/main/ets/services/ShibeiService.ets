@@ -73,6 +73,8 @@ import {
   s3CredsClearLegacy as napiS3CredsClearLegacy,
   setS3CredsRuntime as napiSetS3CredsRuntime,
   resetSyncCursors as napiResetSyncCursors,
+  saveHtmlSnapshot as napiSaveHtmlSnapshot,
+  savePdfSnapshot as napiSavePdfSnapshot,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -696,6 +698,38 @@ export class ShibeiService {
   deleteComment(id: string): void {
     const result: string = napiDeleteComment(id);
     if (result !== 'ok') throw new ShibeiError(result);
+  }
+
+  // ── Capture (CapturePage / share intent) ──────────────────────────
+
+  /// Persist an HTML snapshot produced by SingleFile inside CapturePage.
+  /// Returns the new resource_id. Errors are i18n keys (translateError).
+  /// Notifies subscribers via the same DATA_RESOURCE_CHANGED bus a sync
+  /// apply uses, so the Library list refreshes without explicit reload.
+  saveHtmlSnapshot(url: string, title: string, html: string, folderId: string): string {
+    const raw: string = napiSaveHtmlSnapshot(url, title, html, folderId);
+    return this.parseSavedSnapshot(raw);
+  }
+
+  /// PDF analogue of `saveHtmlSnapshot`. `pdfBase64` must use STANDARD
+  /// alphabet with padding (matches `getPdfBytes` codec).
+  savePdfSnapshot(url: string, title: string, pdfBase64: string, folderId: string): string {
+    const raw: string = napiSavePdfSnapshot(url, title, pdfBase64, folderId);
+    return this.parseSavedSnapshot(raw);
+  }
+
+  private parseSavedSnapshot(raw: string): string {
+    interface SavedResp { resourceId?: string; error?: string; }
+    let parsed: SavedResp;
+    try {
+      parsed = JSON.parse(raw) as SavedResp;
+    } catch (e) {
+      throw new ShibeiError('error.invalidResponse');
+    }
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    if (!parsed.resourceId) throw new ShibeiError('error.invalidResponse');
+    this.notifyDataChanged();
+    return parsed.resourceId;
   }
 
   // ── Smoke tests (kept for Demo pages; remove when confidence earned) ─

@@ -281,6 +281,29 @@
     { "name": "unlock_e2ee_toast_ok", "value": "加密已解锁" },
     { "name": "unlock_e2ee_gate_title", "value": "加密已启用" },
     { "name": "unlock_e2ee_gate_subtitle", "value": "请输入加密密码以继续" },
-    { "name": "library_back_confirm_exit", "value": "再滑一次关闭应用" }
+    { "name": "library_back_confirm_exit", "value": "再滑一次关闭应用" },
+
+    { "name": "capture_add_by_url", "value": "添加网页" },
+    { "name": "capture_url_placeholder", "value": "https://..." },
+    { "name": "capture_url_paste_label", "value": "从剪贴板粘贴：%1$s" },
+    { "name": "capture_url_invalid", "value": "请输入有效的 URL" },
+    { "name": "capture_open", "value": "打开" },
+    { "name": "capture_save", "value": "保存" },
+    { "name": "capture_save_pdf", "value": "保存 PDF" },
+    { "name": "capture_scroll_to_bottom", "value": "滑到底" },
+    { "name": "capture_scrolling", "value": "滚动中…" },
+    { "name": "capture_saving", "value": "正在保存…" },
+    { "name": "capture_saved", "value": "已保存到 %1$s" },
+    { "name": "capture_view", "value": "查看" },
+    { "name": "capture_login_required", "value": "需要登录的页面请先登录再保存" },
+    { "name": "capture_load_failed", "value": "页面加载失败" },
+    { "name": "capture_save_failed", "value": "保存失败：%1$s" },
+    { "name": "capture_too_large", "value": "页面过大，建议改为保存 PDF" },
+    { "name": "capture_retry", "value": "重试" },
+    { "name": "capture_target_folder", "value": "保存到" },
+    { "name": "capture_abandon_confirm", "value": "保存进行中，确认放弃？" },
+    { "name": "capture_pdf_detected", "value": "已识别为 PDF" },
+    { "name": "capture_singlefile_failed", "value": "无法打包页面，请重试" },
+    { "name": "capture_fab_add", "value": "添加" }
   ]
 }

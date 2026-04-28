@@ -963,6 +963,192 @@ pub async fn ensure_html_downloaded(id: String) -> Result<String, String> {
 }
 
 // ────────────────────────────────────────────────────────────
+// Capture / Ingest (mobile web capture)
+// ────────────────────────────────────────────────────────────
+
+/// 80 MB hard cap on a single snapshot. Mirrors the Chrome extension
+/// background-script ceiling — beyond this we OOM on devices without
+/// enough RAM headroom and the user is better served by a PDF save.
+const SNAPSHOT_MAX_BYTES: usize = 80 * 1024 * 1024;
+
+/// Save an HTML snapshot produced by SingleFile inside CapturePage.
+///
+/// `html` is the inlined UTF-8 HTML string; `folder_id` empty falls back
+/// to `__inbox__`. Returns JSON `{"resourceId":"..."}` on success or
+/// `{"error":"error.code"}` on failure (i18n key, ArkTS translateError).
+#[shibei_napi]
+pub fn save_html_snapshot(
+    url: String,
+    title: String,
+    html: String,
+    folder_id: String,
+) -> String {
+    let bytes = html.into_bytes();
+    save_snapshot_inner(&url, title, &bytes, folder_id, false)
+}
+
+/// Save a PDF snapshot fetched by ArkTS (cookie-aware HTTP) from
+/// CapturePage's PDF branch.
+///
+/// `pdf_b64` is base64 STANDARD-encoded with padding (matches the
+/// `get_pdf_bytes` codec on the read path). Same return shape as
+/// `save_html_snapshot`.
+#[shibei_napi]
+pub fn save_pdf_snapshot(
+    url: String,
+    title: String,
+    pdf_b64: String,
+    folder_id: String,
+) -> String {
+    use base64::Engine;
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(&pdf_b64) {
+        Ok(b) => b,
+        Err(_) => return r#"{"error":"error.invalidBase64"}"#.to_string(),
+    };
+    save_snapshot_inner(&url, title, &bytes, folder_id, true)
+}
+
+/// Shared core for `save_html_snapshot` / `save_pdf_snapshot`. Mirrors
+/// the desktop axum `handle_save_raw` path: write file → INSERT row +
+/// sync_log → extract plain_text + rebuild FTS → register cache entry.
+///
+/// On any failure after the file is written we `remove_dir_all` the
+/// resource dir so we don't leak orphan snapshots when the DB write
+/// fails (the desktop handler does the same dance).
+fn save_snapshot_inner(
+    url: &str,
+    title: String,
+    bytes: &[u8],
+    folder_id: String,
+    is_pdf: bool,
+) -> String {
+    if bytes.len() > SNAPSHOT_MAX_BYTES {
+        return r#"{"error":"error.pageTooLarge"}"#.to_string();
+    }
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+
+    let title = if title.trim().is_empty() {
+        if is_pdf {
+            "Untitled PDF".to_string()
+        } else {
+            "Untitled".to_string()
+        }
+    } else {
+        title
+    };
+    let folder_id = if folder_id.trim().is_empty() {
+        "__inbox__".to_string()
+    } else {
+        folder_id
+    };
+    let domain = derive_domain(url);
+    let resource_id = uuid::Uuid::new_v4().to_string();
+
+    let rel_path = if is_pdf {
+        match shibei_storage::save_snapshot_ext(&app.data_dir, &resource_id, bytes, "pdf") {
+            Ok(p) => p,
+            Err(e) => return format!(r#"{{"error":"error.storage: {e}"}}"#),
+        }
+    } else {
+        match shibei_storage::save_snapshot(&app.data_dir, &resource_id, bytes) {
+            Ok(p) => p,
+            Err(e) => return format!(r#"{{"error":"error.storage: {e}"}}"#),
+        }
+    };
+
+    let resource_type = if is_pdf { "pdf" } else { "html" }.to_string();
+    let captured_at = shibei_db::now_iso8601();
+
+    let pool = match app.db_pool.read() {
+        Ok(g) => g,
+        Err(_) => {
+            let _ = std::fs::remove_dir_all(shibei_storage::resource_dir(&app.data_dir, &resource_id));
+            return r#"{"error":"error.poolPoisoned"}"#.to_string();
+        }
+    };
+    let conn = match pool.get() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(shibei_storage::resource_dir(&app.data_dir, &resource_id));
+            return format!(r#"{{"error":"error.dbConn: {e}"}}"#);
+        }
+    };
+
+    let ctx = app.make_sync_context();
+    let resource = match shibei_db::resources::create_resource(
+        &conn,
+        shibei_db::resources::CreateResourceInput {
+            id: Some(resource_id.clone()),
+            title,
+            url: url.to_string(),
+            domain,
+            author: None,
+            description: None,
+            folder_id,
+            resource_type,
+            file_path: rel_path.to_string_lossy().to_string(),
+            captured_at,
+            selection_meta: None,
+        },
+        Some(&ctx),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(shibei_storage::resource_dir(&app.data_dir, &resource_id));
+            return format!(r#"{{"error":"error.db: {e}"}}"#);
+        }
+    };
+
+    // Best-effort post-write index work; failures here don't roll back the
+    // resource since search-miss + empty summary are degraded but not broken.
+    let text = if is_pdf {
+        shibei_storage::pdf_text::extract_plain_text(bytes)
+    } else {
+        let html_str = std::str::from_utf8(bytes).unwrap_or("");
+        shibei_storage::plain_text::extract_plain_text(html_str)
+    };
+    if !text.is_empty() {
+        let _ = shibei_db::resources::set_plain_text(&conn, &resource.id, &text);
+    }
+    let _ = shibei_db::search::rebuild_search_index(&conn, &resource.id);
+
+    if let Ok(mut guard) = app.cache.lock() {
+        guard.put(&resource.id, bytes.len() as u64);
+        let _ = guard.flush(&app.data_dir);
+    }
+
+    format!(r#"{{"resourceId":"{}"}}"#, resource.id)
+}
+
+/// Pull the host portion out of a URL without bringing in a full URL parser.
+/// Tolerates schemeless input ("example.com/x") by treating the whole prefix
+/// up to `/` as the host. Anything we can't make sense of becomes `None` so
+/// the resource row stores NULL — UI fallback uses `url` directly anyway.
+fn derive_domain(url: &str) -> Option<String> {
+    let u = url.trim();
+    if u.is_empty() {
+        return None;
+    }
+    let after_scheme = match u.find("://") {
+        Some(i) => &u[i + 3..],
+        None => u,
+    };
+    let host = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim();
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
+    }
+}
+
+// ────────────────────────────────────────────────────────────
 // Cache management (§7.2)
 // ────────────────────────────────────────────────────────────
 
