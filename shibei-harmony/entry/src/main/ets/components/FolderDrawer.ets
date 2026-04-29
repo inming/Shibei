@@ -229,8 +229,8 @@ export struct FolderDrawer {
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
       Column() {
         Row() {
-          Text('⚙').fontSize(16).margin({ right: 8 })
-            .fontColor($r('sys.color.ohos_id_color_text_primary'));
+          SymbolGlyph($r('sys.symbol.gearshape')).fontSize(18).margin({ right: 8 })
+            .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
           Text(I18n.t($r('app.string.settings_page_title')))
             .fontSize(15)
             .fontColor($r('sys.color.ohos_id_color_text_primary'));

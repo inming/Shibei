@@ -335,10 +335,16 @@ struct Library {
                 // the top bar only carries the primary navigation (Search).
                 // Plain Text + onClick (rather than Button) so the glyph isn't
                 // squeezed by Button's default inner padding.
-                Text('🔍')
-                  .fontSize(20)
-                  .width(44).height(44).textAlign(TextAlign.Center)
-                  .onClick(() => {
+                // Flat monochrome system symbol — emoji 🔍 renders in
+                // color and looks 3D on this SDK; SymbolGlyph respects
+                // .fontColor and stays line-art.
+                Row() {
+                  SymbolGlyph($r('sys.symbol.magnifyingglass'))
+                    .fontSize(22)
+                    .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
+                }
+                .width(44).height(44).justifyContent(FlexAlign.Center)
+                .onClick(() => {
                     router.pushUrl({ url: 'pages/Search' }).catch((err: Error) => {
                       hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
                     });

@@ -322,7 +322,7 @@
     { "name": "settings_about_license", "value": "开源许可" },
     { "name": "settings_about_license_value", "value": "AGPL-3.0" },
     { "name": "settings_about_homepage", "value": "项目主页" },
-    { "name": "settings_about_homepage_value", "value": "github.com/anthropics/shibei" },
+    { "name": "settings_about_homepage_value", "value": "https://github.com/inming/Shibei" },
     { "name": "settings_encryption_status_title", "value": "加密状态" },
     { "name": "settings_encryption_status_unlocked", "value": "已解锁" },
     { "name": "settings_encryption_status_locked", "value": "未解锁" },
