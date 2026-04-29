@@ -10,7 +10,10 @@ export const ALL_RESOURCES_ID = '__all__';
 interface DrawerItem {
   id: string;
   label: string;
-  icon: string;
+  // SymbolGlyph resource (sys.symbol.*). Stored as a Resource rather than
+  // an emoji string so all drawer rows render as flat monochrome line-art
+  // and respect fontColor.
+  icon: Resource;
   isVirtual: boolean;
   // Indent level for nested folders. Virtual folders are always 0.
   // Root user folders are 0, their children 1, grandchildren 2, ...
@@ -92,14 +95,14 @@ export struct FolderDrawer {
       {
         id: ALL_RESOURCES_ID,
         label: I18n.t($r('app.string.sidebar_all_resources')),
-        icon: '📚',
+        icon: $r('sys.symbol.book_pages'),
         isVirtual: true,
         depth: 0,
       },
       {
         id: INBOX_FOLDER_ID,
         label: I18n.t($r('app.string.sidebar_inbox')),
-        icon: '📥',
+        icon: $r('sys.symbol.inbox'),
         isVirtual: true,
         depth: 0,
       },
@@ -127,7 +130,7 @@ export struct FolderDrawer {
       const kids = childrenByParent.get(parentId);
       if (!kids) return;
       for (const f of kids) {
-        items.push({ id: f.id, label: f.name, icon: '📁', isVirtual: false, depth });
+        items.push({ id: f.id, label: f.name, icon: $r('sys.symbol.folder'), isVirtual: false, depth });
         walk(f.id, depth + 1);
       }
     };
@@ -195,7 +198,8 @@ export struct FolderDrawer {
         ForEach(this.buildItems(), (item: DrawerItem) => {
           ListItem() {
             Row() {
-              Text(item.icon).fontSize(16).margin({ right: 8 });
+              SymbolGlyph(item.icon).fontSize(18).margin({ right: 8 })
+                .fontColor([$r('sys.color.ohos_id_color_text_secondary')]);
               Text(item.label).fontSize(15)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'))
                 .fontWeight(this.selectedFolderId === item.id ? FontWeight.Bold : FontWeight.Normal)
@@ -244,8 +248,8 @@ export struct FolderDrawer {
         });
 
         Row() {
-          Text('⟳').fontSize(16).margin({ right: 8 })
-            .fontColor($r('sys.color.ohos_id_color_emphasize'));
+          SymbolGlyph($r('sys.symbol.arrow_clockwise')).fontSize(18).margin({ right: 8 })
+            .fontColor([$r('sys.color.ohos_id_color_emphasize')]);
           Text(this.syncing
             ? I18n.t($r('app.string.settings_sync_in_progress'))
             : I18n.t($r('app.string.settings_sync_now')))

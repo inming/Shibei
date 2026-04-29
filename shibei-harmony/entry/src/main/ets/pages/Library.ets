@@ -385,21 +385,22 @@ struct Library {
             // the dim layer; restoring on drawer close is automatic since
             // `drawerOpen` already drives the scrim's visibility.
             if (!(this.foldStatus === FoldStatus.FOLDED && this.drawerOpen)) {
-              Text('+')
-                .fontSize(28)
-                .fontColor(Color.White)
-                .width(56).height(56)
-                .borderRadius(28)
-                .backgroundColor($r('app.color.accent_primary'))
-                .textAlign(TextAlign.Center)
-                .position({ right: 20, bottom: 24 })
-                .shadow({
-                  radius: 12,
-                  color: $r('app.color.shadow_default'),
-                  offsetX: 0,
-                  offsetY: 4,
-                })
-                .onClick(() => { this.addByUrlOpen = true; });
+              Stack() {
+                SymbolGlyph($r('sys.symbol.plus'))
+                  .fontSize(26)
+                  .fontColor([Color.White]);
+              }
+              .width(56).height(56)
+              .borderRadius(28)
+              .backgroundColor($r('app.color.accent_primary'))
+              .position({ right: 20, bottom: 24 })
+              .shadow({
+                radius: 12,
+                color: $r('app.color.shadow_default'),
+                offsetX: 0,
+                offsetY: 4,
+              })
+              .onClick(() => { this.addByUrlOpen = true; });
             }
           }
           .width('100%').height('100%');

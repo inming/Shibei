@@ -341,7 +341,8 @@ struct CapturePage {
         // is 收件箱; we look up the display name from the loaded folder
         // list each render to stay in sync with rename events.
         Row() {
-          Text('📁').fontSize(14).margin({ right: 4 });
+          SymbolGlyph($r('sys.symbol.folder')).fontSize(16).margin({ right: 4 })
+            .fontColor([$r('app.color.text_secondary')]);
           Text(this.folderLabel())
             .fontSize(13)
             .fontColor($r('app.color.text_primary'))
