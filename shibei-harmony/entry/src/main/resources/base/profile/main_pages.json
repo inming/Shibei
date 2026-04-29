@@ -7,6 +7,12 @@
     "pages/Reader",
     "pages/Search",
     "pages/Settings",
-    "pages/CapturePage"
+    "pages/CapturePage",
+    "pages/settings/AppearanceSettings",
+    "pages/settings/SyncSettings",
+    "pages/settings/EncryptionSettings",
+    "pages/settings/SecuritySettings",
+    "pages/settings/DataSettings",
+    "pages/settings/AboutSettings"
   ]
 }

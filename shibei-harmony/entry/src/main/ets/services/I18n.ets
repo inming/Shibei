@@ -21,13 +21,53 @@
 
 import { common } from '@kit.AbilityKit';
 import { i18n } from '@kit.LocalizationKit';
+import { resourceManager } from '@kit.LocalizationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 export class I18n {
   private static _ctx: common.UIAbilityContext | null = null;
+  // Non-null when the user picked a non-system app language. ArkUI's
+  // ctx.resourceManager always resolves against the system locale on
+  // this OpenHarmony build (`setAppPreferredLanguage` updates the
+  // preference but doesn't flip live lookups), so we lazily create an
+  // override-locale manager and route `t()` through it.
+  private static _overrideMgr: resourceManager.ResourceManager | null = null;
+  private static _overrideTag: string = '';
 
   static init(ctx: common.UIAbilityContext): void {
     I18n._ctx = ctx;
+  }
+
+  /// Pin all subsequent `t()` lookups to `tag` (e.g. 'zh-Hans', 'en-US').
+  /// Empty `tag` clears the override and falls back to the system locale.
+  /// Idempotent — re-applying the same tag is a no-op.
+  static setOverrideLocale(tag: string): void {
+    if (!I18n._ctx) {
+      hilog.warn(0x0000, 'shibei', 'I18n.setOverrideLocale before init');
+      return;
+    }
+    if (tag === I18n._overrideTag) return;
+    I18n._overrideTag = tag;
+    if (!tag) {
+      I18n._overrideMgr = null;
+      return;
+    }
+    try {
+      const baseMgr = I18n._ctx.resourceManager;
+      // Mutate a copy of the live Configuration rather than constructing
+      // an object literal — `Configuration` carries mandatory fields
+      // (screenDensity, colorMode, mcc/mnc) that ArkTS strict mode
+      // refuses to leave undefined. Keeping the rest of the config
+      // identical means the override mgr inherits everything except
+      // locale.
+      const overrideConfig = baseMgr.getConfigurationSync();
+      overrideConfig.locale = tag;
+      I18n._overrideMgr = baseMgr.getOverrideResourceManager(overrideConfig);
+    } catch (err) {
+      hilog.error(0x0000, 'shibei', 'getOverrideResourceManager(%{public}s) failed: %{public}s',
+        tag, (err as Error).message);
+      I18n._overrideMgr = null;
+    }
   }
 
   /// Sync lookup by Resource ($r('app.string.key')) with optional
@@ -38,7 +78,8 @@ export class I18n {
       return '';
     }
     try {
-      return I18n._ctx.resourceManager.getStringSync(res, ...args);
+      const mgr = I18n._overrideMgr ?? I18n._ctx.resourceManager;
+      return mgr.getStringSync(res, ...args);
     } catch (err) {
       hilog.warn(0x0000, 'shibei', 'I18n.t failed: %{public}s',
         (err as Error).message);

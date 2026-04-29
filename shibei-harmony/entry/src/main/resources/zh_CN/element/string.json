@@ -299,6 +299,28 @@
     { "name": "capture_abandon_confirm", "value": "保存进行中，确认放弃？" },
     { "name": "capture_pdf_detected", "value": "已识别为 PDF" },
     { "name": "capture_singlefile_failed", "value": "无法打包页面，请重试" },
-    { "name": "capture_fab_add", "value": "添加" }
+    { "name": "capture_fab_add", "value": "添加" },
+
+    { "name": "settings_section_encryption", "value": "加密" },
+    { "name": "settings_section_about", "value": "关于" },
+    { "name": "settings_appearance_theme_title", "value": "主题" },
+    { "name": "settings_appearance_language", "value": "语言" },
+    { "name": "settings_language_system", "value": "跟随系统" },
+    { "name": "settings_language_zh", "value": "简体中文" },
+    { "name": "settings_language_en", "value": "English" },
+    { "name": "settings_language_changed_toast", "value": "语言已切换，部分文本将在下次进入页面时刷新" },
+    { "name": "settings_language_apply_failed", "value": "切换失败：%1$s" },
+    { "name": "settings_about_app_name", "value": "拾贝" },
+    { "name": "settings_about_tagline", "value": "你的只读资料库" },
+    { "name": "settings_about_version", "value": "版本" },
+    { "name": "settings_about_bundle", "value": "应用包名" },
+    { "name": "settings_about_license", "value": "开源许可" },
+    { "name": "settings_about_license_value", "value": "AGPL-3.0" },
+    { "name": "settings_about_homepage", "value": "项目主页" },
+    { "name": "settings_about_homepage_value", "value": "github.com/anthropics/shibei" },
+    { "name": "settings_encryption_status_title", "value": "加密状态" },
+    { "name": "settings_encryption_status_unlocked", "value": "已解锁" },
+    { "name": "settings_encryption_status_locked", "value": "未解锁" },
+    { "name": "settings_encryption_password_hint", "value": "本机当前不支持修改加密密码，请在桌面端「设置 → 加密」中修改后重新输入新密码即可。" }
   ]
 }

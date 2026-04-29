@@ -238,6 +238,9 @@ $HDC shell uitest uiInput keyEvent Back|Home|Power
 # 截图（AI 用 Read 工具看 PNG，验证 UI 状态 + 颜色）
 $HDC shell uitest screenCap -p /data/local/tmp/screen.png
 $HDC file recv /data/local/tmp/screen.png /tmp/screen.png
+# 读图前必须 sips 压缩（PNG ~250KB → JPEG ~15KB），节省 token：
+sips -Z 800 -s format jpeg -s formatOptions 60 /tmp/screen.png --out /tmp/screen.jpg
+# 然后 Read /tmp/screen.jpg
 ```
 
 **真机分工**：

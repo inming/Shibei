@@ -6,6 +6,7 @@ import { ShibeiService } from '../services/ShibeiService';
 import { LockService, LockState } from '../services/LockService';
 import { I18n } from '../services/I18n';
 import { loadTheme, applyTheme } from '../app/ThemeManager';
+import { loadLanguage, applyLanguage } from '../app/LanguageManager';
 import { FoldObserver } from '../app/FoldObserver';
 import { KEY_PENDING_DEEP_LINK, KEY_PENDING_SHARE_URL } from '../app/AppStorageKeys';
 import { SessionState } from '../app/SessionState';
@@ -73,8 +74,16 @@ export default class EntryAbility extends UIAbility {
   async onWindowStageCreate(windowStage: window.WindowStage): Promise<void> {
     // Wire i18n before first frame so any page can call `I18n.t(...)`
     // without an init guard (the wrapper still has one, but routing the
-    // context here keeps callers terse).
+    // context here keeps callers terse). Init MUST happen before
+    // applyLanguage — applyLanguage flips the override resource manager
+    // via I18n.setOverrideLocale, which needs the context already set.
     I18n.init(this.context);
+    try {
+      const lang = await loadLanguage(this.context);
+      await applyLanguage(this.context, lang);
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'language apply fail: %{public}s', (err as Error).message);
+    }
 
     // Apply persisted color mode before first frame so the user's dark/light
     // choice survives restarts. Await'd — tens of ms at most.
