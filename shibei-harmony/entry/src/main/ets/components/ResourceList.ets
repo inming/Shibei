@@ -85,9 +85,9 @@ export struct ResourceList {
     }
   }
 
-  /// Long-press on a row: offer cache-this / cache-folder / 标签 / copy-link.
-  /// Tags entry was added 2026-04-27 — it opens a bottom sheet so users can
-  /// (un)assign tags from the same gesture they use for caching.
+  /// Long-press on a row: offer cache-this / cache-folder / 标签 / copy-link / 删除.
+  /// Tags entry was added 2026-04-27; delete (soft-delete + sync_log) added
+  /// 2026-04-29 alongside the recycle-bin Settings page.
   private onLongPress(id: string): void {
     promptAction.showDialog({
       title: I18n.t($r('app.string.cache_menu_title')),
@@ -96,6 +96,7 @@ export struct ResourceList {
         { text: I18n.t($r('app.string.cache_action_this_folder')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.tag_assign_action')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.annotation_copy_link')), color: $r('app.color.accent_primary_alt') },
+        { text: I18n.t($r('app.string.common_delete')), color: $r('app.color.accent_danger') },
         { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
       ],
     }).then((r) => {
@@ -103,9 +104,42 @@ export struct ResourceList {
       else if (r.index === 1) this.preloadFolder();
       else if (r.index === 2) this.openTagSheet(id);
       else if (r.index === 3) this.copyLink(id);
+      else if (r.index === 4) this.confirmDelete(id);
     }).catch((err: Error) => {
       hilog.warn(0x0000, 'shibei', 'cache dialog dismissed: %{public}s', err.message);
     });
+  }
+
+  // Soft-delete with confirmation. The row stays gone from the list because
+  // listResources filters by `deleted_at IS NULL`; users recover from
+  // Settings → 数据 → 回收站. Sync_log carries the DELETE to other devices.
+  private async confirmDelete(id: string): Promise<void> {
+    let confirmed = false;
+    try {
+      const r = await promptAction.showDialog({
+        title: I18n.t($r('app.string.trash_delete_confirm_title')),
+        message: I18n.t($r('app.string.trash_delete_confirm_body')),
+        buttons: [
+          { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+          { text: I18n.t($r('app.string.common_delete')), color: $r('app.color.accent_danger') },
+        ],
+      });
+      confirmed = r.index === 1;
+    } catch (err) {
+      hilog.info(0x0000, 'shibei', 'delete dialog dismissed: %{public}s', (err as Error).message);
+      return;
+    }
+    if (!confirmed) return;
+    try {
+      ShibeiService.instance.deleteResource(id);
+      promptAction.showToast({ message: I18n.t($r('app.string.trash_deleted_toast')) });
+      // notifyDataChanged inside deleteResource → onDataChanged listener triggers reload.
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      promptAction.showToast({
+        message: I18n.t($r('app.string.trash_delete_failed'), I18n.translateError(code)),
+      });
+    }
   }
 
   // Set the resource id BEFORE flipping `open` so TagAssignSheet's

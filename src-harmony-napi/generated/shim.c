@@ -84,6 +84,15 @@ extern char* shibei_ffi_s3_creds_write(const char* wrapped_b64);
 extern char* shibei_ffi_s3_creds_read(void);
 extern char* shibei_ffi_s3_creds_clear_legacy(void);
 extern char* shibei_ffi_set_s3_creds_runtime(const char* access_key, const char* secret_key);
+extern char* shibei_ffi_delete_resource(const char* id);
+extern char* shibei_ffi_delete_folder(const char* id);
+extern char* shibei_ffi_list_deleted_resources(void);
+extern char* shibei_ffi_list_deleted_folders(void);
+extern char* shibei_ffi_restore_resource(const char* id);
+extern char* shibei_ffi_restore_folder(const char* id);
+extern char* shibei_ffi_purge_resource(const char* id);
+extern char* shibei_ffi_purge_folder(const char* id);
+extern char* shibei_ffi_purge_all_deleted(void);
 
 // C callbacks invoked from Rust worker threads.
 void shibei_async_resolve(void* ctx, int ok, const char* payload);
@@ -1857,6 +1866,177 @@ static napi_value set_s3_creds_runtime_wrap(napi_env env, napi_callback_info inf
     return result;
 }
 
+static napi_value delete_resource_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_delete_resource(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value delete_folder_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_delete_folder(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value list_deleted_resources_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_list_deleted_resources();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value list_deleted_folders_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_list_deleted_folders();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
+static napi_value restore_resource_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_restore_resource(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value restore_folder_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_restore_folder(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value purge_resource_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_purge_resource(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value purge_folder_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_purge_folder(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value purge_all_deleted_wrap(napi_env env, napi_callback_info info) {
+    (void)info;
+    napi_value result = NULL;
+    char* ret = shibei_ffi_purge_all_deleted();
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    return result;
+}
+
 // ── Module registration ───────────────────────────────────────────
 static napi_value shibei_register_exports(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
@@ -1931,6 +2111,15 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"s3CredsRead", NULL, s3_creds_read_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"s3CredsClearLegacy", NULL, s3_creds_clear_legacy_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"setS3CredsRuntime", NULL, set_s3_creds_runtime_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"deleteResource", NULL, delete_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"deleteFolder", NULL, delete_folder_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"listDeletedResources", NULL, list_deleted_resources_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"listDeletedFolders", NULL, list_deleted_folders_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"restoreResource", NULL, restore_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"restoreFolder", NULL, restore_folder_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"purgeResource", NULL, purge_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"purgeFolder", NULL, purge_folder_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"purgeAllDeleted", NULL, purge_all_deleted_wrap, NULL, NULL, NULL, napi_default, NULL},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);
     return exports;

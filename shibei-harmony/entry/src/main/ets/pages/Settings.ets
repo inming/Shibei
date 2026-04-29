@@ -34,6 +34,7 @@ const MENU_GROUPS: MenuItem[][] = [
   ],
   [
     { id: 'data', label: $r('app.string.settings_section_data'), route: 'pages/settings/DataSettings' },
+    { id: 'trash', label: $r('app.string.settings_section_trash'), route: 'pages/settings/TrashSettings' },
   ],
   [
     { id: 'about', label: $r('app.string.settings_section_about'), route: 'pages/settings/AboutSettings' },

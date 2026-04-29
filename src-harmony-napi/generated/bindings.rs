@@ -679,3 +679,57 @@ pub unsafe extern "C" fn shibei_ffi_set_s3_creds_runtime(access_key: *const c_ch
     leak_cstring(s)
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_delete_resource(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::delete_resource(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_delete_folder(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::delete_folder(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_deleted_resources() -> *mut c_char {
+    let s = crate::commands::list_deleted_resources();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_deleted_folders() -> *mut c_char {
+    let s = crate::commands::list_deleted_folders();
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_restore_resource(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::restore_resource(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_restore_folder(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::restore_folder(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_purge_resource(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::purge_resource(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_purge_folder(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::purge_folder(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_purge_all_deleted() -> *mut c_char {
+    let s = crate::commands::purge_all_deleted();
+    leak_cstring(s)
+}
+

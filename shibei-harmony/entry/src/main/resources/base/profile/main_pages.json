@@ -13,6 +13,7 @@
     "pages/settings/EncryptionSettings",
     "pages/settings/SecuritySettings",
     "pages/settings/DataSettings",
+    "pages/settings/TrashSettings",
     "pages/settings/AboutSettings"
   ]
 }

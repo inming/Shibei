@@ -75,6 +75,15 @@ import {
   resetSyncCursors as napiResetSyncCursors,
   saveHtmlSnapshot as napiSaveHtmlSnapshot,
   savePdfSnapshot as napiSavePdfSnapshot,
+  deleteResource as napiDeleteResource,
+  deleteFolder as napiDeleteFolder,
+  listDeletedResources as napiListDeletedResources,
+  listDeletedFolders as napiListDeletedFolders,
+  restoreResource as napiRestoreResource,
+  restoreFolder as napiRestoreFolder,
+  purgeResource as napiPurgeResource,
+  purgeFolder as napiPurgeFolder,
+  purgeAllDeleted as napiPurgeAllDeleted,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -732,6 +741,72 @@ export class ShibeiService {
     return parsed.resourceId;
   }
 
+  // ── Recycle Bin (Phase 5.2) ───────────────────────────────
+  //
+  // Soft-delete + restore + permanent-delete for resources and folders.
+  // All paths write sync_log so other devices converge on the same state.
+
+  deleteResource(id: string): void {
+    const raw = napiDeleteResource(id);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
+  }
+
+  deleteFolder(id: string): void {
+    const raw = napiDeleteFolder(id);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
+  }
+
+  listDeletedResources(): DeletedResource[] {
+    return parseListOrThrow<DeletedResource>(napiListDeletedResources(), 'listDeletedResources');
+  }
+
+  listDeletedFolders(): DeletedFolder[] {
+    return parseListOrThrow<DeletedFolder>(napiListDeletedFolders(), 'listDeletedFolders');
+  }
+
+  restoreResource(id: string): Resource {
+    const raw = napiRestoreResource(id);
+    const parsed = JSON.parse(raw) as Object;
+    const envelope = parsed as ErrorEnvelope;
+    if (envelope.error) throw new ShibeiError(envelope.error);
+    this.notifyDataChanged();
+    return parsed as Resource;
+  }
+
+  restoreFolder(id: string): Folder {
+    const raw = napiRestoreFolder(id);
+    const parsed = JSON.parse(raw) as Object;
+    const envelope = parsed as ErrorEnvelope;
+    if (envelope.error) throw new ShibeiError(envelope.error);
+    this.notifyDataChanged();
+    return parsed as Folder;
+  }
+
+  purgeResource(id: string): void {
+    const raw = napiPurgeResource(id);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
+  }
+
+  purgeFolder(id: string): void {
+    const raw = napiPurgeFolder(id);
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
+  }
+
+  purgeAllDeleted(): void {
+    const raw = napiPurgeAllDeleted();
+    const parsed = JSON.parse(raw) as ErrorEnvelope;
+    if (parsed.error) throw new ShibeiError(parsed.error);
+    this.notifyDataChanged();
+  }
+
   // ── Smoke tests (kept for Demo pages; remove when confidence earned) ─
 
   hello(): string {
@@ -787,6 +862,24 @@ export interface Comment {
 export interface AnnotationsBundle {
   highlights: Highlight[];
   comments: Comment[];
+}
+
+// Recycle bin row shapes — mirror shibei-db's `DeletedResource` /
+// `DeletedFolder` structs (snake_case wire format).
+export interface DeletedResource {
+  id: string;
+  title: string;
+  url: string;
+  domain?: string | null;
+  folder_id: string;
+  deleted_at: string;
+}
+
+export interface DeletedFolder {
+  id: string;
+  name: string;
+  parent_id: string;
+  deleted_at: string;
 }
 
 // ── Cache types (§7.2) ────────────────────────────────────────

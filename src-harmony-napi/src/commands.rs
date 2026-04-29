@@ -1823,3 +1823,193 @@ pub fn set_s3_creds_runtime(access_key: String, secret_key: String) -> String {
     *guard = Some((access_key, secret_key));
     "ok".to_string()
 }
+
+// ────────────────────────────────────────────────────────────
+// Recycle Bin (Phase 5.2)
+// ────────────────────────────────────────────────────────────
+//
+// Mirrors the desktop `cmd_*` recycle-bin surface. Soft-delete writes
+// `DELETE` to sync_log (handled inside `shibei_db::resources::delete_resource`
+// / `folders::delete_folder`); restore writes `UPDATE`; permanent delete
+// writes `PURGE` and removes the snapshot dir on disk. Other devices apply
+// these via the normal sync-log replay.
+
+#[shibei_napi]
+pub fn delete_resource(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| shibei_db::resources::delete_resource(conn, &id, Some(&ctx))) {
+        Ok(_) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn delete_folder(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| shibei_db::folders::delete_folder(conn, &id, Some(&ctx))) {
+        Ok(_) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn list_deleted_resources() -> String {
+    match with_conn(shibei_db::resources::list_deleted_resources) {
+        Ok(list) => to_json(&list),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn list_deleted_folders() -> String {
+    match with_conn(shibei_db::folders::list_deleted_folders) {
+        Ok(list) => to_json(&list),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn restore_resource(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| shibei_db::resources::restore_resource(conn, &id, Some(&ctx))) {
+        Ok(r) => to_json(&r),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn restore_folder(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    match with_conn(|conn| shibei_db::folders::restore_folder(conn, &id, Some(&ctx))) {
+        Ok(f) => to_json(&f),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn purge_resource(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let hlc_str = ctx.clock.tick().to_string();
+    let result = with_conn(|conn| {
+        shibei_db::resources::purge_resource(conn, &id)?;
+        let payload = serde_json::json!({ "id": &id }).to_string();
+        let _ = shibei_db::sync_log::append(
+            conn, "resource", &id, "PURGE", &payload, &hlc_str, ctx.device_id,
+        );
+        Ok(())
+    });
+    match result {
+        Ok(()) => {
+            // Best-effort filesystem cleanup. LRU index doesn't track deleted
+            // dirs separately — leftover entries get touch_cache-corrected on
+            // next access (which won't happen for a purged id).
+            let dir = shibei_storage::resource_dir(&app.data_dir, &id);
+            let _ = std::fs::remove_dir_all(dir);
+            r#"{"ok":true}"#.to_string()
+        }
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn purge_folder(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let hlc_str = ctx.clock.tick().to_string();
+    let result = with_conn(|conn| {
+        let r = shibei_db::folders::purge_folder(conn, &id)?;
+        for rid in &r.resource_ids {
+            let payload = serde_json::json!({ "id": rid }).to_string();
+            let _ = shibei_db::sync_log::append(
+                conn, "resource", rid, "PURGE", &payload, &hlc_str, ctx.device_id,
+            );
+        }
+        for fid in &r.child_folder_ids {
+            let payload = serde_json::json!({ "id": fid }).to_string();
+            let _ = shibei_db::sync_log::append(
+                conn, "folder", fid, "PURGE", &payload, &hlc_str, ctx.device_id,
+            );
+        }
+        let payload = serde_json::json!({ "id": &id }).to_string();
+        let _ = shibei_db::sync_log::append(
+            conn, "folder", &id, "PURGE", &payload, &hlc_str, ctx.device_id,
+        );
+        Ok(r.resource_ids)
+    });
+    match result {
+        Ok(resource_ids) => {
+            for rid in &resource_ids {
+                let dir = shibei_storage::resource_dir(&app.data_dir, rid);
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            r#"{"ok":true}"#.to_string()
+        }
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn purge_all_deleted() -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let hlc_str = ctx.clock.tick().to_string();
+    let result = with_conn(|conn| {
+        // Snapshot ids before purge — sync_log entries need them.
+        let folder_ids = shibei_db::folders::list_deleted_folder_ids(conn)?;
+        let resource_ids = shibei_db::resources::list_deleted_resource_ids(conn)?;
+
+        let mut all_resource_ids = shibei_db::folders::purge_all_deleted_folders(conn)?;
+        let standalone = shibei_db::resources::purge_all_deleted_resources(conn)?;
+        all_resource_ids.extend(standalone);
+
+        for rid in &resource_ids {
+            let payload = serde_json::json!({ "id": rid }).to_string();
+            let _ = shibei_db::sync_log::append(
+                conn, "resource", rid, "PURGE", &payload, &hlc_str, ctx.device_id,
+            );
+        }
+        for fid in &folder_ids {
+            let payload = serde_json::json!({ "id": fid }).to_string();
+            let _ = shibei_db::sync_log::append(
+                conn, "folder", fid, "PURGE", &payload, &hlc_str, ctx.device_id,
+            );
+        }
+        Ok(all_resource_ids)
+    });
+    match result {
+        Ok(all_resource_ids) => {
+            for rid in &all_resource_ids {
+                let dir = shibei_storage::resource_dir(&app.data_dir, rid);
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            r#"{"ok":true}"#.to_string()
+        }
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
