@@ -1290,6 +1290,31 @@ pub async fn cmd_set_sync_interval(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn cmd_get_close_to_tray(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<bool, CommandError> {
+    let conn = state.conn()?;
+    let v = crate::sync::sync_state::get(&conn, "config:close_to_tray")?;
+    Ok(v.as_deref().map(|s| s != "false").unwrap_or(true))
+}
+
+#[tauri::command]
+pub async fn cmd_set_close_to_tray(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<(), CommandError> {
+    let conn = state.conn()?;
+    crate::sync::sync_state::set(
+        &conn,
+        "config:close_to_tray",
+        if enabled { "true" } else { "false" },
+    )?;
+    let _ = app.emit(events::DATA_CONFIG_CHANGED, serde_json::json!({ "scope": "appearance" }));
+    Ok(())
+}
+
 // ── Recycle Bin ──
 
 #[tauri::command]

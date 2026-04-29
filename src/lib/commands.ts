@@ -291,6 +291,16 @@ export function setSyncInterval(minutes: number): Promise<void> {
   return invoke("cmd_set_sync_interval", { minutes });
 }
 
+// ── Appearance ──
+
+export function getCloseToTray(): Promise<boolean> {
+  return invoke("cmd_get_close_to_tray");
+}
+
+export function setCloseToTray(enabled: boolean): Promise<void> {
+  return invoke("cmd_set_close_to_tray", { enabled });
+}
+
 // ── Encryption ──
 
 export function setupEncryption(password: string): Promise<void> {

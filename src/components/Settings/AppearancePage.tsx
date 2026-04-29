@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { ThemeMode } from "@/hooks/useTheme";
 import { getAutoLaunchEnabled, setAutoLaunchEnabled } from "@/lib/autostart";
+import * as cmd from "@/lib/commands";
 import settingsStyles from "./Settings.module.css";
 import styles from "./AppearancePage.module.css";
 
@@ -25,6 +26,7 @@ const LANGUAGE_OPTIONS = [
 export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageProps) {
   const { t, i18n } = useTranslation("settings");
   const [autoLaunch, setAutoLaunch] = useState<boolean | null>(null);
+  const [closeToTray, setCloseToTrayState] = useState<boolean | null>(null);
 
   useEffect(() => {
     getAutoLaunchEnabled()
@@ -33,7 +35,26 @@ export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageP
         console.error("Failed to read auto-launch state:", err);
         setAutoLaunch(false);
       });
+    cmd
+      .getCloseToTray()
+      .then((on) => setCloseToTrayState(on))
+      .catch((err) => {
+        console.error("Failed to read close-to-tray state:", err);
+        setCloseToTrayState(true);
+      });
   }, []);
+
+  const handleToggleCloseToTray = async () => {
+    if (closeToTray === null) return;
+    const next = !closeToTray;
+    try {
+      await cmd.setCloseToTray(next);
+      setCloseToTrayState(next);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg);
+    }
+  };
 
   const handleToggleAutoLaunch = async () => {
     if (autoLaunch === null) return;
@@ -100,6 +121,20 @@ export function AppearancePage({ themeMode, onThemeModeChange }: AppearancePageP
           <span>{t("autoLaunch")}</span>
         </label>
         <div className={settingsStyles.hint}>{t("autoLaunchDescription")}</div>
+      </div>
+
+      <div className={settingsStyles.passwordSection}>
+        <h3 className={settingsStyles.subheading}>{t("closeBehavior")}</h3>
+        <label className={settingsStyles.toggleRow}>
+          <input
+            type="checkbox"
+            checked={closeToTray === true}
+            disabled={closeToTray === null}
+            onChange={handleToggleCloseToTray}
+          />
+          <span>{t("closeToTray")}</span>
+        </label>
+        <div className={settingsStyles.hint}>{t("closeToTrayDescription")}</div>
       </div>
     </>
   );

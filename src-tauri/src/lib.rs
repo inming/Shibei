@@ -16,8 +16,39 @@ pub use shibei_storage::pdf_text;
 pub use shibei_sync as sync;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
+
+/// Process-wide flag set when a real quit is requested (tray menu / app.exit).
+/// Used by the CloseRequested handler to bypass close-to-tray.
+struct QuittingFlag(AtomicBool);
+
+fn close_to_tray_enabled(pool: &db::SharedPool) -> bool {
+    let pool_guard = match pool.read() {
+        Ok(g) => g,
+        Err(_) => return true,
+    };
+    let conn = match pool_guard.get() {
+        Ok(c) => c,
+        Err(_) => return true,
+    };
+    sync::sync_state::get(&conn, "config:close_to_tray")
+        .ok()
+        .flatten()
+        .map(|v| v != "false")
+        .unwrap_or(true)
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
 
 fn get_app_base_dir() -> PathBuf {
     dirs::data_local_dir()
@@ -234,11 +265,8 @@ pub fn run() {
             if let Some(url) = argv.iter().find(|a| a.starts_with("shibei://")) {
                 let _ = app.emit("deep-link-received", url.clone());
             }
-            // Focus the existing window
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            // Surface the existing window (may be hidden by close-to-tray).
+            show_main_window(app);
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -246,6 +274,29 @@ pub fn run() {
         ))
         .manage(cmd_state)
         .manage(Arc::new(sync::EncryptionState::new()))
+        .manage(Arc::new(QuittingFlag(AtomicBool::new(false))))
+        .on_window_event({
+            let close_pool = shared_pool.clone();
+            move |window, event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    if window.label() != "main" {
+                        return;
+                    }
+                    let app = window.app_handle();
+                    let quitting = app
+                        .state::<Arc<QuittingFlag>>()
+                        .0
+                        .load(Ordering::SeqCst);
+                    if quitting {
+                        return;
+                    }
+                    if close_to_tray_enabled(&close_pool) {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::cmd_list_folders,
             commands::cmd_get_folder,
@@ -295,6 +346,8 @@ pub fn run() {
             commands::cmd_download_snapshot,
             commands::cmd_get_snapshot_status,
             commands::cmd_set_sync_interval,
+            commands::cmd_get_close_to_tray,
+            commands::cmd_set_close_to_tray,
             commands::cmd_setup_encryption,
             commands::cmd_unlock_encryption,
             commands::cmd_change_encryption_password,
@@ -351,12 +404,66 @@ pub fn run() {
             }
         })
         .setup(move |app| {
-            // If launched by the OS autostart mechanism, minimize immediately
+            // If launched by the OS autostart mechanism, hide the window
+            // entirely so the app sits silently in the tray.
             if std::env::args().any(|a| a == "--autostart") {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.minimize();
+                    let _ = window.hide();
                 }
             }
+
+            // System tray with menu (open / sync now / quit)
+            let tray_open = MenuItem::with_id(app, "tray:open", "Open Shibei", true, None::<&str>)?;
+            let tray_sync = MenuItem::with_id(app, "tray:sync", "Sync now", true, None::<&str>)?;
+            let tray_quit = MenuItem::with_id(app, "tray:quit", "Quit", true, None::<&str>)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(
+                app,
+                &[&tray_open, &separator, &tray_sync, &separator, &tray_quit],
+            )?;
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .ok_or("missing default window icon")?;
+            let _tray = TrayIconBuilder::with_id("main")
+                .icon(icon)
+                .icon_as_template(false)
+                .tooltip("Shibei")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "tray:open" => show_main_window(app),
+                    "tray:sync" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let cmd_state = app.state::<Arc<commands::AppState>>();
+                            let enc_state = app.state::<Arc<sync::EncryptionState>>();
+                            if let Err(e) =
+                                commands::cmd_sync_now(cmd_state, enc_state, app.clone()).await
+                            {
+                                eprintln!("[shibei] tray sync failed: {:?}", e);
+                            }
+                        });
+                    }
+                    "tray:quit" => {
+                        app.state::<Arc<QuittingFlag>>()
+                            .0
+                            .store(true, Ordering::SeqCst);
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
             // Create server state with app_handle for event emission
             let server_sync_clock = device_id
                 .as_ref()
