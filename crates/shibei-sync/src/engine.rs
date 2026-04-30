@@ -774,6 +774,20 @@ impl SyncEngine {
             imported += 1;
         }
 
+        // Build FTS rows for every imported resource. apply_entries() does
+        // this incrementally for JSONL-driven syncs, but the full-snapshot
+        // path (first cold sync, or JSONL gap fallback) bypassed it — leaving
+        // resources with no search_index entry at all. The JOIN in
+        // search_resources then drops them (and any tag filter joining
+        // through resource_tags returns 0 hits even when the data is there).
+        for resource in &snapshot.resources {
+            if !resource["deleted_at"].is_null() { continue; }
+            let id = resource["id"].as_str().unwrap_or_default();
+            if !id.is_empty() {
+                let _ = shibei_db::search::rebuild_search_index(conn, id);
+            }
+        }
+
         Ok(imported)
     }
 

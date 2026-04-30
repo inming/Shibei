@@ -99,6 +99,41 @@ pub fn init(data_dir: PathBuf, ca_bundle_path: PathBuf) -> Result<(), String> {
     // DbPool it briefly held (still safe — the pool didn't open any
     // connections yet beyond the migration one).
     let _ = APP_STATE.set(state);
+
+    // First-run FTS bootstrap (mirrors desktop's setup hook). Devices that
+    // received their initial corpus via full-snapshot import never had the
+    // search_index populated for those resources (incremental rebuild only
+    // ran for JSONL-driven applies). Without this, search-with-tag returns
+    // 0 hits even when listResources finds the same tagged resources.
+    // Idempotent: keyed off `config:fts_initialized` in sync_state.
+    if let Some(state) = APP_STATE.get() {
+        let pool = state.db_pool.clone();
+        let base_dir = state.data_dir.clone();
+        std::thread::spawn(move || {
+            let pool_guard = match pool.read() {
+                Ok(g) => g,
+                Err(_) => return,
+            };
+            let conn = match pool_guard.get() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            match shibei_db::search::is_fts_initialized(&conn) {
+                Ok(false) => {
+                    let _ = shibei_db::search::backfill_plain_text(
+                        &conn,
+                        &base_dir,
+                        shibei_storage::plain_text::extract_plain_text,
+                    );
+                    if shibei_db::search::rebuild_all_search_index(&conn).is_ok() {
+                        let _ = shibei_db::search::mark_fts_initialized(&conn);
+                    }
+                }
+                _ => {}
+            }
+        });
+    }
+
     Ok(())
 }
 

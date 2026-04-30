@@ -5,6 +5,10 @@ import { ShibeiService, ShibeiError, SearchResult } from '../services/ShibeiServ
 import { I18n } from '../services/I18n';
 import { SessionState } from '../app/SessionState';
 
+interface SearchParams {
+  tagIds?: string[];
+}
+
 // Track E — full-text search over resources (title / url / description /
 // highlights / comments / body). Runs against the local FTS5 virtual
 // table via the searchResources NAPI command. 300ms debounce on typing.
@@ -31,8 +35,19 @@ struct SearchPage {
   @State results: SearchResult[] = [];
   @State searching: boolean = false;
   @State errorMessage: string = '';
+  // Tag filter snapshot from Library at navigation time. Mirrors how
+  // ResourceList passes selectedTagIds to listResources — OR semantics
+  // (resource matches if it has any of these tags). Captured once on
+  // entry; the search page has no tag filter UI of its own.
+  private filterTagIds: string[] = [];
 
   private debounceTimer: number = -1;
+
+  aboutToAppear(): void {
+    const raw = router.getParams();
+    const params: SearchParams = raw ? (raw as SearchParams) : {};
+    this.filterTagIds = params.tagIds && params.tagIds.length > 0 ? [...params.tagIds] : [];
+  }
 
   onPageShow(): void {
     // Pop the soft keyboard immediately — the user tapped the 🔍 button
@@ -76,7 +91,7 @@ struct SearchPage {
     this.searching = true;
     this.errorMessage = '';
     try {
-      this.results = ShibeiService.instance.searchResources(this.query.trim());
+      this.results = ShibeiService.instance.searchResources(this.query.trim(), this.filterTagIds);
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : err.message;
       this.errorMessage = I18n.t($r('app.string.search_failed'), I18n.translateError(code));

@@ -362,7 +362,10 @@ struct Library {
                 }
                 .width(44).height(44).justifyContent(FlexAlign.Center)
                 .onClick(() => {
-                    router.pushUrl({ url: 'pages/Search' }).catch((err: Error) => {
+                    router.pushUrl({
+                      url: 'pages/Search',
+                      params: { tagIds: [...this.selectedTagIds] },
+                    }).catch((err: Error) => {
                       hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
                     });
                   });
