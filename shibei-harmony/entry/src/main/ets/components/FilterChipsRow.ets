@@ -5,16 +5,13 @@ import { I18n } from '../services/I18n';
 export struct FilterChipsRow {
   @Link filterTagIds: string[];
   @Prop folderId: string;
+  @Link @Watch('onSheetOpenChange') showSheet: boolean;
   @State allTags: TagWithCount[] = [];
-  @State showSheet: boolean = false;
   @State searchText: string = '';
   private unsubDataChanged?: () => void;
 
   aboutToAppear(): void {
     this.loadTags();
-    // Counts in the filter chips depend on tag-resource links and can shift
-    // after sync, after long-press tag assign, and after manage edits — all
-    // of which fire `notifyDataChanged` from ShibeiService.
     this.unsubDataChanged = ShibeiService.instance.onDataChanged(() => this.loadTags());
   }
 
@@ -30,6 +27,13 @@ export struct FilterChipsRow {
       this.allTags = ShibeiService.instance.listTagsInFolder(this.folderId);
     } catch (_e) {
       this.allTags = [];
+    }
+  }
+
+  private onSheetOpenChange(): void {
+    if (this.showSheet) {
+      this.loadTags();
+      this.searchText = '';
     }
   }
 
@@ -105,44 +109,44 @@ export struct FilterChipsRow {
   }
 
   build() {
-    Row() {
+    // Empty state: render a zero-size anchor that still owns the bindSheet,
+    // so opening the sheet from TopBar works without occupying a row.
+    if (this.filterTagIds.length === 0) {
+      Row()
+        .width(0).height(0)
+        .bindSheet($$this.showSheet, this.TagSheet(), {
+          preferType: SheetType.BOTTOM,
+          detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+          showClose: true,
+          dragBar: true,
+          title: { title: I18n.t($r('app.string.sidebar_filter_tags')) },
+        });
+    } else {
       Row() {
-        Text(`+`).fontSize(14).fontWeight(FontWeight.Bold);
+        ForEach(this.selectedTags(), (tag: TagWithCount) => {
+          Row() {
+            Circle({ width: 8, height: 8 }).fill(tag.color).margin({ right: 4 });
+            Text(tag.name).fontSize(12);
+            Text(' ×').fontSize(12).fontColor($r('app.color.text_secondary'))
+              .onClick(() => { this.toggleTag(tag.id); });
+          }
+          .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+          .borderRadius(12)
+          .border({ width: 1, color: $r('app.color.border_divider') })
+          .margin({ right: 4 });
+        });
       }
-      .padding({ left: 8, right: 8, top: 2, bottom: 2 })
-      .backgroundColor($r('app.color.bg_secondary'))
-      .borderRadius(4)
-      .border({ width: 1, color: $r('app.color.border_divider') })
-      .margin({ right: 6 })
-      .onClick(() => {
-        this.loadTags();
-        this.searchText = '';
-        this.showSheet = true;
-      });
-
-      ForEach(this.selectedTags(), (tag: TagWithCount) => {
-        Row() {
-          Circle({ width: 8, height: 8 }).fill(tag.color).margin({ right: 4 });
-          Text(tag.name).fontSize(12);
-          Text(' ×').fontSize(12).fontColor($r('app.color.text_secondary'))
-            .onClick(() => { this.toggleTag(tag.id); });
-        }
-        .padding({ left: 6, right: 6, top: 2, bottom: 2 })
-        .borderRadius(12)
-        .border({ width: 1, color: $r('app.color.border_divider') })
-        .margin({ right: 4 });
+      .width('100%')
+      .padding({ left: 12, right: 12, top: 4, bottom: 4 })
+      .justifyContent(FlexAlign.Start)
+      .alignItems(VerticalAlign.Center)
+      .bindSheet($$this.showSheet, this.TagSheet(), {
+        preferType: SheetType.BOTTOM,
+        detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+        showClose: true,
+        dragBar: true,
+        title: { title: I18n.t($r('app.string.sidebar_filter_tags')) },
       });
     }
-    .width('100%')
-    .padding({ left: 12, right: 12 })
-    .justifyContent(FlexAlign.Start)
-    .alignItems(VerticalAlign.Center)
-    .bindSheet($$this.showSheet, this.TagSheet(), {
-      preferType: SheetType.BOTTOM,
-      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
-      showClose: true,
-      dragBar: true,
-      title: { title: I18n.t($r('app.string.sidebar_filter_tags')) },
-    });
   }
 }

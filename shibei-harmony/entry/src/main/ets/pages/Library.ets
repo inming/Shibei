@@ -32,6 +32,7 @@ struct Library {
   @State selectedFolderId: string = '__all__';
   @State selectedFolderLabel: string = '';
   @State selectedTagIds: string[] = [];
+  @State filterSheetOpen: boolean = false;
   // Kept in sync with FoldObserver; updates here trigger an automatic
   // re-layout between Embed / Overlay without reopening the page.
   @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
@@ -338,6 +339,22 @@ struct Library {
                 // Flat monochrome system symbol — emoji 🔍 renders in
                 // color and looks 3D on this SDK; SymbolGlyph respects
                 // .fontColor and stays line-art.
+                Stack({ alignContent: Alignment.TopEnd }) {
+                  Row() {
+                    SymbolGlyph($r('sys.symbol.funnel'))
+                      .fontSize(22)
+                      .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
+                  }
+                  .width(44).height(44).justifyContent(FlexAlign.Center);
+                  if (this.selectedTagIds.length > 0) {
+                    Circle({ width: 8, height: 8 })
+                      .fill($r('app.color.accent_primary'))
+                      .margin({ top: 10, right: 10 });
+                  }
+                }
+                .width(44).height(44)
+                .onClick(() => { this.filterSheetOpen = true; });
+
                 Row() {
                   SymbolGlyph($r('sys.symbol.magnifyingglass'))
                     .fontSize(22)
@@ -357,6 +374,7 @@ struct Library {
               FilterChipsRow({
                 filterTagIds: $selectedTagIds,
                 folderId: this.selectedFolderId,
+                showSheet: $filterSheetOpen,
               });
 
               ResourceList({
