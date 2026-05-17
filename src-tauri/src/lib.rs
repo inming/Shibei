@@ -1,5 +1,6 @@
 mod commands;
 mod server;
+mod sync_engine_factory;
 
 // Phase 2 crate refactor: facade re-exports keep the `crate::db::…`,
 // `crate::events::…`, `crate::storage::…`, `crate::plain_text::…`,

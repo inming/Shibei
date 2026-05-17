@@ -721,6 +721,26 @@ pub fn parent_ids_with_children(conn: &Connection) -> Result<std::collections::H
     Ok(ids)
 }
 
+/// Count non-deleted resources in the entire subtree under a folder
+/// (including resources in the folder itself and all descendant folders).
+pub fn count_resources_in_subtree(conn: &Connection, folder_id: &str) -> Result<i64, DbError> {
+    let count: i64 = conn.query_row(
+        "WITH RECURSIVE subtree AS (
+            SELECT id FROM folders WHERE id = ?1 AND deleted_at IS NULL
+            UNION ALL
+            SELECT f.id FROM folders f
+            INNER JOIN subtree s ON f.parent_id = s.id
+            WHERE f.deleted_at IS NULL
+        )
+        SELECT COUNT(*) FROM resources
+        WHERE folder_id IN (SELECT id FROM subtree)
+        AND deleted_at IS NULL",
+        params![folder_id],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}
+
 pub fn reorder_folder(
     conn: &Connection,
     id: &str,
@@ -989,6 +1009,39 @@ mod tests {
 
         let h_hlc: String = conn.query_row("SELECT hlc FROM highlights WHERE id = 'h1'", [], |row| row.get(0)).unwrap();
         assert_eq!(h_hlc, "0000000000200-0000-dev-new");
+    }
+
+    #[test]
+    fn test_count_resources_in_subtree() {
+        let conn = test_db();
+        let parent = create_folder(&conn, "parent", "__root__", None).unwrap();
+        let child = create_folder(&conn, "child", &parent.id, None).unwrap();
+
+        // No resources yet
+        assert_eq!(count_resources_in_subtree(&conn, &parent.id).unwrap(), 0);
+
+        // Add resource to child folder
+        conn.execute(
+            "INSERT INTO resources (id, title, url, folder_id, resource_type, file_path, created_at, captured_at)
+             VALUES ('r1', 'test', 'http://x', ?1, 'webpage', 'x', '2026-01-01', '2026-01-01')",
+            params![child.id],
+        ).unwrap();
+        assert_eq!(count_resources_in_subtree(&conn, &parent.id).unwrap(), 1);
+
+        // Add resource directly to parent
+        conn.execute(
+            "INSERT INTO resources (id, title, url, folder_id, resource_type, file_path, created_at, captured_at)
+             VALUES ('r2', 'test2', 'http://y', ?1, 'webpage', 'y', '2026-01-01', '2026-01-01')",
+            params![parent.id],
+        ).unwrap();
+        assert_eq!(count_resources_in_subtree(&conn, &parent.id).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_count_resources_in_subtree_empty_folder() {
+        let conn = test_db();
+        let folder = create_folder(&conn, "empty", "__root__", None).unwrap();
+        assert_eq!(count_resources_in_subtree(&conn, &folder.id).unwrap(), 0);
     }
 
     #[test]

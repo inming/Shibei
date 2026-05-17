@@ -12,6 +12,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use tauri::Emitter;
+use tauri::Manager;
 
 use crate::db::{self, comments, folders, highlights, resources, search, tags};
 use crate::events;
@@ -147,6 +148,29 @@ struct UpdateCommentRequest {
     content: String,
 }
 
+#[derive(Deserialize)]
+struct CreateFolderRequest {
+    name: String,
+    parent_id: String,
+}
+
+#[derive(Serialize)]
+struct CreateFolderResponse {
+    folder_id: String,
+}
+
+#[derive(Deserialize)]
+struct RenameFolderRequest {
+    name: String,
+}
+
+#[derive(Serialize)]
+struct SyncResponse {
+    uploaded: usize,
+    downloaded: usize,
+    applied: usize,
+}
+
 /// Start the HTTP server on 127.0.0.1:21519.
 pub async fn start_server(
     state: Arc<AppState>,
@@ -168,7 +192,12 @@ pub async fn start_server(
     let app = Router::new()
         .route("/api/ping", get(handle_ping))
         .route("/token", get(handle_token))
-        .route("/api/folders", get(handle_folders))
+        .route("/api/folders", get(handle_folders).post(handle_create_folder))
+        .route(
+            "/api/folders/{id}",
+            put(handle_rename_folder).delete(handle_delete_folder),
+        )
+        .route("/api/sync", post(handle_sync_now))
         .route("/api/tags", get(handle_tags).post(handle_create_tag))
         .route("/api/folder-counts", get(handle_folder_counts))
         .route("/api/check-url", get(handle_check_url))
@@ -1048,4 +1077,232 @@ async fn handle_update_comment(
     );
 
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn handle_create_folder(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateFolderRequest>,
+) -> Result<Json<CreateFolderResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    let folder = folders::create_folder(&conn, &payload.name, &payload.parent_id, sync_ctx.as_ref())
+        .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_FOLDER_CHANGED,
+        serde_json::json!({
+            "action": "created",
+            "parent_id": payload.parent_id,
+        }),
+    );
+
+    Ok(Json(CreateFolderResponse {
+        folder_id: folder.id,
+    }))
+}
+
+async fn handle_rename_folder(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(payload): Json<RenameFolderRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+
+    if id == folders::INBOX_FOLDER_ID {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "cannot rename inbox folder".to_string(),
+            }),
+        ));
+    }
+
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+
+    folders::rename_folder(&conn, &id, &payload.name, sync_ctx.as_ref())
+        .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_FOLDER_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "folder_id": id,
+        }),
+    );
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn handle_delete_folder(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+
+    if id == folders::INBOX_FOLDER_ID {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "cannot delete inbox folder".to_string(),
+            }),
+        ));
+    }
+
+    let conn = get_conn(&state)?;
+
+    let resource_count = folders::count_resources_in_subtree(&conn, &id)
+        .map_err(map_db_error)?;
+    if resource_count > 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: format!(
+                    "folder is not empty: {} resource(s) in subtree",
+                    resource_count
+                ),
+            }),
+        ));
+    }
+
+    let sync_ctx = state.sync_context();
+    let affected_resource_ids = folders::delete_folder(&conn, &id, sync_ctx.as_ref())
+        .map_err(map_db_error)?;
+
+    let _ = state.app_handle.emit(
+        events::DATA_FOLDER_CHANGED,
+        serde_json::json!({
+            "action": "deleted",
+            "folder_id": id,
+        }),
+    );
+
+    if !affected_resource_ids.is_empty() {
+        let _ = state.app_handle.emit(
+            events::DATA_RESOURCE_CHANGED,
+            serde_json::json!({ "action": "deleted" }),
+        );
+    }
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn handle_sync_now(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<SyncResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+
+    let device_id = state.device_id.as_deref()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Device ID not initialized".to_string(),
+                }),
+            )
+        })?;
+    let encryption_state = state
+        .app_handle
+        .try_state::<std::sync::Arc<crate::sync::EncryptionState>>()
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "encryption state not available".to_string(),
+                }),
+            )
+        })?;
+
+    // Read config synchronously (before await)
+    let conn = get_conn(&state)?;
+    let config = crate::sync_engine_factory::read_sync_config(&conn)
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: e }),
+            )
+        })?;
+    drop(conn);
+
+    let _ = state.app_handle.emit(events::SYNC_STARTED, ());
+
+    let engine = crate::sync_engine_factory::build_sync_engine(
+        config,
+        state.pool.clone(),
+        &state.base_dir,
+        device_id,
+        &encryption_state,
+    )
+    .await
+    .map_err(|e| {
+        let _ = state.app_handle.emit(
+            events::SYNC_FAILED,
+            serde_json::json!({ "message": e }),
+        );
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )
+    })?;
+
+    // Self-heal: reset sync state if encryption first sync never completed
+    {
+        let conn = get_conn(&state)?;
+        crate::sync_engine_factory::reset_for_first_encryption_sync(&conn)
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: e }),
+                )
+            })?;
+    }
+
+    let result = engine.sync(None).await.map_err(|e| {
+        let msg = e.to_string();
+        let _ = state.app_handle.emit(
+            events::SYNC_FAILED,
+            serde_json::json!({ "message": msg }),
+        );
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: msg }),
+        )
+    })?;
+
+    // Mark first post-encryption sync as completed
+    {
+        let conn = get_conn(&state)?;
+        crate::sync_engine_factory::mark_encryption_sync_completed(&conn)
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: e }),
+                )
+            })?;
+    }
+
+    let _ = state.app_handle.emit(events::DATA_SYNC_COMPLETED, ());
+
+    match result {
+        crate::sync::engine::SyncResult::Success {
+            uploaded,
+            downloaded,
+            applied,
+        } => Ok(Json(SyncResponse {
+            uploaded,
+            downloaded,
+            applied,
+        })),
+        crate::sync::engine::SyncResult::Skipped => Ok(Json(SyncResponse {
+            uploaded: 0,
+            downloaded: 0,
+            applied: 0,
+        })),
+    }
 }

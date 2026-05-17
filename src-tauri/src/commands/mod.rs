@@ -553,25 +553,11 @@ pub async fn cmd_sync_now(
     })?;
 
     // Self-heal: if encryption is enabled but the first post-encryption sync
-    // never completed, reset sync state to force full re-sync. Runs AFTER
-    // build_sync_engine (so we know credentials + unlock work) but BEFORE
-    // engine.sync() so the reset takes effect on this sync.
+    // never completed, reset sync state to force full re-sync.
     {
         let conn = state.conn()?;
-        let encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
-            .map(|v| v == "true").unwrap_or(false);
-        let sync_completed = crate::sync::sync_state::get(&conn, "config:encryption_sync_completed")?
-            .map(|v| v == "true").unwrap_or(false);
-        if encryption_enabled && !sync_completed {
-            eprintln!("[sync] Encryption enabled but first sync not completed — resetting sync state");
-            conn.execute("UPDATE sync_log SET uploaded = 0", [])
-                .map_err(|e| CommandError { message: e.to_string() })?;
-            let remote_keys = crate::sync::sync_state::list_by_prefix(&conn, "remote:")?;
-            for (key, _) in &remote_keys {
-                crate::sync::sync_state::delete(&conn, key)?;
-            }
-            crate::sync::sync_state::delete(&conn, "last_sync_at")?;
-        }
+        crate::sync_engine_factory::reset_for_first_encryption_sync(&conn)
+            .map_err(|msg| CommandError { message: msg })?;
     }
 
     let app_clone = app.clone();
@@ -592,11 +578,8 @@ pub async fn cmd_sync_now(
     // Mark first post-encryption sync as completed
     {
         let conn = state.conn()?;
-        if crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
-            .map(|v| v == "true").unwrap_or(false)
-        {
-            crate::sync::sync_state::set(&conn, "config:encryption_sync_completed", "true")?;
-        }
+        crate::sync_engine_factory::mark_encryption_sync_completed(&conn)
+            .map_err(|msg| CommandError { message: msg })?;
     }
 
     let _ = app.emit(events::DATA_SYNC_COMPLETED, ());
@@ -662,80 +645,27 @@ pub async fn cmd_purge_orphan_snapshots(
     }))
 }
 
-/// Build a SyncEngine from current config. Called on each sync to pick up latest settings.
-/// If encryption is enabled, wraps the backend with EncryptedBackend.
-/// Multi-device detection: if local doesn't know about encryption, check remote keyring.json.
+/// Build a SyncEngine from current config. Thin wrapper around the shared factory.
 async fn build_sync_engine(
     state: &AppState,
     encryption_state: &crate::sync::EncryptionState,
 ) -> Result<crate::sync::engine::SyncEngine, CommandError> {
     let conn = state.conn()?;
-
-    let local_encryption_enabled = crate::sync::sync_state::get(&conn, "config:encryption_enabled")?
-        .map(|v| v == "true")
-        .unwrap_or(false);
-
-    let region = crate::sync::sync_state::get(&conn, "config:s3_region")?
-        .ok_or_else(|| CommandError { message: "error.syncRegionNotSet".to_string() })?;
-    let bucket = crate::sync::sync_state::get(&conn, "config:s3_bucket")?
-        .ok_or_else(|| CommandError { message: "error.syncBucketNotSet".to_string() })?;
-    let endpoint = crate::sync::sync_state::get(&conn, "config:s3_endpoint")?.unwrap_or_default();
-    let (access_key, secret_key) = crate::sync::credentials::load_credentials(&conn)?
-        .ok_or_else(|| CommandError { message: "error.syncCredentialsNotSet".to_string() })?;
-
-    let s3_config = crate::sync::backend::S3Config {
-        endpoint: if endpoint.is_empty() { None } else { Some(endpoint.clone()) },
-        region: region.clone(),
-        bucket: bucket.clone(),
-        access_key,
-        secret_key,
-    };
-    let s3_backend = crate::sync::backend::S3Backend::new(s3_config)
-        .map_err(|e| CommandError { message: e.to_string() })?;
-
-    // Determine if encryption is needed.
-    // Check local flag first to avoid network round-trip on every sync.
-    // Fall back to remote check only when local doesn't know.
-    let encryption_enabled = if local_encryption_enabled {
-        true
-    } else {
-        use crate::sync::backend::SyncBackend;
-        let remote_has_keyring = s3_backend.head("meta/keyring.json").await
-            .map(|meta| meta.is_some())
-            .unwrap_or(false);
-        if remote_has_keyring {
-            // Don't persist here — let cmd_unlock_encryption set this flag
-            // so that is_first_unlock correctly detects the first unlock and
-            // resets sync state (last_sync_at, remote:* progress, sync_log).
-            true
-        } else {
-            false
-        }
-    };
-
-    let backend: Arc<dyn crate::sync::backend::SyncBackend> = if encryption_enabled {
-        let mk = encryption_state.get_key().ok_or_else(|| CommandError {
-            message: "error.encryptionNotUnlocked".to_string(),
-        })?;
-        Arc::new(crate::sync::encrypted_backend::EncryptedBackend::new(
-            Arc::new(s3_backend),
-            mk,
-        ))
-    } else {
-        Arc::new(s3_backend)
-    };
-
     let device_id = state.device_id.as_ref()
         .ok_or_else(|| CommandError { message: "Device ID not initialized".to_string() })?;
-    let clock = Arc::new(crate::sync::hlc::HlcClock::new(device_id.clone()));
-
-    Ok(crate::sync::engine::SyncEngine::new(
+    let config = crate::sync_engine_factory::read_sync_config(&conn)
+        .map_err(|msg| CommandError { message: msg })?;
+    // Drop conn before await — Connection is not Sync.
+    drop(conn);
+    crate::sync_engine_factory::build_sync_engine(
+        config,
         state.pool.clone(),
-        backend,
-        device_id.clone(),
-        clock,
-        state.base_dir.clone(),
-    ))
+        &state.base_dir,
+        device_id,
+        encryption_state,
+    )
+    .await
+    .map_err(|msg| CommandError { message: msg })
 }
 
 /// Build a raw S3Backend (no encryption) for keyring operations.

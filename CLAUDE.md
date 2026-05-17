@@ -49,6 +49,7 @@ src-tauri/          # Rust 后端（Tauri core — Phase 2 A2 后仅保留 Tauri
     lib.rs          # 启动逻辑 + facade re-exports（`pub use shibei_db as db;` 等，保留 `crate::db::…` / `crate::sync::…` 老路径）
     main.rs
     annotator.js    # 标注注入脚本（嵌入到 HTML 中）
+    sync_engine_factory.rs  # 同步引擎构建共享模块（`cmd_sync_now` / `/api/sync` 共用 `read_sync_config` / `build_sync_engine` / `reset_for_first_encryption_sync` / `mark_encryption_sync_completed`）
   migrations/       # SQL migration 文件
 src/                # React 前端
   components/       # UI 组件（Layout, TabBar, ReaderView, PDFReader, AnnotationPanel, MarkdownContent, SettingsView, Settings/AIPage/..., Sidebar/...）
@@ -71,7 +72,7 @@ mcp/                # MCP Server（Node.js，stdio transport）
   src/
     index.ts        # 入口：MCP Server + stdio transport
     client.ts       # HTTP 客户端（调用主应用 axum server）
-    tools/          # MCP 工具实现（search, resource, annotations, folders, tags）
+    tools/          # MCP 工具实现（search, resource, annotations, folders, tags, sync）
     types.ts        # 共享类型定义
 ```
 
@@ -86,7 +87,7 @@ mcp/                # MCP Server（Node.js，stdio transport）
 - **云同步**：CRUD 操作写 sync_log → 上传 JSONL 到 S3 → 拉取远端变更 → HLC LWW 合并 → 拓扑排序 apply。快照文件按需下载。首次同步上传/导入全量快照
 - **软删除**：所有业务表使用 `deleted_at` 标记删除，查询过滤 `WHERE deleted_at IS NULL`，90 天后物理清理
 - **搜索**：FTS5 trigram 虚拟表 `search_index`，CRUD 操作后自动维护索引（best-effort），前端 ResourceList 顶部搜索框（固定不随列表滚动）debounce 300ms 触发，标题/URL/标注匹配高亮。快照正文通过 `body_text` 列全文索引。`SearchResult` 返回 `match_fields`（匹配字段列表）和 `snippet`（正文上下文片段），前端显示匹配类型标签（正文匹配/标注匹配/评论匹配）和 snippet 高亮
-- **MCP Server**：独立 Node.js 进程，stdio transport，通过 HTTP 调用主应用 axum server（需主应用运行）。Token 文件 `{data_dir}/mcp-token` 鉴权。9 个工具：search_resources, get_resource, get_annotations, get_resource_content, list_folders, list_tags, update_resource, manage_tags, manage_notes
+- **MCP Server**：独立 Node.js 进程，stdio transport，通过 HTTP 调用主应用 axum server（需主应用运行）。Token 文件 `{data_dir}/mcp-token` 鉴权。11 个工具：search_resources, get_resource, get_annotations, get_resource_content, list_folders, list_tags, update_resource, manage_tags, manage_notes, manage_folders, sync_now
 
 ## 代码风格
 
@@ -272,7 +273,7 @@ sips -Z 800 -s format jpeg -s formatOptions 60 /tmp/screen.png --out /tmp/screen
 - **深色模式**：CSS 变量切换，`[data-theme="dark"]` 覆盖 `:root` 变量。三种模式 `light | dark | system`，`useTheme` hook 管理，持久化 `localStorage`（key: `shibei-theme`）。新增颜色必须在 `variables.css` 中同时定义 light 和 dark 值。iframe 快照内容不做强制反色，阅读器提供可选 invert filter
 - **全文搜索**：FTS5 虚拟表 `search_index`（`tokenize='trigram'`），索引 title/url/description/highlights_text/comments_text/body_text。>= 3 字符走 FTS5 MATCH（自动搜索所有索引列含正文），2 字符回退 LIKE（搜索所有列含 body_text）。`search_resources` 返回 `SearchResult`（`Resource` + `matched_body` + `match_fields: Vec<String>` + `snippet: Option<String>`），通过 `#[serde(flatten)]` 平铺字段。`match_fields` 列出匹配字段（title/url/description/highlights/comments/body），`snippet` 为正文匹配上下文（前后各 20 字符 + 省略号）。所有 CRUD（resource/highlight/comment）操作后调用 `search::rebuild_search_index` 或 `delete_search_index`（best-effort `let _ =`）。同步 apply 后按受影响 resource_id 增量重建。首次启动通过 `sync_state` 标志位 `config:fts_initialized` 触发全量索引构建（先 `backfill_plain_text` 回填缺失纯文本，再 `rebuild_all_search_index`）。FTS5 查询必须用 `escape_fts_query` 转义用户输入（双引号包裹）
 - **Markdown 标注**：评论和资料级笔记使用 `react-markdown` + `remark-gfm` 渲染，纯前端实现，后端零改动。共享组件 `MarkdownContent`（props: `content`, `searchQuery?`）。编辑使用 textarea + 预览切换按钮（"预览"/"编辑"）。搜索高亮通过自定义 rehype 插件在渲染后文本节点上做匹配。图片语法渲染为链接文本，不显示图片。不引入语法高亮库
-- **MCP Server**：stdio transport，Node.js 独立进程。数据访问通过 HTTP 代理（127.0.0.1:21519），不直接访问 SQLite。Token 通过 `{data_dir}/mcp-token` 文件传递（启动时写入，退出时删除）。工具返回纯文本格式化的结果。`plain_text` 字段保存时提取，MCP 读取时懒填充，不参与同步
+- **MCP Server**：stdio transport，Node.js 独立进程。数据访问通过 HTTP 代理（127.0.0.1:21519），不直接访问 SQLite。Token 通过 `{data_dir}/mcp-token` 文件传递（启动时写入，退出时删除）。工具返回纯文本格式化的结果。`plain_text` 字段保存时提取，MCP 读取时懒填充，不参与同步。**文件夹管理**（`manage_folders`）：create / rename / delete（仅空文件夹，保护 `__inbox__`）。**同步**（`sync_now`）：全量同步（upload + download + apply），等同桌面端同步按钮，包含加密首次同步 self-heal 和 completion marker。同步引擎构建逻辑抽取为 `src-tauri/src/sync_engine_factory.rs` 共享模块，`cmd_sync_now` 和 `/api/sync` 均调用
 - **MCP 自动配置**：`Settings/AIPage` 提供一键配置 MCP Server 到 AI 工具（Claude Desktop/Cursor/Windsurf/OpenCode）。预设工具路径由后端 `cmd_get_ai_tool_paths`（`dirs` crate）按 OS 返回，自定义工具路径存 `localStorage`（key: `shibei-mcp-custom-tools`）。配置操作通过 `cmd_read_external_file`/`cmd_write_external_file` 通用命令，写入前弹窗 diff 预览。支持两种配置格式：标准格式（`mcpServers` key，Claude Desktop/Cursor/Windsurf）和 OpenCode 格式（`mcp` key + `type: "stdio"`），通过 `AiToolPath.format` 字段区分
 - **标签过滤**：统一由后端 SQL 处理（`list_resources_by_folder`/`list_all_resources`/`search_resources` 均接受 `tag_ids` 参数），OR 逻辑（资料包含任一选中标签即匹配），前端不做客户端标签过滤
 - **i18n 国际化**：`react-i18next` + `i18next`，11 个命名空间（common/sidebar/reader/annotation/settings/sync/encryption/lock/search/data/ai）。语言包静态导入（`src/locales/zh/*.json` + `src/locales/en/*.json`），`src/i18n.ts` 初始化。**新增 UI 文案必须使用 `t('key')` 而非硬编码中文**，同时更新 zh 和 en 两个 JSON 文件。`useTranslation('namespace')` 在组件/hooks 中获取 `t` 函数。后端错误消息返回 i18n key（`error.xxx` 格式），前端 `translateError()` 翻译。Chrome 插件使用 `chrome.i18n` API（`_locales/` 目录），MAIN world 脚本通过注入参数接收翻译字符串。语言持久化 `localStorage: shibei-language`，检测顺序 `localStorage → navigator`。TypeScript 类型安全通过 `src/types/i18next.d.ts` 的 `CustomTypeOptions` 增强
