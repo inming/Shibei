@@ -45,7 +45,7 @@
 - 文本高亮（8 色 × 明/暗两套）
 - 高亮评论：Markdown 渲染（react-markdown + remark-gfm）
 - 资料级笔记：同样 Markdown
-- 所有标注可深链跳转：`shibei://open/resource/{id}?highlight={hlId}`
+- 所有标注可深链跳转：`shibei://open/resource/{id}?highlight={hlId}`；文件夹可通过 `shibei://open/folder/{id}` 跳转
 
 **组织与检索**
 - 文件夹层级（拖拽、多选、收件箱为系统预设）

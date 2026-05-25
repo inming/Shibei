@@ -45,7 +45,7 @@ Shibei is a **read-only personal reference library** desktop app that **treats A
 - Highlights (8 colors × light/dark variants)
 - Per-highlight comments with Markdown rendering (react-markdown + remark-gfm)
 - Resource-level notes, also Markdown
-- Deep-linkable: `shibei://open/resource/{id}?highlight={hlId}`
+- Deep-linkable: `shibei://open/resource/{id}?highlight={hlId}` for highlights and `shibei://open/folder/{id}` for folders
 
 **Organization & search**
 - Folder hierarchy (drag-and-drop, multi-select, system-preset Inbox)

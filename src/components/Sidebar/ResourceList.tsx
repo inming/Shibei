@@ -11,6 +11,7 @@ import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
 import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
 import { ContextMenu } from "@/components/ContextMenu";
 import { importPdfToFolder } from "@/lib/importPdf";
+import { buildFolderDeepLink } from "@/lib/deepLink";
 import { FilterChips } from "@/components/Sidebar/FilterChips";
 import toast from "react-hot-toast";
 import styles from "./ResourceList.module.css";
@@ -258,8 +259,14 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
 
   const isRealFolder = folderId !== null && folderId !== ALL_RESOURCES_ID;
 
+  function copyCurrentFolderLink() {
+    if (!folderId) return;
+    navigator.clipboard.writeText(buildFolderDeepLink(folderId));
+    toast.success(t('contextLinkCopied'));
+  }
+
   function handleListContextMenu(e: React.MouseEvent) {
-    if (!isRealFolder) return;
+    if (!folderId) return;
     // Resource items' onContextMenu calls stopPropagation (see handleContextMenu above),
     // so this handler only fires when right-clicking empty area or the emptyState placeholder.
     e.preventDefault();
@@ -405,14 +412,18 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
         </div>
       </div>
 
-      {emptyMenu && isRealFolder && folderId && (
+      {emptyMenu && folderId && (
         <ContextMenu
           x={emptyMenu.x}
           y={emptyMenu.y}
           items={[
-            {
+            ...(isRealFolder ? [{
               label: tReader("importFile"),
               onClick: () => importPdfToFolder(folderId),
+            }] : []),
+            {
+              label: t('contextCopyLink'),
+              onClick: copyCurrentFolderLink,
             },
           ]}
           onClose={() => setEmptyMenu(null)}

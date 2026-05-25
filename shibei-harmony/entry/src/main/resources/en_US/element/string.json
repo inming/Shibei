@@ -183,6 +183,7 @@
 
     { "name": "sidebar_inbox", "value": "Inbox" },
     { "name": "sidebar_all_resources", "value": "All Resources" },
+    { "name": "sidebar_folder_not_found", "value": "Folder not found or deleted" },
     { "name": "sidebar_folders_label", "value": "Folders" },
     { "name": "sidebar_sync_skipped", "value": "Sync skipped" },
     { "name": "sidebar_sync_failed", "value": "Sync failed: %1$s" },

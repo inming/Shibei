@@ -22,14 +22,20 @@ import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { Modal } from "@/components/Modal";
 import styles from "./Layout.module.css";
 
+interface FolderOpenRequest {
+  folderId: string;
+  ts: number;
+}
+
 interface LibraryViewProps {
   onOpenResource: (resource: Resource, highlightId?: string) => void;
   onOpenSettings: (section?: "sync" | "encryption") => void;
   lockEnabled?: boolean;
   onLock?: () => void;
+  folderOpenRequest?: FolderOpenRequest | null;
 }
 
-export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLock }: LibraryViewProps) {
+export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLock, folderOpenRequest }: LibraryViewProps) {
   const { t } = useTranslation('sidebar');
   const initialLibrary = useRef(loadSessionState().library).current;
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
@@ -55,6 +61,8 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
   const [trashContextMenu, setTrashContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showClearTrashConfirm, setShowClearTrashConfirm] = useState(false);
   const sync = useSync();
+  const handledFolderOpenTsRef = useRef<number | null>(null);
+  const appliedFolderOpenRef = useRef(false);
 
   // Mount effect: validate restored folder, hydrate selected resource
   useEffect(() => {
@@ -67,6 +75,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
           await cmd.getFolder(fid);
         } catch {
           if (cancelled) return;
+          if (appliedFolderOpenRef.current) return;
           setSelectedFolderId(INBOX_FOLDER_ID);
           saveSessionState({
             library: { ...initialLibrary, selectedFolderId: INBOX_FOLDER_ID },
@@ -80,6 +89,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
       if (rid) {
         try {
           const r = await cmd.getResource(rid);
+          if (appliedFolderOpenRef.current) return;
           if (r && !cancelled) {
             setSelectedResource(r);
             setSelectedResourceIds(new Set([r.id]));
@@ -91,6 +101,36 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!folderOpenRequest) return;
+    if (handledFolderOpenTsRef.current === folderOpenRequest.ts) return;
+    handledFolderOpenTsRef.current = folderOpenRequest.ts;
+
+    let cancelled = false;
+    (async () => {
+      const folderId = folderOpenRequest.folderId;
+      if (folderId !== ALL_RESOURCES_ID && folderId !== INBOX_FOLDER_ID) {
+        try {
+          await cmd.getFolder(folderId);
+        } catch {
+          if (!cancelled) toast.error(t("folderNotFound"));
+          return;
+        }
+      }
+
+      if (cancelled) return;
+      appliedFolderOpenRef.current = true;
+      setSelectedFolderId(folderId);
+      setFilterTagIds([]);
+      setShowTrash(false);
+      setSelectedResource(null);
+      setSelectedResourceIds(new Set());
+      setLastClickedResourceId(null);
+    })();
+
+    return () => { cancelled = true; };
+  }, [folderOpenRequest, t]);
 
   // Persist library selection on any change
   const persistLibrary = useCallback(() => {
@@ -116,7 +156,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
         listScrollTop: n,
       },
     });
-  }, [selectedFolderId, selectedResource]);
+  }, [selectedFolderId, filterTagIds, selectedResource]);
 
   useEffect(() => {
     persistLibrary();

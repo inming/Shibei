@@ -147,7 +147,17 @@ export default class EntryAbility extends UIAbility {
         AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
       } else {
         const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
-        if (!match) return;
+        if (!match) {
+          if (uri.match(/^shibei:\/\/open\/folder\/([^?]+)(?:\?.*)?$/)) {
+            AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
+            router.replaceUrl({
+              url: 'pages/Library',
+            }).catch((err: Error) => {
+              hilog.warn(0x0000, 'shibei', 'folder deep link replaceUrl fail: %{public}s', err.message);
+            });
+          }
+          return;
+        }
         const resourceId = match[1];
         const highlightId = match[2] || undefined;
         SessionState.save(this.context, { inReader: true, readerResourceId: resourceId }).then(() => {

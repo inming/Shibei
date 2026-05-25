@@ -11,6 +11,7 @@
   "deleteFolder": "删除文件夹",
   "deleteFolderConfirm": "确定删除文件夹「{{name}}」及其所有资料吗？",
   "folderNameExists": "文件夹名称已存在，请换一个名称",
+  "folderNotFound": "目录不存在或已删除",
   "createFailed": "创建失败: {{message}}",
   "deleteFailed": "删除失败: {{message}}",
   "renameFailed": "重命名失败: {{message}}",

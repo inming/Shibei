@@ -183,6 +183,7 @@
 
     { "name": "sidebar_inbox", "value": "收件箱" },
     { "name": "sidebar_all_resources", "value": "所有资料" },
+    { "name": "sidebar_folder_not_found", "value": "目录不存在或已删除" },
     { "name": "sidebar_folders_label", "value": "文件夹" },
     { "name": "sidebar_sync_skipped", "value": "同步跳过" },
     { "name": "sidebar_sync_failed", "value": "同步失败：%1$s" },

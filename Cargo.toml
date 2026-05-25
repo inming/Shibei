@@ -5,6 +5,10 @@ members = [
     "src-harmony-napi",
     "crates/*",
 ]
+default-members = [
+    "src-tauri",
+    "crates/*",
+]
 
 # Size-optimized release for the HarmonyOS cross-compiled cdylib only.
 # Desktop shibei keeps cargo's default release profile.

@@ -11,6 +11,7 @@
   "deleteFolder": "Delete Folder",
   "deleteFolderConfirm": "Delete folder \"{{name}}\" and all its resources?",
   "folderNameExists": "Folder name already exists, please choose another",
+  "folderNotFound": "Folder not found or deleted",
   "createFailed": "Create failed: {{message}}",
   "deleteFailed": "Delete failed: {{message}}",
   "renameFailed": "Rename failed: {{message}}",

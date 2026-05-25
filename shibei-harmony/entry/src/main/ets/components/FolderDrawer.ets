@@ -1,6 +1,7 @@
 import { ShibeiService, ShibeiError, Folder, SyncProgressEvent, SyncResult } from '../services/ShibeiService';
 import { promptAction, router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { pasteboard } from '@kit.BasicServicesKit';
 import { I18n } from '../services/I18n';
 
 // Virtual folder ids mirrored from desktop src/types/index.ts.
@@ -143,14 +144,45 @@ export struct FolderDrawer {
     if (this.onPick) this.onPick(id);
   }
 
-  /// Long-press on a folder row: confirm + batch preload the folder's
-  /// snapshots. The row includes both real folders and `__inbox__`; we
-  /// disable the menu for `__all__` because preloading "everything" is
-  /// almost never what the user means.
-  private onLongPressFolder(item: DrawerItem): void {
-    if (item.id === ALL_RESOURCES_ID) return;
-    const folderId = item.id;
-    const folderLabel = item.label;
+  private buildFolderLink(folderId: string): string {
+    return `shibei://open/folder/${encodeURIComponent(folderId)}`;
+  }
+
+  private copyFolderLink(folderId: string): void {
+    try {
+      const data = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN,
+        this.buildFolderLink(folderId));
+      pasteboard.getSystemPasteboard().setData(data).then(() => {
+        promptAction.showToast({ message: I18n.t($r('app.string.common_copy_success')) });
+      }).catch((err: Error) => {
+        hilog.warn(0x0000, 'shibei', 'folder link pasteboard set fail: %{public}s', err.message);
+        promptAction.showToast({ message: I18n.t($r('app.string.common_copy_failed')) });
+      });
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'copyFolderLink fail: %{public}s', (err as Error).message);
+      promptAction.showToast({ message: I18n.t($r('app.string.common_copy_failed')) });
+    }
+  }
+
+  private async preloadFolder(folderId: string): Promise<void> {
+    promptAction.showToast({ message: I18n.t($r('app.string.cache_toast_folder_started')) });
+    try {
+      const summary = await ShibeiService.instance.preloadFolder(folderId);
+      promptAction.showToast({
+        message: I18n.t(
+          $r('app.string.cache_toast_folder_done'),
+          summary.ok, summary.failed, summary.skipped,
+        ),
+      });
+    } catch (err) {
+      const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+      promptAction.showToast({
+        message: I18n.t($r('app.string.cache_toast_folder_failed'), I18n.translateError(code)),
+      });
+    }
+  }
+
+  private confirmPreloadFolder(folderId: string, folderLabel: string): void {
     promptAction.showDialog({
       title: I18n.t($r('app.string.cache_folder_confirm_title')),
       message: I18n.t($r('app.string.cache_folder_confirm_body'), folderLabel),
@@ -158,25 +190,46 @@ export struct FolderDrawer {
         { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
         { text: I18n.t($r('app.string.cache_folder_confirm_ok')), color: $r('app.color.accent_primary') },
       ],
-    }).then(async (r) => {
-      if (r.index !== 1) return;
-      promptAction.showToast({ message: I18n.t($r('app.string.cache_toast_folder_started')) });
-      try {
-        const summary = await ShibeiService.instance.preloadFolder(folderId);
-        promptAction.showToast({
-          message: I18n.t(
-            $r('app.string.cache_toast_folder_done'),
-            summary.ok, summary.failed, summary.skipped,
-          ),
-        });
-      } catch (err) {
-        const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
-        promptAction.showToast({
-          message: I18n.t($r('app.string.cache_toast_folder_failed'), I18n.translateError(code)),
-        });
-      }
+    }).then((r) => {
+      if (r.index === 1) this.preloadFolder(folderId);
     }).catch((err: Error) => {
       hilog.warn(0x0000, 'shibei', 'folder cache dialog dismissed: %{public}s', err.message);
+    });
+  }
+
+  /// Long-press on a folder row: offer copy-link for every drawer entry, plus
+  /// cache-folder for real folders and `__inbox__`.
+  private onLongPressFolder(item: DrawerItem): void {
+    const folderId = item.id;
+    const folderLabel = item.label;
+    interface FolderActionButton { text: string; color: ResourceStr; }
+    const buttons: FolderActionButton[] = item.id === ALL_RESOURCES_ID ? [
+      { text: I18n.t($r('app.string.annotation_copy_link')), color: $r('app.color.accent_primary_alt') },
+      { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+    ] : [
+      { text: I18n.t($r('app.string.cache_action_this_folder')), color: $r('app.color.accent_primary') },
+      { text: I18n.t($r('app.string.annotation_copy_link')), color: $r('app.color.accent_primary_alt') },
+      { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+    ];
+    if (item.id === ALL_RESOURCES_ID) {
+      promptAction.showDialog({
+        title: folderLabel,
+        buttons,
+      }).then((r) => {
+        if (r.index === 0) this.copyFolderLink(folderId);
+      }).catch((err: Error) => {
+        hilog.warn(0x0000, 'shibei', 'folder action dialog dismissed: %{public}s', err.message);
+      });
+      return;
+    }
+    promptAction.showDialog({
+      title: folderLabel,
+      buttons,
+    }).then((r) => {
+      if (r.index === 0) this.confirmPreloadFolder(folderId, folderLabel);
+      else if (r.index === 1) this.copyFolderLink(folderId);
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'folder action dialog dismissed: %{public}s', err.message);
     });
   }
 

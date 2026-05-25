@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { router, promptAction } from '@kit.ArkUI';
-import { ShibeiService, ShibeiError } from '../services/ShibeiService';
+import { ShibeiService, ShibeiError, Folder } from '../services/ShibeiService';
 import { I18n } from '../services/I18n';
 import { FolderDrawer, INBOX_FOLDER_ID } from '../components/FolderDrawer';
 import { ResourceList } from '../components/ResourceList';
@@ -93,6 +93,11 @@ struct Library {
       if (state.library.selectedTagIds && state.library.selectedTagIds.length > 0) {
         this.selectedTagIds = [...state.library.selectedTagIds];
       }
+      if (this.consumePendingDeepLink()) {
+        this.restoredOnce = true;
+        this.consumePendingShareUrl();
+        return;
+      }
       if (!this.restoredOnce && state.inReader && state.readerResourceId) {
         // Verify the resource still exists before pushing.
         try {
@@ -153,15 +158,49 @@ struct Library {
     }
   }
 
-  private consumePendingDeepLink(): void {
+  private decodeDeepLinkSegment(raw: string): string | null {
+    try {
+      return decodeURIComponent(raw);
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'deepLink decode fail: %{public}s', (err as Error).message);
+      return null;
+    }
+  }
+
+  private folderExistsForDeepLink(folderId: string): boolean {
+    if (folderId === '__all__' || folderId === INBOX_FOLDER_ID) return true;
+    try {
+      return ShibeiService.instance.listFolders().some((f: Folder) => f.id === folderId);
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'deepLink folder validate fail: %{public}s', (err as Error).message);
+      return false;
+    }
+  }
+
+  private openFolderDeepLink(folderId: string): void {
+    if (!this.folderExistsForDeepLink(folderId)) {
+      promptAction.showToast({ message: I18n.t($r('app.string.sidebar_folder_not_found')) });
+      return;
+    }
+    this.onFolderPick(folderId);
+  }
+
+  private consumePendingDeepLink(): boolean {
     try {
       const uri = AppStorage.get<string>(KEY_PENDING_DEEP_LINK);
-      if (!uri || uri === '') return;
+      if (!uri || uri === '') return false;
       AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, '');
+      const folderMatch = uri.match(/^shibei:\/\/open\/folder\/([^?]+)(?:\?.*)?$/);
+      if (folderMatch) {
+        const folderId = this.decodeDeepLinkSegment(folderMatch[1]);
+        if (folderId) this.openFolderDeepLink(folderId);
+        return true;
+      }
       const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
-      if (!match) return;
-      const resourceId = match[1];
-      const highlightId = match[2] || undefined;
+      if (!match) return true;
+      const resourceId = this.decodeDeepLinkSegment(match[1]);
+      const highlightId = match[2] ? this.decodeDeepLinkSegment(match[2]) ?? undefined : undefined;
+      if (!resourceId) return true;
       SessionState.save(getContext(this) as common.UIAbilityContext, {
         inReader: true,
         readerResourceId: resourceId,
@@ -172,9 +211,11 @@ struct Library {
       }).catch((err: Error) => {
         hilog.error(0x0000, 'shibei', 'deepLink pushUrl fail: %{public}s', err.message);
       });
+      return true;
     } catch (err) {
       hilog.warn(0x0000, 'shibei', 'consumePendingDeepLink fail: %{public}s',
         (err as Error).message);
+      return false;
     }
   }
 

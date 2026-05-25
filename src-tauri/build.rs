@@ -4,6 +4,16 @@ use std::process::Command;
 fn main() {
     let annotator_js = Path::new("src/annotator.js");
     let annotator_ts = Path::new("../src/annotator/annotator.ts");
+    let mcp_bundle = Path::new("../mcp/bundle/index.mjs");
+
+    if !mcp_bundle.exists() {
+        let status = Command::new("node")
+            .args(["scripts/ensure-mcp-bundle.mjs"])
+            .current_dir("..")
+            .status()
+            .expect("failed to run scripts/ensure-mcp-bundle.mjs");
+        assert!(status.success(), "scripts/ensure-mcp-bundle.mjs failed");
+    }
 
     // Rebuild annotator.js from TypeScript if missing or outdated
     let needs_build = if annotator_js.exists() {

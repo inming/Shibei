@@ -8,6 +8,7 @@ import { DataEvents } from "@/lib/events";
 import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import { buildFolderDeepLink } from "@/lib/deepLink";
 import { importPdfToFolder } from "@/lib/importPdf";
 import { FolderEditDialog } from "@/components/Sidebar/FolderEditDialog";
 import { Spinner } from "@/components/Spinner";
@@ -111,6 +112,11 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     setContextMenu({ x: e.clientX, y: e.clientY, folderId, folderName });
   }
 
+  function copyFolderLink(folderId: string) {
+    navigator.clipboard.writeText(buildFolderDeepLink(folderId));
+    toast.success(t("contextLinkCopied"));
+  }
+
   const [subfolderTarget, setSubfolderTarget] = useState<string | null>(null);
   const [subfolderName, setSubfolderName] = useState("");
 
@@ -169,37 +175,49 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
     }
   }
 
-  const menuItems: MenuItem[] = contextMenu
-    ? contextMenu.folderId === INBOX_FOLDER_ID
-      ? [
-          {
-            label: t('importFile', { ns: 'reader' }),
-            onClick: () => importPdfToFolder(contextMenu.folderId),
+  let menuItems: MenuItem[] = [];
+  if (contextMenu) {
+    const copyLinkItem: MenuItem = {
+      label: t("contextCopyLink"),
+      onClick: () => copyFolderLink(contextMenu.folderId),
+    };
+
+    if (contextMenu.folderId === ALL_RESOURCES_ID) {
+      menuItems = [copyLinkItem];
+    } else if (contextMenu.folderId === INBOX_FOLDER_ID) {
+      menuItems = [
+        {
+          label: t('importFile', { ns: 'reader' }),
+          onClick: () => importPdfToFolder(contextMenu.folderId),
+        },
+        copyLinkItem,
+      ];
+    } else {
+      menuItems = [
+        {
+          label: t('newSubfolder'),
+          onClick: () => {
+            setSubfolderTarget(contextMenu.folderId);
+            setSubfolderName("");
           },
-        ]
-      : [
-          {
-            label: t('newSubfolder'),
-            onClick: () => {
-              setSubfolderTarget(contextMenu.folderId);
-              setSubfolderName("");
-            },
-          },
-          {
-            label: t('importFile', { ns: 'reader' }),
-            onClick: () => importPdfToFolder(contextMenu.folderId),
-          },
-          {
-            label: t('edit', { ns: 'common' }),
-            onClick: () => setEditFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
-          },
-          {
-            label: t('delete', { ns: 'common' }),
-            danger: true,
-            onClick: () => setDeleteFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
-          },
-        ]
-    : [];
+        },
+        {
+          label: t('importFile', { ns: 'reader' }),
+          onClick: () => importPdfToFolder(contextMenu.folderId),
+        },
+        copyLinkItem,
+        {
+          label: t('edit', { ns: 'common' }),
+          onClick: () => setEditFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
+        },
+        {
+          label: t('delete', { ns: 'common' }),
+          danger: true,
+          onClick: () => setDeleteFolder({ id: contextMenu.folderId, name: contextMenu.folderName }),
+        },
+      ];
+    }
+  }
 
   const { setNodeRef: setRootDropRef, isOver: isRootOver } = useDroppable({
     id: "folder-drop-__root__",
@@ -211,6 +229,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       <button
         className={`${styles.allResources} ${selectedFolderId === ALL_RESOURCES_ID ? styles.allResourcesActive : ""}`}
         onClick={() => onSelectFolder(ALL_RESOURCES_ID)}
+        onContextMenu={(e) => handleContextMenu(e, ALL_RESOURCES_ID, t("allResources"))}
       >
         <span className={styles.allResourcesIcon}>📋</span>
         <span>{t('allResources')}</span>

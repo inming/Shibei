@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { onOpenUrl, getCurrent as getDeepLinkCurrent } from "@tauri-apps/plugin-deep-link";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "react-hot-toast";
-import type { Resource } from "@/types";
+import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Resource } from "@/types";
 import { DataEvents, type ResourceChangedPayload, type ConfigChangedPayload } from "@/lib/events";
 import { TabBar, type TabItem } from "@/components/TabBar";
 import { LibraryView } from "@/components/Layout";
@@ -12,6 +12,7 @@ import { SettingsView } from "@/components/SettingsView";
 import { LockScreen } from "@/components/LockScreen";
 import { useTheme } from "@/hooks/useTheme";
 import * as cmd from "@/lib/commands";
+import { parseShibeiDeepLink } from "@/lib/deepLink";
 import {
   loadSessionState,
   saveSessionState,
@@ -32,6 +33,11 @@ interface ReaderTab {
   initialPdfZoom: number | null;
 }
 
+interface FolderOpenRequest {
+  folderId: string;
+  ts: number;
+}
+
 function App() {
   const initialSession = useRef(loadSessionState()).current;
   const { t } = useTranslation('sidebar');
@@ -46,9 +52,11 @@ function App() {
   const theme = useTheme();
   const [locked, setLocked] = useState(false);
   const [lockEnabled, setLockEnabled] = useState(false);
+  const [folderOpenRequest, setFolderOpenRequest] = useState<FolderOpenRequest | null>(null);
   const lockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockTimeoutMinutesRef = useRef(10);
   const restoredRef = useRef(false);
+  const deepLinkHandledRef = useRef(false);
 
   const openResource = useCallback((resource: Resource, highlightId?: string) => {
     setReaderTabs((prev) => {
@@ -198,6 +206,24 @@ function App() {
         finalActive = LIBRARY_TAB_ID;
       }
 
+      if (deepLinkHandledRef.current) {
+        setReaderTabs((prev) => {
+          const merged = new Map(prev);
+          for (const [id, tab] of nextTabs) {
+            if (!merged.has(id)) merged.set(id, tab);
+          }
+          return merged;
+        });
+        setMountedTabIds((prev) => {
+          const next = new Set(prev);
+          if (finalActive !== LIBRARY_TAB_ID && finalActive !== SETTINGS_TAB_ID) {
+            next.add(finalActive);
+          }
+          return next;
+        });
+        return;
+      }
+
       setReaderTabs(nextTabs);
       if (finalActive !== LIBRARY_TAB_ID) {
         setMountedTabIds(new Set([finalActive]));
@@ -211,6 +237,41 @@ function App() {
     // at the top already prevents duplicate runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pending deep link: stored when app is locked, processed after unlock
+  const pendingDeepLinkRef = useRef<string | null>(null);
+
+  const handleDeepLinkUrl = useCallback(async (url: string) => {
+    const target = parseShibeiDeepLink(url);
+    if (!target) return;
+
+    if (target.kind === "folder") {
+      if (target.folderId !== ALL_RESOURCES_ID && target.folderId !== INBOX_FOLDER_ID) {
+        try {
+          await cmd.getFolder(target.folderId);
+        } catch (err) {
+          console.error("Deep link: folder not found", target.folderId, err);
+          setFolderOpenRequest({ folderId: target.folderId, ts: Date.now() });
+          return;
+        }
+      }
+      deepLinkHandledRef.current = true;
+      setActiveTabId(LIBRARY_TAB_ID);
+      saveSessionState({ activeTabId: LIBRARY_TAB_ID });
+      setFolderOpenRequest({ folderId: target.folderId, ts: Date.now() });
+      return;
+    }
+
+    try {
+      const resource = await cmd.getResource(target.resourceId);
+      if (resource) {
+        deepLinkHandledRef.current = true;
+        openResource(resource, target.highlightId);
+      }
+    } catch (err) {
+      console.error("Deep link: resource not found", target.resourceId, err);
+    }
+  }, [openResource]);
 
   // Lock screen: check status on mount + check cold-start deep link
   useEffect(() => {
@@ -235,13 +296,7 @@ function App() {
             pendingDeepLinkRef.current = deepUrl;
           } else {
             // App is not locked — open immediately
-            const match = deepUrl.match(/shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?/);
-            if (match) {
-              try {
-                const resource = await cmd.getResource(match[1]);
-                if (resource && mounted) openResource(resource, match[2]);
-              } catch { /* ignore */ }
-            }
+            handleDeepLinkUrl(deepUrl);
           }
         }
       } catch {
@@ -250,7 +305,7 @@ function App() {
     }
     init();
     return () => { mounted = false; };
-  }, [openResource]);
+  }, [handleDeepLinkUrl]);
 
   // Inactivity timer
   useEffect(() => {
@@ -290,25 +345,7 @@ function App() {
     return () => { unlisten.then((f) => f()); };
   }, []);
 
-  // Pending deep link: stored when app is locked, processed after unlock
-  const pendingDeepLinkRef = useRef<string | null>(null);
-
-  const handleDeepLinkUrl = useCallback(async (url: string) => {
-    const match = url.match(/shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?/);
-    if (!match) return;
-    const resourceId = match[1];
-    const highlightId = match[2] || undefined;
-    try {
-      const resource = await cmd.getResource(resourceId);
-      if (resource) {
-        openResource(resource, highlightId);
-      }
-    } catch (err) {
-      console.error("Deep link: resource not found", resourceId, err);
-    }
-  }, [openResource]);
-
-  // Deep link handler: shibei://open/resource/{id}?highlight={hlId}
+  // Deep link handler: shibei://open/resource/{id}?highlight={hlId} and shibei://open/folder/{id}
   useEffect(() => {
     // From tauri-plugin-deep-link (cold start)
     const u1 = onOpenUrl((urls: string[]) => {
@@ -383,6 +420,7 @@ function App() {
             onOpenSettings={openSettings}
             lockEnabled={lockEnabled}
             onLock={() => setLocked(true)}
+            folderOpenRequest={folderOpenRequest}
           />
         </div>
         {Array.from(readerTabs.entries()).map(([id, tab]) =>

@@ -394,7 +394,7 @@ export class ShibeiService {
   /// past JSONL that snapshots didn't cover). Safe to call at any time —
   /// LWW handles dedup. Returns the number of rows removed.
   resetSyncCursors(): number {
-    const n = napiResetSyncCursors();
+    const n: number = napiResetSyncCursors();
     if (n < 0) {
       throw new ShibeiError('error.resetSyncCursorsFailed');
     }
@@ -480,14 +480,14 @@ export class ShibeiService {
   }
 
   updateTag(id: string, name: string, color: string): void {
-    const raw = napiUpdateTag(id, name, color);
+    const raw: string = napiUpdateTag(id, name, color);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
   }
 
   deleteTag(id: string): void {
-    const raw = napiDeleteTag(id);
+    const raw: string = napiDeleteTag(id);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
@@ -498,14 +498,14 @@ export class ShibeiService {
   }
 
   addTagToResource(resourceId: string, tagId: string): void {
-    const raw = napiAddTagToResource(resourceId, tagId);
+    const raw: string = napiAddTagToResource(resourceId, tagId);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
   }
 
   removeTagFromResource(resourceId: string, tagId: string): void {
-    const raw = napiRemoveTagFromResource(resourceId, tagId);
+    const raw: string = napiRemoveTagFromResource(resourceId, tagId);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
@@ -633,12 +633,12 @@ export class ShibeiService {
   }
 
   getAutoSyncMode(): AutoSyncMode {
-    const v = napiGetAutoSyncMode();
+    const v: string = napiGetAutoSyncMode();
     return v === 'manual' ? 'manual' : 'on_open';
   }
 
   setAutoSyncMode(mode: AutoSyncMode): void {
-    const result = napiSetAutoSyncMode(mode);
+    const result: string = napiSetAutoSyncMode(mode);
     if (result !== 'ok') throw new ShibeiError(result);
   }
 
@@ -747,14 +747,14 @@ export class ShibeiService {
   // All paths write sync_log so other devices converge on the same state.
 
   deleteResource(id: string): void {
-    const raw = napiDeleteResource(id);
+    const raw: string = napiDeleteResource(id);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
   }
 
   deleteFolder(id: string): void {
-    const raw = napiDeleteFolder(id);
+    const raw: string = napiDeleteFolder(id);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
@@ -769,8 +769,8 @@ export class ShibeiService {
   }
 
   restoreResource(id: string): Resource {
-    const raw = napiRestoreResource(id);
-    const parsed = JSON.parse(raw) as Object;
+    const raw: string = napiRestoreResource(id);
+    const parsed = JSON.parse(raw) as ResourceEnvelope;
     const envelope = parsed as ErrorEnvelope;
     if (envelope.error) throw new ShibeiError(envelope.error);
     this.notifyDataChanged();
@@ -778,8 +778,8 @@ export class ShibeiService {
   }
 
   restoreFolder(id: string): Folder {
-    const raw = napiRestoreFolder(id);
-    const parsed = JSON.parse(raw) as Object;
+    const raw: string = napiRestoreFolder(id);
+    const parsed = JSON.parse(raw) as FolderEnvelope;
     const envelope = parsed as ErrorEnvelope;
     if (envelope.error) throw new ShibeiError(envelope.error);
     this.notifyDataChanged();
@@ -787,21 +787,21 @@ export class ShibeiService {
   }
 
   purgeResource(id: string): void {
-    const raw = napiPurgeResource(id);
+    const raw: string = napiPurgeResource(id);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
   }
 
   purgeFolder(id: string): void {
-    const raw = napiPurgeFolder(id);
+    const raw: string = napiPurgeFolder(id);
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
   }
 
   purgeAllDeleted(): void {
-    const raw = napiPurgeAllDeleted();
+    const raw: string = napiPurgeAllDeleted();
     const parsed = JSON.parse(raw) as ErrorEnvelope;
     if (parsed.error) throw new ShibeiError(parsed.error);
     this.notifyDataChanged();
@@ -980,6 +980,14 @@ interface ErrorEnvelope {
 
 interface GetResourceEnvelope {
   resource?: Resource | null;
+  error?: string;
+}
+
+interface ResourceEnvelope extends Resource {
+  error?: string;
+}
+
+interface FolderEnvelope extends Folder {
   error?: string;
 }
 
