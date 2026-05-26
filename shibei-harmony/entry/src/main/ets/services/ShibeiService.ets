@@ -33,7 +33,7 @@ import {
   getResourceSummary as napiGetResourceSummary,
   hello as napiHello,
   echoAsync as napiEchoAsync,
-  getResourceHtml as napiGetResourceHtml,
+  getResourceHtmlBytes as napiGetResourceHtmlBytes,
   listAnnotations as napiListAnnotations,
   createHighlight as napiCreateHighlight,
   deleteHighlight as napiDeleteHighlight,
@@ -526,15 +526,20 @@ export class ShibeiService {
 
   // ── Reader ────────────────────────────────────────────────
 
-  /// Returns the snapshot HTML for `id` with annotator-mobile.js already
-  /// injected. Throws ShibeiError if the resource has no snapshot on disk
-  /// (e.g. sync hasn't downloaded it yet — caller should trigger download).
-  getResourceHtml(id: string): string {
-    const result: string = napiGetResourceHtml(id);
-    if (result.startsWith('error.')) {
-      throw new ShibeiError(result);
-    }
-    return result;
+  /// Read the injected HTML snapshot bytes for `id`. Returns a zero-length
+  /// Uint8Array when the file isn't on disk (caller should trigger
+  /// `ensureHtmlDownloaded` first). Mirrors `getPdfBytes`'s contract —
+  /// NAPI returns base64 (codegen scalar ABI doesn't do `Vec<u8>`), so we
+  /// decode here.
+  ///
+  /// Reader.ets serves these bytes via `shibei-html://` + onInterceptRequest
+  /// instead of `Web.loadData(string)` — the string path silently truncates
+  /// large snapshots inside ArkWeb (28 MB pages went blank), the bytes path
+  /// bypasses the ArkTS string layer entirely.
+  getResourceHtmlBytes(id: string): Uint8Array {
+    const b64: string = napiGetResourceHtmlBytes(id);
+    if (!b64) return new Uint8Array(0);
+    return new util.Base64Helper().decodeSync(b64);
   }
 
   // ── PDF (Phase 3b) ────────────────────────────────────────

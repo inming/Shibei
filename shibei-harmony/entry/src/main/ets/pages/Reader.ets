@@ -56,7 +56,6 @@ interface WebHeader { headerKey: string; headerValue: string; }
 @Component
 struct Reader {
   @State resource: Resource | null = null;
-  @State html: string = '';
   @State loading: boolean = true;
   @State loadError: string = '';
   @State bundle: AnnotationsBundle = { highlights: [], comments: [] };
@@ -250,14 +249,18 @@ struct Reader {
     }
   }
 
-  /// Ensure snapshot.html is on disk, pulling via sync if missing (§7.2),
-  /// then pull the annotator-injected HTML string. Fast path when the file
-  /// already exists. On failure we fall through to loadError so Reader
-  /// shows the error card instead of a blank page.
+  /// Ensure snapshot.html is on disk, pulling via sync if missing (§7.2).
+  /// Fast path when the file already exists. On failure we fall through to
+  /// loadError so Reader shows the error card instead of a blank page.
+  ///
+  /// The HTML itself is NOT preloaded into ArkTS memory anymore — the Web
+  /// component navigates to `shibei-html://resource/{id}` and our
+  /// `handleHtmlIntercept` serves the bytes straight from NAPI when
+  /// Chromium asks. This bypasses ArkWeb's silent string-size ceiling on
+  /// `loadData(string)` that broke ~28 MB pages.
   private async ensureHtmlReady(id: string): Promise<void> {
     try {
       await ShibeiService.instance.ensureHtmlDownloaded(id);
-      this.html = ShibeiService.instance.getResourceHtml(id);
       this.loading = false;
     } catch (err) {
       this.loadError = (err as Error).message;
@@ -472,6 +475,51 @@ struct Reader {
         message: I18n.t($r('app.string.common_copy_failed')),
       });
     });
+  }
+
+  // ArkWeb intercept for `shibei-html://resource/{id}`. The HTML branch
+  // sets the Web's src to this URL on first mount; Chromium fires this
+  // handler for the top-level navigation and we hand back the
+  // annotator-injected bytes from NAPI. Routing through bytes (rather than
+  // `loadData(string)`) bypasses ArkWeb's silent ~tens-of-MB string-size
+  // ceiling that left 28 MB snapshots blank.
+  //
+  // Same HTTP-shaped response contract as `handlePdfIntercept` — status 200
+  // + reason "OK" + Content-Type / Content-Length / CORS headers. Returning
+  // null on size==0 lets ArkWeb surface a normal load failure that
+  // `.onErrorReceive` can catch.
+  private handleHtmlIntercept(event: OnInterceptRequestEvent): WebResourceResponse | null {
+    const url = event.request.getRequestUrl();
+    if (!url.startsWith('shibei-html://resource/')) {
+      return null;
+    }
+    const id = url.slice('shibei-html://resource/'.length);
+    try {
+      const bytes = ShibeiService.instance.getResourceHtmlBytes(id);
+      if (bytes.byteLength === 0) {
+        hilog.warn(0x0000, 'shibei', 'html intercept empty bytes for %{public}s', id);
+        return null;
+      }
+      const resp = new WebResourceResponse();
+      resp.setResponseMimeType('text/html');
+      resp.setResponseEncoding('utf-8');
+      resp.setResponseCode(200);
+      resp.setReasonMessage('OK');
+      const headers: WebHeader[] = [
+        { headerKey: 'Content-Type', headerValue: 'text/html; charset=utf-8' },
+        { headerKey: 'Content-Length', headerValue: String(bytes.byteLength) },
+        { headerKey: 'Access-Control-Allow-Origin', headerValue: '*' },
+        { headerKey: 'Cache-Control', headerValue: 'no-store' },
+      ];
+      resp.setResponseHeader(headers);
+      resp.setResponseData(bytes.buffer);
+      resp.setResponseIsReady(true);
+      return resp;
+    } catch (err) {
+      hilog.error(0x0000, 'shibei', 'html intercept fail %{public}s: %{public}s',
+        id, (err as Error).message);
+      return null;
+    }
   }
 
   // ArkWeb intercept for `shibei-pdf://resource/{id}`. pdfjs (inside the
@@ -729,14 +777,21 @@ struct Reader {
     .justifyContent(FlexAlign.Center);
   }
 
-  // HTML branch: loadData() with the pre-injected annotator script.
+  // HTML branch: top-level navigation to `shibei-html://resource/{id}` —
+  // `handleHtmlIntercept` serves the annotator-injected bytes back from
+  // NAPI. This replaces the older `loadData(string)` path, which silently
+  // failed on snapshots over ArkWeb's undocumented string-size ceiling
+  // (~tens of MB → blank Reader).
   @Builder HtmlContent() {
     Column() {
       this.TopBar();
 
       // Web area
       Stack() {
-        Web({ src: '', controller: this.webController })
+        Web({
+          src: `shibei-html://resource/${this.resource ? this.resource.id : ''}`,
+          controller: this.webController,
+        })
           .domStorageAccess(true)
           .javaScriptAccess(true)
           // Let Chromium follow the system ColorMode for ArkUI media queries
@@ -748,15 +803,25 @@ struct Reader {
           .darkMode(WebDarkMode.Auto)
           .onControllerAttached(() => {
             // Expose bridge before page loads so annotator-mobile.js
-            // sees window.shibeiBridge on first evaluation.
+            // sees window.shibeiBridge on first evaluation. The src-based
+            // navigation kicks off after onControllerAttached returns, so
+            // the proxy is in place before the page parses.
             this.webController.registerJavaScriptProxy(
               this.bridge, 'shibeiBridge', ['emit'],
             );
-            // loadData's historyUrl param must be a string — passing null
-            // throws BusinessError 401 on HarmonyOS NEXT. Empty string
-            // means "no history entry", which is what we want.
-            const baseUrl = `shibei://resource/${this.resource ? this.resource.id : ''}`;
-            this.webController.loadData(this.html, 'text/html', 'UTF-8', baseUrl, '');
+          })
+          .onInterceptRequest((ev: OnInterceptRequestEvent) => this.handleHtmlIntercept(ev))
+          .onErrorReceive((event) => {
+            // Surface failures that otherwise leave the Reader blank — the
+            // pre-intercept code path silently swallowed loadData rejections.
+            // We log richly but don't change loadError once the page is
+            // parsed; subresource failures (e.g. broken data: URIs in the
+            // snapshot) shouldn't blank the whole Reader.
+            const err = event.error;
+            const url = event.request ? event.request.getRequestUrl() : '';
+            hilog.warn(0x0000, 'shibei',
+              'html onErrorReceive url=%{public}s info=%{public}s',
+              url, err && err.getErrorInfo ? err.getErrorInfo() : '');
           })
           .onScroll((ev: OnScrollEvent) => {
             this.lastScrollY = ev.yOffset;

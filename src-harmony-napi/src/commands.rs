@@ -695,17 +695,34 @@ pub fn get_resource_summary(id: String, max_chars: i32) -> String {
 const ANNOTATOR_MOBILE_JS: &str = include_str!("../annotator-mobile.js");
 
 /// Returns the snapshot HTML for a resource with the mobile annotator
-/// injected into `<head>`. Script tags from the original page are stripped
-/// first (same policy as desktop — `strip_script_tags`) so page JS can't
-/// mutate the DOM on load and break anchor offsets.
+/// injected into `<head>`, encoded as base64. Script tags from the original
+/// page are stripped first (same policy as desktop — `strip_script_tags`) so
+/// page JS can't mutate the DOM on load and break anchor offsets.
 ///
-/// Returns the HTML string, or `error.*` prefixed string on failure.
-/// ArkTS checks `starts_with("error.")` before feeding to WebView.
+/// Why base64 + bytes-path instead of returning a plain string and letting
+/// ArkTS hand it to `Web.loadData(string)`? A 28 MB HTML snapshot would
+/// inflate to ~56 MB once converted to ArkTS's internal UTF-16, and ArkWeb's
+/// `loadData(string)` silently fails on payloads beyond an undocumented
+/// (~tens of MB) ceiling — the Reader shows blank with no callback. Routing
+/// through `onInterceptRequest` + `setResponseData(buffer)` mirrors the PDF
+/// path and bypasses the string layer entirely. Codegen scalar ABI still
+/// can't do `Vec<u8>` (see `get_pdf_bytes`'s note), so base64 it is — the
+/// extra ~33% transit cost on a 28 MB blob is well under the cost of
+/// "Reader doesn't work for large pages at all".
+///
+/// Returns the base64 string on success, or an empty string on failure
+/// (matches `get_pdf_bytes` convention; ArkTS sees zero-length bytes and
+/// surfaces the error via its existing load-failure path).
 #[shibei_napi]
-pub fn get_resource_html(id: String) -> String {
+pub fn get_resource_html_bytes(id: String) -> String {
+    use base64::Engine;
+
     let app = match state::get() {
         Ok(a) => a,
-        Err(e) => return format!("error.notInitialized: {e}"),
+        Err(e) => {
+            eprintln!("get_resource_html_bytes: not initialized: {e}");
+            return String::new();
+        }
     };
     let html_path = app
         .data_dir
@@ -714,11 +731,17 @@ pub fn get_resource_html(id: String) -> String {
         .join("snapshot.html");
     let html = match std::fs::read_to_string(&html_path) {
         Ok(s) => s,
-        Err(e) => return format!("error.snapshotNotFound: {e}"),
+        Err(e) => {
+            eprintln!(
+                "get_resource_html_bytes: read failed {}: {e}",
+                html_path.display()
+            );
+            return String::new();
+        }
     };
     touch_cache(&id);
-    // Strip page scripts, then inject the annotator.
-    strip_scripts_and_inject(&html)
+    let injected = strip_scripts_and_inject(&html);
+    base64::engine::general_purpose::STANDARD.encode(injected.as_bytes())
 }
 
 /// Bump the LRU entry's last_access timestamp + flush index. Best-effort —
@@ -879,7 +902,7 @@ fn find_ci(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
 /// acceptable for MVP. See `docs/superpowers/specs/2026-04-22-phase3b-pdf-support-design.md` §5.
 ///
 /// Empty-on-error signals "not available" to the caller; ArkTS translates to
-/// a "PDF 文件不存在" UI, same policy as `get_resource_html`'s error surface.
+/// a "PDF 文件不存在" UI, same policy as `get_resource_html_bytes`'s error surface.
 #[shibei_napi]
 pub fn get_pdf_bytes(id: String) -> String {
     use base64::Engine;
@@ -940,7 +963,7 @@ pub async fn ensure_pdf_downloaded(id: String) -> Result<String, String> {
 /// Ensure the local snapshot.html is present, pulling from S3 if missing.
 /// Symmetric to `ensure_pdf_downloaded`. Returns `"ok"` or `error.*`.
 ///
-/// Mobile uses this as the gate before `get_resource_html` so the Reader can
+/// Mobile uses this as the gate before `get_resource_html_bytes` so the Reader can
 /// lazily download HTML without the sync engine eagerly pulling everything.
 #[shibei_napi(async)]
 pub async fn ensure_html_downloaded(id: String) -> Result<String, String> {

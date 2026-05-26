@@ -231,8 +231,8 @@ pub unsafe extern "C" fn shibei_ffi_get_resource_summary(id: *const c_char, max_
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn shibei_ffi_get_resource_html(id: *const c_char) -> *mut c_char {
-    let s = crate::commands::get_resource_html(cstr_to_string(id));
+pub unsafe extern "C" fn shibei_ffi_get_resource_html_bytes(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::get_resource_html_bytes(cstr_to_string(id));
     leak_cstring(s)
 }
 

@@ -43,12 +43,19 @@ export default class EntryAbility extends UIAbility {
     if (sharedUrl) {
       AppStorage.setOrCreate<string>(KEY_PENDING_SHARE_URL, sharedUrl);
     }
-    // Register the `shibei-pdf://` scheme BEFORE any Web component is
-    // created. ArkWeb's Chromium blocks fetches to unknown schemes at the
-    // network layer; without this registration, pdfjs XHRs to
-    // `shibei-pdf://resource/...` never reach onInterceptRequest and fail
-    // with "Unexpected server response (0)". Must be called exactly once
-    // per process — customizeSchemes is a static, process-wide call.
+    // Register custom schemes BEFORE any Web component is created. ArkWeb's
+    // Chromium blocks fetches to unknown schemes at the network layer;
+    // without this registration, requests to these schemes never reach
+    // onInterceptRequest. Must be called exactly once per process —
+    // customizeSchemes is a static, process-wide call.
+    //
+    //   shibei-pdf:// — pdfjs XHRs from rawfile shell to fetch PDF bytes
+    //                   (without it: "Unexpected server response (0)")
+    //   shibei-html:// — top-level navigation that serves the injected HTML
+    //                   snapshot as bytes via onInterceptRequest. Replaces
+    //                   the old `loadData(string)` path, which silently
+    //                   failed on snapshots over ArkWeb's undocumented
+    //                   ~tens-of-MB string ceiling (28 MB pages → blank).
     try {
       webview.WebviewController.customizeSchemes([
         {
@@ -59,6 +66,12 @@ export default class EntryAbility extends UIAbility {
           // origin/CORS/XHR semantics. Without this, XHR to this scheme
           // reports status 0 even when onInterceptRequest returns 200 —
           // pdfjs interprets that as a network failure.
+          isStandard: true,
+        },
+        {
+          schemeName: 'shibei-html',
+          isSupportCORS: true,
+          isSupportFetch: true,
           isStandard: true,
         },
       ]);

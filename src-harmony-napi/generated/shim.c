@@ -37,7 +37,7 @@ extern char* shibei_ffi_add_tag_to_resource(const char* resource_id, const char*
 extern char* shibei_ffi_remove_tag_from_resource(const char* resource_id, const char* tag_id);
 extern char* shibei_ffi_get_resource(const char* id);
 extern char* shibei_ffi_get_resource_summary(const char* id, int32_t max_chars);
-extern char* shibei_ffi_get_resource_html(const char* id);
+extern char* shibei_ffi_get_resource_html_bytes(const char* id);
 extern char* shibei_ffi_get_pdf_bytes(const char* id);
 extern void shibei_ffi_ensure_pdf_downloaded(const char* id, void* ctx);
 extern void shibei_ffi_ensure_html_downloaded(const char* id, void* ctx);
@@ -806,7 +806,7 @@ static napi_value get_resource_summary_wrap(napi_env env, napi_callback_info inf
     return result;
 }
 
-static napi_value get_resource_html_wrap(napi_env env, napi_callback_info info) {
+static napi_value get_resource_html_bytes_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {0};
     napi_get_cb_info(env, info, &argc, args, NULL, NULL);
@@ -823,7 +823,7 @@ static napi_value get_resource_html_wrap(napi_env env, napi_callback_info info) 
     }
     if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
     napi_value result = NULL;
-    char* ret = shibei_ffi_get_resource_html(buf_id);
+    char* ret = shibei_ffi_get_resource_html_bytes(buf_id);
     napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
     if (ret) shibei_ffi_free_cstring(ret);
     free(buf_id);
@@ -2065,7 +2065,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"removeTagFromResource", NULL, remove_tag_from_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResource", NULL, get_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getResourceSummary", NULL, get_resource_summary_wrap, NULL, NULL, NULL, napi_default, NULL},
-        {"getResourceHtml", NULL, get_resource_html_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"getResourceHtmlBytes", NULL, get_resource_html_bytes_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"getPdfBytes", NULL, get_pdf_bytes_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"ensurePdfDownloaded", NULL, ensure_pdf_downloaded_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"ensureHtmlDownloaded", NULL, ensure_html_downloaded_wrap, NULL, NULL, NULL, napi_default, NULL},
