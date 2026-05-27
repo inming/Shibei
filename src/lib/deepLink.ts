@@ -1,9 +1,11 @@
 export type DeepLinkTarget =
   | { kind: "resource"; resourceId: string; highlightId?: string }
-  | { kind: "folder"; folderId: string };
+  | { kind: "folder"; folderId: string }
+  | { kind: "question"; questionId: string };
 
 const RESOURCE_PREFIX = "shibei://open/resource/";
 const FOLDER_PREFIX = "shibei://open/folder/";
+const QUESTION_PREFIX = "shibei://open/question/";
 
 function safeDecode(value: string): string | null {
   try {
@@ -21,6 +23,10 @@ export function buildResourceDeepLink(resourceId: string, highlightId?: string):
 
 export function buildFolderDeepLink(folderId: string): string {
   return `${FOLDER_PREFIX}${encodeURIComponent(folderId)}`;
+}
+
+export function buildQuestionDeepLink(questionId: string): string {
+  return `${QUESTION_PREFIX}${encodeURIComponent(questionId)}`;
 }
 
 export function parseShibeiDeepLink(url: string): DeepLinkTarget | null {
@@ -45,6 +51,13 @@ export function parseShibeiDeepLink(url: string): DeepLinkTarget | null {
     const folderId = safeDecode(encodedFolderId);
     if (!folderId) return null;
     return { kind: "folder", folderId };
+  }
+
+  if (url.startsWith(QUESTION_PREFIX)) {
+    const encodedQuestionId = url.slice(QUESTION_PREFIX.length).split("?", 1)[0];
+    const questionId = safeDecode(encodedQuestionId);
+    if (!questionId) return null;
+    return { kind: "question", questionId };
   }
 
   return null;

@@ -5,6 +5,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import type { Question } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import { buildQuestionDeepLink } from "@/lib/deepLink";
 import styles from "./QuestionItem.module.css";
 
 interface QuestionItemProps {
@@ -24,7 +25,7 @@ export function QuestionItem({ question, onOpen, onEdit }: QuestionItemProps) {
   }, []);
 
   const handleCopyLink = useCallback(() => {
-    navigator.clipboard.writeText(`shibei://open/question/${question.id}`);
+    navigator.clipboard.writeText(buildQuestionDeepLink(question.id));
     toast.success(t("linkCopied"));
   }, [question.id, t]);
 

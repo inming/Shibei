@@ -381,6 +381,19 @@ function App() {
       return;
     }
 
+    if (target.kind === "question") {
+      try {
+        const question = await cmd.getQuestion(target.questionId);
+        if (question) {
+          deepLinkHandledRef.current = true;
+          openQuestion(question);
+        }
+      } catch (err) {
+        console.error("Deep link: question not found", target.questionId, err);
+      }
+      return;
+    }
+
     try {
       const resource = await cmd.getResource(target.resourceId);
       if (resource) {
@@ -390,7 +403,7 @@ function App() {
     } catch (err) {
       console.error("Deep link: resource not found", target.resourceId, err);
     }
-  }, [openResource]);
+  }, [openResource, openQuestion]);
 
   // Lock screen: check status on mount + check cold-start deep link
   useEffect(() => {

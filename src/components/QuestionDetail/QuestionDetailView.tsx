@@ -9,6 +9,7 @@ import { DataEvents, type QuestionChangedPayload } from "@/lib/events";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { QuestionEditDialog } from "@/components/Sidebar/QuestionEditDialog";
 import { useQuestionLinks } from "@/hooks/useQuestionLinks";
+import { buildQuestionDeepLink } from "@/lib/deepLink";
 import { QuestionLinkItem } from "./QuestionLinkItem";
 import styles from "./QuestionDetailView.module.css";
 
@@ -93,7 +94,7 @@ export function QuestionDetailView({
   }, [question, links.length, onClose, t]);
 
   const handleCopyLink = useCallback(() => {
-    navigator.clipboard.writeText(`shibei://open/question/${question.id}`);
+    navigator.clipboard.writeText(buildQuestionDeepLink(question.id));
     toast.success(t("linkCopied"));
   }, [question.id, t]);
 

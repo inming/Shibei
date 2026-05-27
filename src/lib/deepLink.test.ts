@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildFolderDeepLink, buildResourceDeepLink, parseShibeiDeepLink } from "@/lib/deepLink";
+import {
+  buildFolderDeepLink,
+  buildQuestionDeepLink,
+  buildResourceDeepLink,
+  parseShibeiDeepLink,
+} from "@/lib/deepLink";
 
 describe("parseShibeiDeepLink", () => {
   it("parses resource links", () => {
@@ -22,6 +27,17 @@ describe("parseShibeiDeepLink", () => {
     expect(parseShibeiDeepLink("shibei://open/folder/__inbox__")).toEqual({
       kind: "folder",
       folderId: "__inbox__",
+    });
+  });
+
+  it("parses question links", () => {
+    expect(parseShibeiDeepLink("shibei://open/question/q-1")).toEqual({
+      kind: "question",
+      questionId: "q-1",
+    });
+    expect(parseShibeiDeepLink("shibei://open/question/abc%2Fdef")).toEqual({
+      kind: "question",
+      questionId: "abc/def",
     });
   });
 
@@ -75,5 +91,10 @@ describe("deeplink builders", () => {
   it("builds resource links", () => {
     expect(buildResourceDeepLink("res-1")).toBe("shibei://open/resource/res-1");
     expect(buildResourceDeepLink("res/1", "hl 2")).toBe("shibei://open/resource/res%2F1?highlight=hl%202");
+  });
+
+  it("builds question links", () => {
+    expect(buildQuestionDeepLink("q-1")).toBe("shibei://open/question/q-1");
+    expect(buildQuestionDeepLink("a/b c")).toBe("shibei://open/question/a%2Fb%20c");
   });
 });
