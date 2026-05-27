@@ -438,7 +438,16 @@ impl SyncEngine {
                 .collect();
             ids
         };
-        for table in &["folders", "resources", "tags", "highlights", "comments", "resource_tags"] {
+        for table in &[
+            "folders",
+            "resources",
+            "tags",
+            "highlights",
+            "comments",
+            "resource_tags",
+            "questions",
+            "question_links",
+        ] {
             conn.execute(
                 &format!(
                     "DELETE FROM {} WHERE deleted_at IS NOT NULL AND deleted_at < ?1",
@@ -771,6 +780,24 @@ impl SyncEngine {
             let hlc = comment["hlc"].as_str().unwrap_or("");
             let id = comment["id"].as_str().unwrap_or_default();
             self.upsert_entity(conn, "comment", id, comment, hlc)?;
+            imported += 1;
+        }
+
+        // Questions before question_links so the (question_id, target_*)
+        // dependency is satisfied when the link's UNIQUE check runs.
+        for question in &snapshot.questions {
+            if !question["deleted_at"].is_null() { continue; }
+            let hlc = question["hlc"].as_str().unwrap_or("");
+            let id = question["id"].as_str().unwrap_or_default();
+            self.upsert_entity(conn, "question", id, question, hlc)?;
+            imported += 1;
+        }
+
+        for link in &snapshot.question_links {
+            if !link["deleted_at"].is_null() { continue; }
+            let hlc = link["hlc"].as_str().unwrap_or("");
+            let id = link["id"].as_str().unwrap_or_default();
+            self.upsert_entity(conn, "question_link", id, link, hlc)?;
             imported += 1;
         }
 
@@ -1131,6 +1158,8 @@ impl SyncEngine {
             "resource" => self.upsert_resource(conn, entity_id, payload, hlc),
             "highlight" => self.upsert_highlight(conn, entity_id, payload, hlc),
             "comment" => self.upsert_comment(conn, entity_id, payload, hlc),
+            "question" => self.upsert_question(conn, entity_id, payload, hlc),
+            "question_link" => self.upsert_question_link(conn, entity_id, payload, hlc),
             _ => Ok(()), // Unknown entity type, skip
         }
     }
@@ -1410,6 +1439,128 @@ impl SyncEngine {
         Ok(())
     }
 
+    fn upsert_question(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let title = payload["title"].as_str().unwrap_or("");
+        let description = payload["description"].as_str();
+        let status = payload["status"].as_str().unwrap_or("active");
+        let archived_at = payload["archived_at"].as_str();
+        let created_at = payload["created_at"].as_str().unwrap_or("");
+        let updated_at = payload["updated_at"].as_str().unwrap_or("");
+
+        conn.execute(
+            "INSERT INTO questions
+                (id, title, description, status, archived_at, created_at, updated_at, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               title = excluded.title,
+               description = excluded.description,
+               status = excluded.status,
+               archived_at = excluded.archived_at,
+               updated_at = excluded.updated_at,
+               hlc = excluded.hlc,
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(questions.hlc, '')",
+            params![id, title, description, status, archived_at, created_at, updated_at, hlc],
+        )?;
+        Ok(())
+    }
+
+    /// Upsert a question_link, resolving the partial UNIQUE
+    /// (question_id, target_type, target_id) WHERE deleted_at IS NULL
+    /// by HLC: whichever row has the larger HLC stays alive, the loser is
+    /// soft-deleted (or for an incoming loser, inserted as already-deleted to
+    /// preserve history). This makes conflict resolution **deterministic and
+    /// convergent across devices** even though apply does not emit sync_log.
+    fn upsert_question_link(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let question_id = payload["question_id"].as_str().unwrap_or("");
+        let target_type = payload["target_type"].as_str().unwrap_or("");
+        let target_id = payload["target_id"].as_str().unwrap_or("");
+        let reason = payload["reason"].as_str();
+        let created_at = payload["created_at"].as_str().unwrap_or("");
+        let updated_at = payload["updated_at"].as_str().unwrap_or("");
+
+        if question_id.is_empty() || target_type.is_empty() || target_id.is_empty() {
+            // Malformed payload — skip.
+            return Ok(());
+        }
+
+        // Conflict check: another alive row with same (q, target_type, target_id)
+        // but different id. We only resolve here for the INSERT/UPDATE path;
+        // DELETE goes through `soft_delete_entity` which has no UNIQUE concern.
+        let conflict: Option<(String, Option<String>)> = conn
+            .query_row(
+                "SELECT id, hlc FROM question_links
+                 WHERE question_id = ?1 AND target_type = ?2 AND target_id = ?3
+                   AND id != ?4 AND deleted_at IS NULL",
+                params![question_id, target_type, target_id, id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+
+        if let Some((conflict_id, conflict_hlc)) = conflict {
+            let conflict_hlc_str = conflict_hlc.as_deref().unwrap_or("");
+            if hlc > conflict_hlc_str {
+                // Incoming wins. Soft-delete the local conflicting row first,
+                // then fall through to the normal alive upsert below.
+                let now = shibei_db::now_iso8601();
+                conn.execute(
+                    "UPDATE question_links SET deleted_at = ?1, hlc = ?2
+                     WHERE id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
+                    params![now, hlc, conflict_id],
+                )?;
+            } else {
+                // Incoming loses. Insert it as already-deleted so we retain
+                // the row for completeness, but it won't violate UNIQUE.
+                let now = shibei_db::now_iso8601();
+                conn.execute(
+                    "INSERT INTO question_links
+                        (id, question_id, target_type, target_id, reason,
+                         created_at, updated_at, hlc, deleted_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                     ON CONFLICT(id) DO UPDATE SET
+                       reason = excluded.reason,
+                       updated_at = excluded.updated_at,
+                       hlc = excluded.hlc,
+                       deleted_at = COALESCE(question_links.deleted_at, excluded.deleted_at)
+                     WHERE excluded.hlc > COALESCE(question_links.hlc, '')",
+                    params![id, question_id, target_type, target_id, reason,
+                            created_at, updated_at, hlc, now],
+                )?;
+                return Ok(());
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO question_links
+                (id, question_id, target_type, target_id, reason,
+                 created_at, updated_at, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               question_id = excluded.question_id,
+               target_type = excluded.target_type,
+               target_id = excluded.target_id,
+               reason = excluded.reason,
+               updated_at = excluded.updated_at,
+               hlc = excluded.hlc,
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(question_links.hlc, '')",
+            params![id, question_id, target_type, target_id, reason, created_at, updated_at, hlc],
+        )?;
+        Ok(())
+    }
+
     /// Soft-delete an entity if it hasn't been deleted yet.
     fn soft_delete_entity(
         &self,
@@ -1425,6 +1576,8 @@ impl SyncEngine {
             "tag" => "tags",
             "highlight" => "highlights",
             "comment" => "comments",
+            "question" => "questions",
+            "question_link" => "question_links",
             _ => return Ok(()),
         };
 
@@ -1471,6 +1624,31 @@ impl SyncEngine {
             )?;
             conn.execute(
                 "UPDATE comments SET deleted_at = ?1, hlc = ?2 WHERE resource_id = ?3 AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
+                params![deleted_at, hlc, rid],
+            )?;
+            // question_links cascade: cover the resource itself plus its
+            // highlights / comments. Local single-entity deletes already emit
+            // sync_log per cascaded link, but folder deletes don't — they
+            // rely on cascade_folder_delete running independently on each
+            // device, so we must mirror the full cascade here.
+            conn.execute(
+                "UPDATE question_links SET deleted_at = ?1, hlc = ?2
+                 WHERE target_type = 'resource' AND target_id = ?3
+                   AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
+                params![deleted_at, hlc, rid],
+            )?;
+            conn.execute(
+                "UPDATE question_links SET deleted_at = ?1, hlc = ?2
+                 WHERE target_type = 'highlight'
+                   AND target_id IN (SELECT id FROM highlights WHERE resource_id = ?3)
+                   AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
+                params![deleted_at, hlc, rid],
+            )?;
+            conn.execute(
+                "UPDATE question_links SET deleted_at = ?1, hlc = ?2
+                 WHERE target_type = 'comment'
+                   AND target_id IN (SELECT id FROM comments WHERE resource_id = ?3)
+                   AND deleted_at IS NULL AND (hlc IS NULL OR hlc < ?2)",
                 params![deleted_at, hlc, rid],
             )?;
         }
@@ -1545,6 +1723,44 @@ impl SyncEngine {
             "tag" => {
                 conn.execute("DELETE FROM resource_tags WHERE tag_id = ?1", params![entity_id])?;
                 conn.execute("DELETE FROM tags WHERE id = ?1 AND deleted_at IS NOT NULL", params![entity_id])?;
+            }
+            "question" => {
+                let is_deleted: bool = conn
+                    .query_row(
+                        "SELECT deleted_at IS NOT NULL FROM questions WHERE id = ?1",
+                        params![entity_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(false);
+                if !is_deleted {
+                    return Ok(());
+                }
+                conn.execute(
+                    "DELETE FROM question_links WHERE question_id = ?1",
+                    params![entity_id],
+                )?;
+                conn.execute(
+                    "DELETE FROM questions WHERE id = ?1 AND deleted_at IS NOT NULL",
+                    params![entity_id],
+                )?;
+            }
+            "question_link" => {
+                conn.execute(
+                    "DELETE FROM question_links WHERE id = ?1 AND deleted_at IS NOT NULL",
+                    params![entity_id],
+                )?;
+            }
+            _ => {}
+        }
+        // Also clean up question_links that point at any other entity being
+        // purged (resource / highlight / comment), so we never leave dangling
+        // links after compaction.
+        match entity_type {
+            "resource" | "highlight" | "comment" => {
+                conn.execute(
+                    "DELETE FROM question_links WHERE target_type = ?1 AND target_id = ?2",
+                    params![entity_type, entity_id],
+                )?;
             }
             _ => {}
         }
@@ -1735,9 +1951,13 @@ impl SyncEngine {
 }
 
 /// Topo-sort order for sync entries.
-/// INSERT/UPDATE: folder(0) → tag(1) → resource(2) → highlight(3) → comment(4)
-/// DELETE: comment(5) → highlight(6) → resource(7) → tag(8) → folder(9)
+///
+/// INSERT/UPDATE: folder → tag → resource → highlight → comment → question → question_link
+/// DELETE: comment → highlight → resource → question_link → question → tag → folder
+/// PURGE: same as DELETE order, just after all DELETEs.
 fn topo_order(operation: &str, entity_type: &str) -> u8 {
+    // Numbering intentionally leaves gaps so future entity types can slot in
+    // without renumbering existing ones (and breaking semantic tests).
     match operation {
         "INSERT" | "UPDATE" => match entity_type {
             "folder" => 0,
@@ -1745,26 +1965,37 @@ fn topo_order(operation: &str, entity_type: &str) -> u8 {
             "resource" => 2,
             "highlight" => 3,
             "comment" => 4,
-            _ => 5,
+            // question must precede question_link (FK-like dependency: link
+            // references question_id). question_link must follow all possible
+            // target types (resource / highlight / comment) so target_id
+            // resolves to a row already present locally.
+            "question" => 5,
+            "question_link" => 6,
+            _ => 7,
         },
         "DELETE" => match entity_type {
-            "comment" => 6,
-            "highlight" => 7,
-            "resource" => 8,
-            "tag" => 9,
-            "folder" => 10,
-            _ => 11,
+            "comment" => 8,
+            "highlight" => 9,
+            "resource" => 10,
+            // Delete links before their question, mirroring the INSERT order.
+            "question_link" => 11,
+            "question" => 12,
+            "tag" => 13,
+            "folder" => 14,
+            _ => 15,
         },
         // PURGE runs after DELETE (entity must be soft-deleted first)
         "PURGE" => match entity_type {
-            "comment" => 12,
-            "highlight" => 13,
-            "resource" => 14,
-            "tag" => 15,
-            "folder" => 16,
-            _ => 17,
+            "comment" => 16,
+            "highlight" => 17,
+            "resource" => 18,
+            "question_link" => 19,
+            "question" => 20,
+            "tag" => 21,
+            "folder" => 22,
+            _ => 23,
         },
-        _ => 18,
+        _ => 24,
     }
 }
 
@@ -1780,6 +2011,8 @@ fn get_entity_hlc(
         "tag" => "tags",
         "highlight" => "highlights",
         "comment" => "comments",
+        "question" => "questions",
+        "question_link" => "question_links",
         _ => return Ok(None),
     };
 
@@ -2535,5 +2768,359 @@ mod tests {
             [], |row| row.get(0),
         ).unwrap();
         assert_eq!(count, 2, "fresh device must apply JSONL newer than the snapshot");
+    }
+
+    // ─── Questions system: cross-device sync ──────────────────────────────
+
+    #[tokio::test]
+    async fn test_topo_order_questions() {
+        // question before question_link on INSERT, after all link target types.
+        assert!(topo_order("INSERT", "comment") < topo_order("INSERT", "question"));
+        assert!(topo_order("INSERT", "question") < topo_order("INSERT", "question_link"));
+
+        // DELETE: link before its question.
+        assert!(topo_order("DELETE", "question_link") < topo_order("DELETE", "question"));
+        // And question DELETE still before tag/folder.
+        assert!(topo_order("DELETE", "question") < topo_order("DELETE", "tag"));
+        assert!(topo_order("DELETE", "question") < topo_order("DELETE", "folder"));
+    }
+
+    #[tokio::test]
+    async fn test_two_device_question_and_link_sync() {
+        use shibei_db::questions::{create_question, link, list_links_for_question};
+        use shibei_db::resources::{create_resource, CreateResourceInput};
+        use shibei_db::SyncContext;
+
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create question + resource + link, sync (upload)
+        let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+        let clock_a = HlcClock::new("dev-a".to_string());
+
+        let (q_id, link_id) = {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let ctx = SyncContext { clock: &clock_a, device_id: "dev-a" };
+            let resource = create_resource(
+                &conn,
+                CreateResourceInput {
+                    id: Some("r1".to_string()),
+                    title: "Doc".to_string(),
+                    url: "https://example.com".to_string(),
+                    domain: None, author: None, description: None,
+                    folder_id: "__root__".to_string(),
+                    resource_type: "webpage".to_string(),
+                    file_path: "r1/snapshot.html".to_string(),
+                    captured_at: "2026-04-01T00:00:00Z".to_string(),
+                    selection_meta: None,
+                },
+                Some(&ctx),
+            ).unwrap();
+            let q = create_question(&conn, "Q", Some("desc"), Some(&ctx)).unwrap();
+            let l = link(&conn, &q.id, "resource", &resource.id, Some("why"), Some(&ctx)).unwrap();
+            (q.id, l.id)
+        };
+        engine_a.sync(None).await.unwrap();
+
+        // Device B: fresh sync — should download + apply
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+        engine_b.sync(None).await.unwrap();
+
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            let title: String = conn
+                .query_row(
+                    "SELECT title FROM questions WHERE id = ?1 AND deleted_at IS NULL",
+                    params![q_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(title, "Q");
+
+            let links = list_links_for_question(&conn, &q_id).unwrap();
+            assert_eq!(links.len(), 1, "link should be present on dev-b");
+            assert_eq!(links[0].id, link_id);
+            assert_eq!(links[0].reason.as_deref(), Some("why"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_question_link_unique_conflict_lww() {
+        // Two devices independently create a link with the SAME
+        // (question_id, target_type, target_id) but DIFFERENT link.id.
+        // After cross-sync, both devices must end with the higher-HLC link alive
+        // and the lower-HLC one soft-deleted.
+        let backend = Arc::new(MockBackend::new());
+
+        let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+
+        let (_dir_b, pool_b) = test_pool();
+        mark_synced(&pool_b);
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+
+        // Seed: shared question + shared resource (same ids on both devices,
+        // via a manual snapshot to avoid going through ensure_initial_snapshot).
+        for pool in [&pool_a, &pool_b] {
+            let conn = pool.read().unwrap().get().unwrap();
+            conn.execute(
+                "INSERT INTO questions (id, title, description, status, archived_at,
+                                        created_at, updated_at, hlc, deleted_at)
+                 VALUES ('q1', 'Q', NULL, 'active', NULL,
+                         '2026-05-27T00:00:00Z', '2026-05-27T00:00:00Z',
+                         '1000000000000-0000-seed', NULL)",
+                [],
+            ).unwrap();
+            conn.execute(
+                "INSERT INTO resources (id, title, url, folder_id, resource_type,
+                                        file_path, created_at, captured_at, hlc)
+                 VALUES ('r1', 'R', 'https://x', '__root__', 'webpage',
+                         'r1/snapshot.html', '2026-05-27T00:00:00Z',
+                         '2026-05-27T00:00:00Z', '1000000000000-0001-seed')",
+                [],
+            ).unwrap();
+        }
+
+        // Device A: create link with HLC h1 (lower).
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let payload = serde_json::json!({
+                "id": "lnk-a",
+                "question_id": "q1",
+                "target_type": "resource",
+                "target_id": "r1",
+                "reason": "A's reason",
+                "created_at": "2026-05-27T01:00:00Z",
+                "updated_at": "2026-05-27T01:00:00Z"
+            });
+            conn.execute(
+                "INSERT INTO question_links (id, question_id, target_type, target_id,
+                                              reason, created_at, updated_at, hlc, deleted_at)
+                 VALUES ('lnk-a', 'q1', 'resource', 'r1', 'A''s reason',
+                         '2026-05-27T01:00:00Z', '2026-05-27T01:00:00Z',
+                         '1700000000000-0000-dev-a', NULL)",
+                [],
+            ).unwrap();
+            sync_log::append(
+                &conn, "question_link", "lnk-a", "INSERT",
+                &payload.to_string(),
+                "1700000000000-0000-dev-a", "dev-a",
+            ).unwrap();
+        }
+        engine_a.sync(None).await.unwrap();
+
+        // Device B: create link with HLC h2 (higher).
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            let payload = serde_json::json!({
+                "id": "lnk-b",
+                "question_id": "q1",
+                "target_type": "resource",
+                "target_id": "r1",
+                "reason": "B's reason",
+                "created_at": "2026-05-27T02:00:00Z",
+                "updated_at": "2026-05-27T02:00:00Z"
+            });
+            conn.execute(
+                "INSERT INTO question_links (id, question_id, target_type, target_id,
+                                              reason, created_at, updated_at, hlc, deleted_at)
+                 VALUES ('lnk-b', 'q1', 'resource', 'r1', 'B''s reason',
+                         '2026-05-27T02:00:00Z', '2026-05-27T02:00:00Z',
+                         '1800000000000-0000-dev-b', NULL)",
+                [],
+            ).unwrap();
+            sync_log::append(
+                &conn, "question_link", "lnk-b", "INSERT",
+                &payload.to_string(),
+                "1800000000000-0000-dev-b", "dev-b",
+            ).unwrap();
+        }
+        engine_b.sync(None).await.unwrap();
+
+        // Now cross-sync: A pulls B's link, B pulls A's link. Each device
+        // resolves the UNIQUE conflict deterministically using HLC.
+        engine_a.sync(None).await.unwrap();
+        engine_b.sync(None).await.unwrap();
+
+        // Both devices must agree: lnk-b alive (higher HLC), lnk-a dead.
+        for (name, pool) in [("dev-a", &pool_a), ("dev-b", &pool_b)] {
+            let conn = pool.read().unwrap().get().unwrap();
+            let alive_count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM question_links
+                 WHERE question_id = 'q1' AND target_type = 'resource'
+                   AND target_id = 'r1' AND deleted_at IS NULL",
+                [], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(alive_count, 1, "{}: exactly one alive link expected", name);
+
+            let alive_id: String = conn.query_row(
+                "SELECT id FROM question_links
+                 WHERE question_id = 'q1' AND target_type = 'resource'
+                   AND target_id = 'r1' AND deleted_at IS NULL",
+                [], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(alive_id, "lnk-b", "{}: higher-HLC link should win", name);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_question_delete_propagates_link_deletes() {
+        // Device A deletes a question with two linked resources. Device B
+        // must receive the question DELETE plus a DELETE per cascaded link
+        // (emitted by shibei-db::questions::delete_question) and end up with
+        // the question dead and zero alive links — even without any cascade
+        // in soft_delete_entity.
+        use shibei_db::questions::{create_question, delete_question, link, list_links_for_question};
+        use shibei_db::resources::{create_resource, CreateResourceInput};
+        use shibei_db::SyncContext;
+
+        let backend = Arc::new(MockBackend::new());
+
+        let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+        let clock_a = HlcClock::new("dev-a".to_string());
+
+        let q_id = {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let ctx = SyncContext { clock: &clock_a, device_id: "dev-a" };
+            let r1 = create_resource(&conn, CreateResourceInput {
+                id: Some("r1".to_string()), title: "R1".to_string(),
+                url: "https://1.com".to_string(),
+                domain: None, author: None, description: None,
+                folder_id: "__root__".to_string(),
+                resource_type: "webpage".to_string(),
+                file_path: "r1/snapshot.html".to_string(),
+                captured_at: "2026-04-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            }, Some(&ctx)).unwrap();
+            let r2 = create_resource(&conn, CreateResourceInput {
+                id: Some("r2".to_string()), title: "R2".to_string(),
+                url: "https://2.com".to_string(),
+                domain: None, author: None, description: None,
+                folder_id: "__root__".to_string(),
+                resource_type: "webpage".to_string(),
+                file_path: "r2/snapshot.html".to_string(),
+                captured_at: "2026-04-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            }, Some(&ctx)).unwrap();
+            let q = create_question(&conn, "Q", None, Some(&ctx)).unwrap();
+            link(&conn, &q.id, "resource", &r1.id, None, Some(&ctx)).unwrap();
+            link(&conn, &q.id, "resource", &r2.id, None, Some(&ctx)).unwrap();
+            q.id
+        };
+        engine_a.sync(None).await.unwrap();
+
+        // Device B catches up first.
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+        engine_b.sync(None).await.unwrap();
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            assert_eq!(list_links_for_question(&conn, &q_id).unwrap().len(), 2);
+        }
+
+        // Device A deletes the question (cascades to 2 links + writes 3
+        // sync_log entries: 2 question_link DELETEs + 1 question DELETE).
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let ctx = SyncContext { clock: &clock_a, device_id: "dev-a" };
+            delete_question(&conn, &q_id, Some(&ctx)).unwrap();
+        }
+        engine_a.sync(None).await.unwrap();
+        engine_b.sync(None).await.unwrap();
+
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            // Question is gone (alive query returns 0).
+            let q_alive: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM questions WHERE id = ?1 AND deleted_at IS NULL",
+                params![q_id], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(q_alive, 0);
+            // All links are gone.
+            assert!(list_links_for_question(&conn, &q_id).unwrap().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_folder_delete_cascades_question_links() {
+        // A folder delete on Device A must cascade through cascade_folder_delete
+        // on Device B's apply path and also clear any question_links targeting
+        // the folder's resources / their highlights / their comments — even
+        // though only a single folder DELETE entry is in the sync_log.
+        use shibei_db::questions::{create_question, link, list_links_for_question};
+        use shibei_db::folders::{create_folder, delete_folder};
+        use shibei_db::resources::{create_resource, CreateResourceInput};
+        use shibei_db::highlights::create_highlight;
+        use shibei_db::comments::create_comment;
+        use shibei_db::SyncContext;
+
+        let backend = Arc::new(MockBackend::new());
+        let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+        let clock_a = HlcClock::new("dev-a".to_string());
+
+        let (folder_id, q_id) = {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let ctx = SyncContext { clock: &clock_a, device_id: "dev-a" };
+            let folder = create_folder(&conn, "scratch", "__root__", Some(&ctx)).unwrap();
+            let r = create_resource(&conn, CreateResourceInput {
+                id: None, title: "R".to_string(),
+                url: "https://x".to_string(),
+                domain: None, author: None, description: None,
+                folder_id: folder.id.clone(),
+                resource_type: "webpage".to_string(),
+                file_path: "x".to_string(),
+                captured_at: "2026-04-01T00:00:00Z".to_string(),
+                selection_meta: None,
+            }, Some(&ctx)).unwrap();
+            let anchor = serde_json::json!({
+                "text_position": {"start": 0, "end": 4},
+                "text_quote": {"exact": "hi", "prefix": "", "suffix": ""}
+            });
+            let hl = create_highlight(&conn, &r.id, "hi", &anchor, "#FF0", Some(&ctx)).unwrap();
+            let cm = create_comment(&conn, &r.id, Some(&hl.id), "note", Some(&ctx)).unwrap();
+
+            let q = create_question(&conn, "Q", None, Some(&ctx)).unwrap();
+            link(&conn, &q.id, "resource", &r.id, None, Some(&ctx)).unwrap();
+            link(&conn, &q.id, "highlight", &hl.id, None, Some(&ctx)).unwrap();
+            link(&conn, &q.id, "comment", &cm.id, None, Some(&ctx)).unwrap();
+            (folder.id, q.id)
+        };
+        engine_a.sync(None).await.unwrap();
+
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+        engine_b.sync(None).await.unwrap();
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            assert_eq!(list_links_for_question(&conn, &q_id).unwrap().len(), 3,
+                "dev-b should have all 3 links after initial sync");
+        }
+
+        // Folder delete on A → cascade_folder_delete must replay on B and
+        // clear all 3 links.
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let ctx = SyncContext { clock: &clock_a, device_id: "dev-a" };
+            delete_folder(&conn, &folder_id, Some(&ctx)).unwrap();
+        }
+        engine_a.sync(None).await.unwrap();
+        engine_b.sync(None).await.unwrap();
+
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            assert!(
+                list_links_for_question(&conn, &q_id).unwrap().is_empty(),
+                "folder cascade on dev-b should have cleared question_links"
+            );
+        }
     }
 }

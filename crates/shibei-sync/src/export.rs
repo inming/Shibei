@@ -13,6 +13,13 @@ pub struct FullSnapshot {
     pub resource_tags: Vec<serde_json::Value>,
     pub highlights: Vec<serde_json::Value>,
     pub comments: Vec<serde_json::Value>,
+    // v2026-05-27: questions system. Older clients deserializing this snapshot
+    // will see these fields as missing and (with `#[serde(default)]` on the
+    // applying side, or by ignoring unknown fields) treat them as empty.
+    #[serde(default)]
+    pub questions: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub question_links: Vec<serde_json::Value>,
 }
 
 fn export_table(
@@ -127,6 +134,40 @@ pub fn export_full_state(conn: &Connection, device_id: &str) -> Result<FullSnaps
         ],
     )?;
 
+    let questions = export_table(
+        conn,
+        "SELECT id, title, description, status, archived_at, created_at, updated_at, hlc, deleted_at
+         FROM questions",
+        &[
+            "id",
+            "title",
+            "description",
+            "status",
+            "archived_at",
+            "created_at",
+            "updated_at",
+            "hlc",
+            "deleted_at",
+        ],
+    )?;
+
+    let question_links = export_table(
+        conn,
+        "SELECT id, question_id, target_type, target_id, reason, created_at, updated_at, hlc, deleted_at
+         FROM question_links",
+        &[
+            "id",
+            "question_id",
+            "target_type",
+            "target_id",
+            "reason",
+            "created_at",
+            "updated_at",
+            "hlc",
+            "deleted_at",
+        ],
+    )?;
+
     Ok(FullSnapshot {
         timestamp,
         device_id: device_id.to_string(),
@@ -136,6 +177,8 @@ pub fn export_full_state(conn: &Connection, device_id: &str) -> Result<FullSnaps
         resource_tags,
         highlights,
         comments,
+        questions,
+        question_links,
     })
 }
 
