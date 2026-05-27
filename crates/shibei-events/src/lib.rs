@@ -7,6 +7,8 @@ pub const DATA_RESOURCE_CHANGED: &str = "data:resource-changed";
 pub const DATA_FOLDER_CHANGED: &str = "data:folder-changed";
 pub const DATA_TAG_CHANGED: &str = "data:tag-changed";
 pub const DATA_ANNOTATION_CHANGED: &str = "data:annotation-changed";
+pub const DATA_QUESTION_CHANGED: &str = "data:question-changed";
+pub const DATA_QUESTION_LINK_CHANGED: &str = "data:question-link-changed";
 pub const DATA_SYNC_COMPLETED: &str = "data:sync-completed";
 pub const DATA_CONFIG_CHANGED: &str = "data:config-changed";
 

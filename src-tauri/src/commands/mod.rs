@@ -10,6 +10,9 @@ use crate::db::{self, comments, folders, highlights, resources, tags, DbError};
 use crate::events;
 use crate::storage;
 
+pub mod questions;
+pub use questions::*;
+
 /// Shared application state managed by Tauri.
 pub struct AppState {
     pub pool: db::SharedPool,

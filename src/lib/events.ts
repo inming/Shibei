@@ -10,6 +10,8 @@ export const DataEvents = {
   FOLDER_CHANGED: "data:folder-changed",
   TAG_CHANGED: "data:tag-changed",
   ANNOTATION_CHANGED: "data:annotation-changed",
+  QUESTION_CHANGED: "data:question-changed",
+  QUESTION_LINK_CHANGED: "data:question-link-changed",
   SYNC_COMPLETED: "data:sync-completed",
   CONFIG_CHANGED: "data:config-changed",
 } as const;
@@ -43,6 +45,19 @@ export interface TagChangedPayload {
 export interface AnnotationChangedPayload {
   action: "created" | "updated" | "deleted";
   resource_id: string;
+}
+
+export interface QuestionChangedPayload {
+  action: "created" | "updated" | "archived" | "unarchived" | "deleted";
+  question_id?: string;
+}
+
+export interface QuestionLinkChangedPayload {
+  action: "linked" | "unlinked" | "reason-updated";
+  question_id: string;
+  /** Absent when the event was emitted from a question-level cascade (e.g. delete_question). */
+  target_type?: "resource" | "highlight" | "comment";
+  target_id?: string;
 }
 
 export interface ConfigChangedPayload {

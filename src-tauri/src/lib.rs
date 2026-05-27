@@ -382,6 +382,19 @@ pub fn run() {
             commands::cmd_read_external_file,
             commands::cmd_write_external_file,
             commands::cmd_get_ai_tool_paths,
+            commands::cmd_list_questions,
+            commands::cmd_get_question,
+            commands::cmd_create_question,
+            commands::cmd_update_question,
+            commands::cmd_archive_question,
+            commands::cmd_unarchive_question,
+            commands::cmd_delete_question,
+            commands::cmd_list_question_links,
+            commands::cmd_list_questions_for_target,
+            commands::cmd_list_questions_for_resources,
+            commands::cmd_link_to_question,
+            commands::cmd_update_link_reason,
+            commands::cmd_unlink,
         ])
         .register_uri_scheme_protocol("shibei", move |_ctx, request| {
             let path = request.uri().path();
