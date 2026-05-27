@@ -8,10 +8,34 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 
-use crate::db::questions;
+use crate::db::{comments, highlights, questions};
 use crate::events;
 
 use super::{AppState, CommandError};
+
+// ─── lookup helpers used by the question detail view ────────────────────────
+// QuestionLinkItem needs to resolve a highlight or comment by its id to show
+// a snippet + jump-to-source. Existing commands only fetch by resource id, so
+// we add the by-id variants here (the underlying shibei-db helpers already
+// exist).
+
+#[tauri::command]
+pub async fn cmd_get_highlight(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<highlights::Highlight, CommandError> {
+    let conn = state.conn()?;
+    highlights::get_highlight_by_id(&conn, &id).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_get_comment(
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<comments::Comment, CommandError> {
+    let conn = state.conn()?;
+    comments::get_comment_by_id(&conn, &id).map_err(Into::into)
+}
 
 // ─── questions: CRUD ─────────────────────────────────────────────────────────
 

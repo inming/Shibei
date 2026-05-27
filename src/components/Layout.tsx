@@ -3,7 +3,7 @@ import { DndContext, DragOverlay, pointerWithin, PointerSensor, useSensor, useSe
 import { listen } from "@tauri-apps/api/event";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Resource } from "@/types";
+import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Resource, type Question } from "@/types";
 import {
   DataEvents,
   type ResourceChangedPayload,
@@ -14,6 +14,7 @@ import { loadSessionState, saveSessionState } from "@/lib/sessionState";
 import * as cmd from "@/lib/commands";
 import { useSync } from "@/hooks/useSync";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
+import { QuestionSection } from "@/components/Sidebar/QuestionSection";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
 import { PreviewPanel } from "@/components/PreviewPanel";
 import { SyncStatus } from "@/components/SyncStatus";
@@ -29,13 +30,14 @@ interface FolderOpenRequest {
 
 interface LibraryViewProps {
   onOpenResource: (resource: Resource, highlightId?: string) => void;
+  onOpenQuestion: (question: Question) => void;
   onOpenSettings: (section?: "sync" | "encryption") => void;
   lockEnabled?: boolean;
   onLock?: () => void;
   folderOpenRequest?: FolderOpenRequest | null;
 }
 
-export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLock, folderOpenRequest }: LibraryViewProps) {
+export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lockEnabled, onLock, folderOpenRequest }: LibraryViewProps) {
   const { t } = useTranslation('sidebar');
   const initialLibrary = useRef(loadSessionState().library).current;
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
@@ -452,6 +454,7 @@ export function LibraryView({ onOpenResource, onOpenSettings, lockEnabled, onLoc
               selectedFolderId={selectedFolderId}
               onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); setFilterTagIds([]); }}
             />
+            <QuestionSection onOpenQuestion={onOpenQuestion} />
             <button
               className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
               onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}

@@ -1,0 +1,98 @@
+import { useRef, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
+import { ask } from "@tauri-apps/plugin-dialog";
+import type { Question } from "@/types";
+import * as cmd from "@/lib/commands";
+import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
+import styles from "./QuestionItem.module.css";
+
+interface QuestionItemProps {
+  question: Question;
+  onOpen: (question: Question) => void;
+  onEdit: (question: Question) => void;
+}
+
+export function QuestionItem({ question, onOpen, onEdit }: QuestionItemProps) {
+  const { t } = useTranslation("question");
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const itemRef = useRef<HTMLButtonElement>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleCopyLink = useCallback(() => {
+    navigator.clipboard.writeText(`shibei://open/question/${question.id}`);
+    toast.success(t("linkCopied"));
+  }, [question.id, t]);
+
+  const handleArchive = useCallback(async () => {
+    try {
+      if (question.status === "archived") {
+        await cmd.unarchiveQuestion(question.id);
+      } else {
+        await cmd.archiveQuestion(question.id);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(t("operationFailed"));
+    }
+  }, [question.id, question.status, t]);
+
+  const handleDelete = useCallback(async () => {
+    let linkCount = 0;
+    try {
+      const links = await cmd.listQuestionLinks(question.id);
+      linkCount = links.length;
+    } catch {
+      // best effort — we still ask
+    }
+    const message =
+      linkCount === 0
+        ? t("deleteConfirmNoLinks", { title: question.title })
+        : t("deleteConfirm", { title: question.title, count: linkCount });
+    const ok = await ask(message, { title: t("deleteQuestion"), kind: "warning" });
+    if (!ok) return;
+    try {
+      await cmd.deleteQuestion(question.id);
+    } catch (err) {
+      console.error(err);
+      toast.error(t("operationFailed"));
+    }
+  }, [question.id, question.title, t]);
+
+  const menuItems: MenuItem[] = [
+    { label: t("openQuestion"), onClick: () => onOpen(question) },
+    { label: t("copyLink"), onClick: handleCopyLink },
+    { label: t("editQuestion"), onClick: () => onEdit(question) },
+    {
+      label: question.status === "archived" ? t("unarchiveQuestion") : t("archiveQuestion"),
+      onClick: handleArchive,
+    },
+    { label: t("deleteQuestion"), onClick: handleDelete, danger: true },
+  ];
+
+  const archived = question.status === "archived";
+
+  return (
+    <>
+      <button
+        ref={itemRef}
+        className={styles.item}
+        onClick={() => onOpen(question)}
+        onContextMenu={handleContextMenu}
+        title={question.description ?? undefined}
+      >
+        <span className={`${styles.dot} ${archived ? styles.dotArchived : ""}`} />
+        <span className={`${styles.title} ${archived ? styles.titleArchived : ""}`}>
+          {question.title}
+        </span>
+      </button>
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
+      )}
+    </>
+  );
+}

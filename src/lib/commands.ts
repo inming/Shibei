@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts } from "@/types";
+import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, QuestionStatus, QuestionTargetType } from "@/types";
 
 // ── Utility ──
 
@@ -479,4 +479,83 @@ export interface AiToolPath {
 
 export function getAiToolPaths(): Promise<AiToolPath[]> {
   return invoke("cmd_get_ai_tool_paths");
+}
+
+// ── Single-item lookups for question link target resolution ──
+
+export function getHighlight(id: string): Promise<Highlight> {
+  return invoke("cmd_get_highlight", { id });
+}
+
+export function getComment(id: string): Promise<Comment> {
+  return invoke("cmd_get_comment", { id });
+}
+
+// ── Questions ──
+
+export function listQuestions(status?: QuestionStatus): Promise<Question[]> {
+  return invoke("cmd_list_questions", { status: status ?? null });
+}
+
+export function getQuestion(id: string): Promise<Question> {
+  return invoke("cmd_get_question", { id });
+}
+
+export function createQuestion(title: string, description?: string | null): Promise<Question> {
+  return invoke("cmd_create_question", { title, description: description ?? null });
+}
+
+export function updateQuestion(id: string, title: string, description: string | null): Promise<void> {
+  return invoke("cmd_update_question", { id, title, description });
+}
+
+export function archiveQuestion(id: string): Promise<void> {
+  return invoke("cmd_archive_question", { id });
+}
+
+export function unarchiveQuestion(id: string): Promise<void> {
+  return invoke("cmd_unarchive_question", { id });
+}
+
+export function deleteQuestion(id: string): Promise<void> {
+  return invoke("cmd_delete_question", { id });
+}
+
+export function listQuestionLinks(questionId: string): Promise<QuestionLink[]> {
+  return invoke("cmd_list_question_links", { questionId });
+}
+
+export function listQuestionsForTarget(
+  targetType: QuestionTargetType,
+  targetId: string,
+): Promise<Question[]> {
+  return invoke("cmd_list_questions_for_target", { targetType, targetId });
+}
+
+export function listQuestionsForResources(
+  resourceIds: string[],
+): Promise<Record<string, Question[]>> {
+  return invoke("cmd_list_questions_for_resources", { resourceIds });
+}
+
+export function linkToQuestion(
+  questionId: string,
+  targetType: QuestionTargetType,
+  targetId: string,
+  reason?: string | null,
+): Promise<QuestionLink> {
+  return invoke("cmd_link_to_question", {
+    questionId,
+    targetType,
+    targetId,
+    reason: reason ?? null,
+  });
+}
+
+export function updateLinkReason(linkId: string, reason: string | null): Promise<void> {
+  return invoke("cmd_update_link_reason", { linkId, reason });
+}
+
+export function unlinkQuestion(linkId: string): Promise<void> {
+  return invoke("cmd_unlink", { linkId });
 }

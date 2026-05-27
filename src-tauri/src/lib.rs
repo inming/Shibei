@@ -382,6 +382,8 @@ pub fn run() {
             commands::cmd_read_external_file,
             commands::cmd_write_external_file,
             commands::cmd_get_ai_tool_paths,
+            commands::cmd_get_highlight,
+            commands::cmd_get_comment,
             commands::cmd_list_questions,
             commands::cmd_get_question,
             commands::cmd_create_question,

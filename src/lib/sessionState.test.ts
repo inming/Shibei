@@ -17,6 +17,10 @@ import {
   saveSessionState,
   updateReaderTab,
   removeReaderTab,
+  addQuestionTab,
+  removeQuestionTab,
+  questionTabId,
+  parseQuestionTabId,
   clearSessionState,
   STORAGE_KEY,
   DEFAULT_STATE,
@@ -26,10 +30,16 @@ import {
 
 beforeEach(() => {
   localStorage.clear();
+  // sessionState keeps an in-memory mirror that survives storage clears,
+  // so wipe it too — otherwise state leaks between tests when a previous
+  // test populated `mirror` via add*/update* helpers (which read mirror
+  // before storage).
+  clearSessionState();
 });
 
 afterEach(() => {
   localStorage.clear();
+  clearSessionState();
 });
 
 describe("loadSessionState", () => {
@@ -55,10 +65,27 @@ describe("loadSessionState", () => {
       version: 1,
       activeTabId: "r1",
       readerTabs: [{ resourceId: "r1", scrollY: 120 }],
+      questionTabs: [],
       library: { selectedFolderId: "__inbox__", selectedTagIds: ["t1"], filterTagIds: [], selectedResourceId: "r1" },
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     expect(loadSessionState()).toEqual(state);
+  });
+
+  test("treats missing questionTabs in stored v1 state as empty (back-compat)", () => {
+    // Simulates a session written before the questions system shipped.
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        activeTabId: "__library__",
+        readerTabs: [{ resourceId: "r1" }],
+        library: { selectedFolderId: "__all__", filterTagIds: [], selectedResourceId: null },
+      }),
+    );
+    const loaded = loadSessionState();
+    expect(loaded.questionTabs).toEqual([]);
+    expect(loaded.readerTabs).toEqual([{ resourceId: "r1" }]);
   });
 
   test("fills missing optional fields with defaults", () => {
@@ -184,6 +211,7 @@ describe("pdfZoom persistence", () => {
       version: 1,
       activeTabId: "r1",
       readerTabs: [{ resourceId: "r1", pdfZoom: 1.5 }],
+      questionTabs: [],
       library: { selectedFolderId: null, selectedTagIds: [], filterTagIds: [], selectedResourceId: null },
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -195,5 +223,59 @@ describe("pdfZoom persistence", () => {
     const tabs = loadSessionState().readerTabs;
     const r2Tab = tabs.find((t) => t.resourceId === "r2");
     expect(r2Tab?.pdfZoom).toBeUndefined();
+  });
+});
+
+describe("questionTabs", () => {
+  test("addQuestionTab is idempotent", () => {
+    addQuestionTab("q1");
+    addQuestionTab("q1");
+    expect(loadSessionState().questionTabs).toEqual([{ questionId: "q1" }]);
+  });
+
+  test("addQuestionTab preserves order", () => {
+    addQuestionTab("q1");
+    addQuestionTab("q2");
+    addQuestionTab("q3");
+    expect(loadSessionState().questionTabs.map((t) => t.questionId)).toEqual([
+      "q1",
+      "q2",
+      "q3",
+    ]);
+  });
+
+  test("removeQuestionTab drops the matching id", () => {
+    addQuestionTab("q1");
+    addQuestionTab("q2");
+    removeQuestionTab("q1");
+    expect(loadSessionState().questionTabs).toEqual([{ questionId: "q2" }]);
+  });
+
+  test("removeQuestionTab is a no-op for unknown id", () => {
+    addQuestionTab("q1");
+    removeQuestionTab("q-missing");
+    expect(loadSessionState().questionTabs).toEqual([{ questionId: "q1" }]);
+  });
+
+  test("questionTabId / parseQuestionTabId roundtrip", () => {
+    expect(questionTabId("abc")).toBe("q:abc");
+    expect(parseQuestionTabId("q:abc")).toBe("abc");
+    expect(parseQuestionTabId("abc")).toBeNull();
+    // The id portion may itself contain colons (UUIDs don't, but be safe).
+    expect(parseQuestionTabId("q:a:b:c")).toBe("a:b:c");
+  });
+
+  test("loadSessionState ignores malformed questionTabs entries", () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        activeTabId: "__library__",
+        readerTabs: [],
+        questionTabs: [{ questionId: "ok" }, { bogus: "no" }, null, "weird"],
+        library: DEFAULT_STATE.library,
+      }),
+    );
+    expect(loadSessionState().questionTabs).toEqual([{ questionId: "ok" }]);
   });
 });

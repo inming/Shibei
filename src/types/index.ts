@@ -134,3 +134,29 @@ export interface DeletedFolder {
   parent_id: string;
   deleted_at: string;
 }
+
+// ── Questions (research focus areas with polymorphic links) ──
+
+export type QuestionStatus = "active" | "archived";
+
+export type QuestionTargetType = "resource" | "highlight" | "comment";
+
+export interface Question {
+  id: string;
+  title: string;
+  description: string | null;
+  status: QuestionStatus;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuestionLink {
+  id: string;
+  question_id: string;
+  target_type: QuestionTargetType;
+  target_id: string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}

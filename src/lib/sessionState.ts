@@ -11,6 +11,18 @@ export interface ReaderTabState {
   pdfZoom?: number;
 }
 
+/**
+ * Tab state for an open QuestionDetailView. Kept minimal — questions have no
+ * scroll/zoom semantics worth restoring across launches.
+ *
+ * Stored alongside `readerTabs` as a parallel array rather than via a tagged
+ * union: this avoids forcing a v1→v2 migration of users' existing session
+ * files, since v1 readers simply don't read this field.
+ */
+export interface QuestionTabState {
+  questionId: string;
+}
+
 export interface LibraryState {
   selectedFolderId: string | null;
   selectedTagIds?: string[]; // deprecated, kept for backward compat with stored data
@@ -23,6 +35,8 @@ export interface SessionState {
   version: 1;
   activeTabId: string;
   readerTabs: ReaderTabState[];
+  /** v2026-05-27: question detail tabs. Missing in older session files. */
+  questionTabs: QuestionTabState[];
   library: LibraryState;
 }
 
@@ -30,6 +44,7 @@ export const DEFAULT_STATE: SessionState = {
   version: CURRENT_VERSION,
   activeTabId: "__library__",
   readerTabs: [],
+  questionTabs: [],
   library: {
     selectedFolderId: "__all__",
     selectedTagIds: [],
@@ -37,6 +52,17 @@ export const DEFAULT_STATE: SessionState = {
     selectedResourceId: null,
   },
 };
+
+/** Tab id prefix used to distinguish question detail tabs from resource ids. */
+export const QUESTION_TAB_PREFIX = "q:";
+
+export function questionTabId(questionId: string): string {
+  return `${QUESTION_TAB_PREFIX}${questionId}`;
+}
+
+export function parseQuestionTabId(id: string): string | null {
+  return id.startsWith(QUESTION_TAB_PREFIX) ? id.slice(QUESTION_TAB_PREFIX.length) : null;
+}
 
 let mirror: SessionState | null = null;
 
@@ -56,6 +82,11 @@ function loadFromStorage(): SessionState {
       version: CURRENT_VERSION,
       activeTabId: typeof parsed.activeTabId === "string" ? parsed.activeTabId : DEFAULT_STATE.activeTabId,
       readerTabs: Array.isArray(parsed.readerTabs) ? parsed.readerTabs : [],
+      questionTabs: Array.isArray(parsed.questionTabs)
+        ? parsed.questionTabs.filter(
+            (t): t is QuestionTabState => !!t && typeof (t as QuestionTabState).questionId === "string",
+          )
+        : [],
       library: {
         selectedFolderId:
           parsed.library && "selectedFolderId" in parsed.library
@@ -86,6 +117,7 @@ function cloneDefault(): SessionState {
   return {
     ...DEFAULT_STATE,
     readerTabs: [],
+    questionTabs: [],
     library: { ...DEFAULT_STATE.library, selectedTagIds: [] },
   };
 }
@@ -134,6 +166,21 @@ export function removeReaderTab(resourceId: string): void {
   const next = current.readerTabs.filter((t) => t.resourceId !== resourceId);
   if (next.length === current.readerTabs.length) return;
   mirror = { ...current, readerTabs: next };
+  flush();
+}
+
+export function addQuestionTab(questionId: string): void {
+  const current = getMirror();
+  if (current.questionTabs.some((t) => t.questionId === questionId)) return;
+  mirror = { ...current, questionTabs: [...current.questionTabs, { questionId }] };
+  flush();
+}
+
+export function removeQuestionTab(questionId: string): void {
+  const current = getMirror();
+  const next = current.questionTabs.filter((t) => t.questionId !== questionId);
+  if (next.length === current.questionTabs.length) return;
+  mirror = { ...current, questionTabs: next };
   flush();
 }
 

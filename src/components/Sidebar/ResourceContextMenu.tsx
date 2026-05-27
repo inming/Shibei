@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import { TagSubMenu } from "@/components/Sidebar/TagSubMenu";
 import { FolderPickerMenu } from "@/components/Sidebar/FolderPickerMenu";
+import { LinkToQuestionSubMenu } from "@/components/Sidebar/LinkToQuestionSubMenu";
 import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 import styles from "./ResourceContextMenu.module.css";
 
@@ -32,12 +33,15 @@ export function ResourceContextMenu({
   onClose,
 }: ResourceContextMenuProps) {
   const { t } = useTranslation('sidebar');
-  const [openSub, setOpenSub] = useState<"tags" | "move" | null>(null);
+  const { t: tq } = useTranslation('question');
+  const [openSub, setOpenSub] = useState<"tags" | "move" | "questions" | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const tagsAnchorRef = useRef<HTMLDivElement>(null);
   const tagsSubmenuRef = useRef<HTMLDivElement>(null);
   const moveAnchorRef = useRef<HTMLDivElement>(null);
   const moveSubmenuRef = useRef<HTMLDivElement>(null);
+  const questionsAnchorRef = useRef<HTMLDivElement>(null);
+  const questionsSubmenuRef = useRef<HTMLDivElement>(null);
 
   const handleOutsideClick = useCallback(
     (e: MouseEvent) => {
@@ -67,6 +71,11 @@ export function ResourceContextMenu({
   const adjustedPos = useFlipPosition(menuRef, x, y);
   const tagsSubStyle = useSubmenuPosition(tagsAnchorRef, tagsSubmenuRef, openSub === "tags");
   const moveSubStyle = useSubmenuPosition(moveAnchorRef, moveSubmenuRef, openSub === "move");
+  const questionsSubStyle = useSubmenuPosition(
+    questionsAnchorRef,
+    questionsSubmenuRef,
+    openSub === "questions",
+  );
 
   const menuStyle: React.CSSProperties = {
     position: "fixed",
@@ -126,6 +135,27 @@ export function ResourceContextMenu({
                 onMove(folderId);
                 onClose();
               }}
+            />
+          </div>
+        )}
+      </div>
+      <div
+        ref={questionsAnchorRef}
+        className={`${styles.item} ${styles.hasSubmenu}`}
+        onMouseEnter={() => setOpenSub("questions")}
+      >
+        <span>{tq('linkToQuestion')}</span>
+        <span className={styles.arrow}>&rsaquo;</span>
+        {openSub === "questions" && (
+          <div
+            ref={questionsSubmenuRef}
+            className={styles.submenuPanel}
+            style={questionsSubStyle}
+          >
+            <LinkToQuestionSubMenu
+              targetType="resource"
+              targetIds={resourceIds}
+              onClose={onClose}
             />
           </div>
         )}

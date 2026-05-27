@@ -10,6 +10,7 @@ import type zhLock from '../locales/zh/lock.json';
 import type zhSearch from '../locales/zh/search.json';
 import type zhData from '../locales/zh/data.json';
 import type zhAi from '../locales/zh/ai.json';
+import type zhQuestion from '../locales/zh/question.json';
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -26,6 +27,7 @@ declare module 'i18next' {
       search: typeof zhSearch;
       data: typeof zhData;
       ai: typeof zhAi;
+      question: typeof zhQuestion;
     };
   }
 }

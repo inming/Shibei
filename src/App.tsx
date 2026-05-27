@@ -3,13 +3,19 @@ import { listen } from "@tauri-apps/api/event";
 import { onOpenUrl, getCurrent as getDeepLinkCurrent } from "@tauri-apps/plugin-deep-link";
 import { useTranslation } from "react-i18next";
 import { Toaster } from "react-hot-toast";
-import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Resource } from "@/types";
-import { DataEvents, type ResourceChangedPayload, type ConfigChangedPayload } from "@/lib/events";
+import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Resource, type Question } from "@/types";
+import {
+  DataEvents,
+  type ResourceChangedPayload,
+  type ConfigChangedPayload,
+  type QuestionChangedPayload,
+} from "@/lib/events";
 import { TabBar, type TabItem } from "@/components/TabBar";
 import { LibraryView } from "@/components/Layout";
 import { ReaderView } from "@/components/ReaderView";
 import { SettingsView } from "@/components/SettingsView";
 import { LockScreen } from "@/components/LockScreen";
+import { QuestionDetailView } from "@/components/QuestionDetail/QuestionDetailView";
 import { useTheme } from "@/hooks/useTheme";
 import * as cmd from "@/lib/commands";
 import { parseShibeiDeepLink } from "@/lib/deepLink";
@@ -18,6 +24,10 @@ import {
   saveSessionState,
   updateReaderTab,
   removeReaderTab,
+  addQuestionTab,
+  removeQuestionTab,
+  questionTabId,
+  parseQuestionTabId,
 } from "@/lib/sessionState";
 import styles from "./App.module.css";
 
@@ -43,9 +53,11 @@ function App() {
   const { t } = useTranslation('sidebar');
   const [activeTabId, setActiveTabId] = useState(initialSession.activeTabId);
   const [readerTabs, setReaderTabs] = useState<Map<string, ReaderTab>>(new Map());
-  // Reader tabs are CSS-hidden when inactive (to preserve iframe state),
-  // but we only MOUNT them on first activation to avoid paying for every
-  // tab at boot.
+  /** Open question detail tabs, keyed by Question.id (NOT the tab id with `q:` prefix). */
+  const [questionTabs, setQuestionTabs] = useState<Map<string, Question>>(new Map());
+  // Reader / question tabs are CSS-hidden when inactive (to preserve iframe
+  // / fetch state) but only MOUNT on first activation to avoid paying for
+  // every tab at boot.
   const [mountedTabIds, setMountedTabIds] = useState<Set<string>>(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<"appearance" | "sync" | "encryption" | undefined>(undefined);
@@ -88,6 +100,25 @@ function App() {
     updateReaderTab(resource.id, {});
   }, []);
 
+  const openQuestion = useCallback((question: Question) => {
+    setQuestionTabs((prev) => {
+      const next = new Map(prev);
+      // Always refresh the snapshot — title / status may have changed.
+      next.set(question.id, question);
+      return next;
+    });
+    const tabId = questionTabId(question.id);
+    setMountedTabIds((prev) => {
+      if (prev.has(tabId)) return prev;
+      const next = new Set(prev);
+      next.add(tabId);
+      return next;
+    });
+    setActiveTabId(tabId);
+    saveSessionState({ activeTabId: tabId });
+    addQuestionTab(question.id);
+  }, []);
+
   const openSettings = useCallback((section?: "appearance" | "sync" | "encryption") => {
     setSettingsOpen(true);
     setSettingsSection(section);
@@ -100,6 +131,25 @@ function App() {
     if (id === SETTINGS_TAB_ID) {
       setSettingsOpen(false);
       setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+      saveSessionState({ activeTabId: activeTabId === id ? LIBRARY_TAB_ID : activeTabId });
+      return;
+    }
+    const qId = parseQuestionTabId(id);
+    if (qId) {
+      setQuestionTabs((prev) => {
+        if (!prev.has(qId)) return prev;
+        const next = new Map(prev);
+        next.delete(qId);
+        return next;
+      });
+      setMountedTabIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setActiveTabId((current) => (current === id ? LIBRARY_TAB_ID : current));
+      removeQuestionTab(qId);
       saveSessionState({ activeTabId: activeTabId === id ? LIBRARY_TAB_ID : activeTabId });
       return;
     }
@@ -150,12 +200,48 @@ function App() {
     return () => { unlisten.then((f) => f()); };
   }, []);
 
-  // Restore reader tabs from session on mount (once).
+  // Close any open question detail tab whose Question was deleted elsewhere
+  // (sidebar context menu, MCP, sync from another device).
+  useEffect(() => {
+    const unlisten = listen<QuestionChangedPayload>(
+      DataEvents.QUESTION_CHANGED,
+      (event) => {
+        if (event.payload.action !== "deleted") return;
+        const qId = event.payload.question_id;
+        if (!qId) return;
+        const tabId = questionTabId(qId);
+        setQuestionTabs((prev) => {
+          if (!prev.has(qId)) return prev;
+          const next = new Map(prev);
+          next.delete(qId);
+          return next;
+        });
+        setMountedTabIds((prev) => {
+          if (!prev.has(tabId)) return prev;
+          const next = new Set(prev);
+          next.delete(tabId);
+          return next;
+        });
+        setActiveTabId((current) => {
+          const next = current === tabId ? LIBRARY_TAB_ID : current;
+          if (next !== current) saveSessionState({ activeTabId: next });
+          return next;
+        });
+        removeQuestionTab(qId);
+      },
+    );
+    return () => { unlisten.then((f) => f()); };
+  }, []);
+
+  // Restore reader and question tabs from session on mount (once).
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    if (initialSession.readerTabs.length === 0) {
+    if (
+      initialSession.readerTabs.length === 0 &&
+      initialSession.questionTabs.length === 0
+    ) {
       // Nothing to restore; any non-library active tab normalizes to library.
       if (initialSession.activeTabId !== LIBRARY_TAB_ID) {
         setActiveTabId(LIBRARY_TAB_ID);
@@ -165,22 +251,34 @@ function App() {
     }
 
     (async () => {
-      const results = await Promise.all(
-        initialSession.readerTabs.map(async (entry) => {
-          try {
-            const resource = await cmd.getResource(entry.resourceId);
-            return resource ? { entry, resource } : null;
-          } catch {
-            return null;
-          }
-        }),
-      );
+      const [readerResults, questionResults] = await Promise.all([
+        Promise.all(
+          initialSession.readerTabs.map(async (entry) => {
+            try {
+              const resource = await cmd.getResource(entry.resourceId);
+              return resource ? { entry, resource } : null;
+            } catch {
+              return null;
+            }
+          }),
+        ),
+        Promise.all(
+          initialSession.questionTabs.map(async (entry) => {
+            try {
+              const question = await cmd.getQuestion(entry.questionId);
+              return question ? { entry, question } : null;
+            } catch {
+              return null;
+            }
+          }),
+        ),
+      ]);
 
-      const nextTabs = new Map<string, ReaderTab>();
-      const keptIds = new Set<string>();
-      for (const r of results) {
+      const nextReaderTabs = new Map<string, ReaderTab>();
+      const keptReaderIds = new Set<string>();
+      for (const r of readerResults) {
         if (!r) continue;
-        nextTabs.set(r.resource.id, {
+        nextReaderTabs.set(r.resource.id, {
           resource: r.resource,
           initialHighlightId: null,
           initialScrollY: typeof r.entry.scrollY === "number" ? r.entry.scrollY : null,
@@ -189,28 +287,48 @@ function App() {
             typeof r.entry.pdfScrollFraction === "number" ? r.entry.pdfScrollFraction : null,
           initialPdfZoom: typeof r.entry.pdfZoom === "number" ? r.entry.pdfZoom : null,
         });
-        keptIds.add(r.resource.id);
+        keptReaderIds.add(r.resource.id);
+      }
+      const nextQuestionTabs = new Map<string, Question>();
+      const keptQuestionTabIds = new Set<string>();
+      for (const q of questionResults) {
+        if (!q) continue;
+        nextQuestionTabs.set(q.question.id, q.question);
+        keptQuestionTabIds.add(questionTabId(q.question.id));
       }
 
       // Purge dropped tabs from session
       for (const e of initialSession.readerTabs) {
-        if (!keptIds.has(e.resourceId)) removeReaderTab(e.resourceId);
+        if (!keptReaderIds.has(e.resourceId)) removeReaderTab(e.resourceId);
+      }
+      for (const e of initialSession.questionTabs) {
+        if (!nextQuestionTabs.has(e.questionId)) removeQuestionTab(e.questionId);
       }
 
       // Determine final active tab:
       // - Settings tab → library (we don't restore Settings)
-      // - Missing reader tab → library
+      // - Missing reader / question tab → library
       let finalActive = initialSession.activeTabId;
-      if (finalActive === SETTINGS_TAB_ID) finalActive = LIBRARY_TAB_ID;
-      else if (finalActive !== LIBRARY_TAB_ID && !keptIds.has(finalActive)) {
+      if (finalActive === SETTINGS_TAB_ID) {
         finalActive = LIBRARY_TAB_ID;
+      } else if (finalActive !== LIBRARY_TAB_ID) {
+        const isReader = keptReaderIds.has(finalActive);
+        const isQuestion = keptQuestionTabIds.has(finalActive);
+        if (!isReader && !isQuestion) finalActive = LIBRARY_TAB_ID;
       }
 
       if (deepLinkHandledRef.current) {
         setReaderTabs((prev) => {
           const merged = new Map(prev);
-          for (const [id, tab] of nextTabs) {
+          for (const [id, tab] of nextReaderTabs) {
             if (!merged.has(id)) merged.set(id, tab);
+          }
+          return merged;
+        });
+        setQuestionTabs((prev) => {
+          const merged = new Map(prev);
+          for (const [id, q] of nextQuestionTabs) {
+            if (!merged.has(id)) merged.set(id, q);
           }
           return merged;
         });
@@ -224,7 +342,8 @@ function App() {
         return;
       }
 
-      setReaderTabs(nextTabs);
+      setReaderTabs(nextReaderTabs);
+      setQuestionTabs(nextQuestionTabs);
       if (finalActive !== LIBRARY_TAB_ID) {
         setMountedTabIds(new Set([finalActive]));
       }
@@ -389,6 +508,11 @@ function App() {
       label: tab.resource.title,
       closable: true,
     })),
+    ...Array.from(questionTabs.entries()).map(([qId, q]) => ({
+      id: questionTabId(qId),
+      label: q.title,
+      closable: true,
+    })),
     ...(settingsOpen ? [{ id: SETTINGS_TAB_ID, label: t('settingsTab'), closable: true }] : []),
   ];
 
@@ -417,6 +541,7 @@ function App() {
         <div className={`${styles.tabPane} ${activeTabId !== LIBRARY_TAB_ID ? styles.tabPaneHidden : ""}`}>
           <LibraryView
             onOpenResource={openResource}
+            onOpenQuestion={openQuestion}
             onOpenSettings={openSettings}
             lockEnabled={lockEnabled}
             onLock={() => setLocked(true)}
@@ -437,6 +562,21 @@ function App() {
             </div>
           ) : null,
         )}
+        {Array.from(questionTabs.entries()).map(([qId, q]) => {
+          const tabId = questionTabId(qId);
+          return mountedTabIds.has(tabId) ? (
+            <div
+              key={tabId}
+              className={`${styles.tabPane} ${activeTabId !== tabId ? styles.tabPaneHidden : ""}`}
+            >
+              <QuestionDetailView
+                question={q}
+                onOpenResource={openResource}
+                onClose={() => closeTab(tabId)}
+              />
+            </div>
+          ) : null;
+        })}
         {settingsOpen && (
           <div className={`${styles.tabPane} ${activeTabId !== SETTINGS_TAB_ID ? styles.tabPaneHidden : ""}`}>
             <SettingsView
