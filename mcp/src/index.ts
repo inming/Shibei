@@ -7,6 +7,7 @@ import { registerAnnotationTools } from "./tools/annotations.js";
 import { registerFolderTools } from "./tools/folders.js";
 import { registerTagTools } from "./tools/tags.js";
 import { registerSyncTools } from "./tools/sync.js";
+import { registerQuestionTools } from "./tools/questions.js";
 
 const server = new McpServer({
   name: "shibei",
@@ -21,6 +22,7 @@ registerAnnotationTools(server, client);
 registerFolderTools(server, client);
 registerTagTools(server, client);
 registerSyncTools(server, client);
+registerQuestionTools(server, client);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

@@ -19,6 +19,8 @@ use crate::events;
 use crate::plain_text;
 use crate::storage;
 
+mod questions;
+
 /// Shared state for the HTTP server.
 pub struct AppState {
     pub pool: db::SharedPool,
@@ -219,6 +221,29 @@ pub async fn start_server(
             post(handle_create_comment),
         )
         .route("/api/comments/{id}", put(handle_update_comment))
+        // Questions
+        .route(
+            "/api/questions",
+            get(questions::handle_list_questions).post(questions::handle_create_question),
+        )
+        .route(
+            "/api/questions/{id}",
+            get(questions::handle_get_question)
+                .put(questions::handle_update_question)
+                .delete(questions::handle_delete_question),
+        )
+        .route(
+            "/api/questions/{id}/links",
+            get(questions::handle_list_question_links).post(questions::handle_create_link),
+        )
+        .route(
+            "/api/question-links/{link_id}",
+            put(questions::handle_update_link).delete(questions::handle_delete_link),
+        )
+        .route(
+            "/api/questions-for-target",
+            get(questions::handle_questions_for_target),
+        )
         .with_state(state)
         .layer(cors)
         .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024));

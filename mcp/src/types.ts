@@ -57,3 +57,23 @@ export interface ContentResponse {
   total_length: number;
   has_more: boolean;
 }
+
+export interface Question {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "active" | "archived";
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuestionLink {
+  id: string;
+  question_id: string;
+  target_type: "resource" | "highlight" | "comment";
+  target_id: string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
