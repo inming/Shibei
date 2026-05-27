@@ -132,6 +132,12 @@ pub fn delete_comment(
     if changed == 0 {
         return Err(DbError::NotFound(format!("comment {}", id)));
     }
+    super::questions::cascade_soft_delete_for_target(
+        conn,
+        super::questions::TARGET_COMMENT,
+        id,
+        sync_ctx,
+    )?;
 
     if let Some(ctx) = sync_ctx {
         if let Some(comment) = comment_before {

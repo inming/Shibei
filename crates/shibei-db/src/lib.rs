@@ -3,6 +3,7 @@ pub mod folders;
 pub mod highlights;
 pub mod hlc;
 pub mod migration;
+pub mod questions;
 pub mod resources;
 pub mod search;
 pub mod sync_log;
@@ -113,7 +114,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         let fk_enabled: bool = conn
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))
@@ -133,7 +134,7 @@ mod tests {
         let version: u32 = conn2
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
@@ -147,7 +148,7 @@ mod tests {
         let version: u32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         let fk_enabled: bool = conn
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))

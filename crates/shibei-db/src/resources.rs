@@ -471,6 +471,12 @@ pub fn delete_resource(
         "UPDATE resource_tags SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE resource_id = ?3 AND deleted_at IS NULL",
         params![now, hlc_str, id],
     )?;
+    super::questions::cascade_soft_delete_for_target(
+        conn,
+        super::questions::TARGET_RESOURCE,
+        id,
+        sync_ctx,
+    )?;
 
     if let Some(ctx) = sync_ctx {
         if let Some(resource) = resource_before {

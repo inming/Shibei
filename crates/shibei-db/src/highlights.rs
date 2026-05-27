@@ -146,6 +146,12 @@ pub fn delete_highlight(
         "UPDATE comments SET deleted_at = ?1, hlc = COALESCE(?2, hlc) WHERE highlight_id = ?3 AND deleted_at IS NULL",
         params![now, hlc_str, id],
     )?;
+    super::questions::cascade_soft_delete_for_target(
+        conn,
+        super::questions::TARGET_HIGHLIGHT,
+        id,
+        sync_ctx,
+    )?;
 
     if let Some(ctx) = sync_ctx {
         if let Some(highlight) = highlight_before {
