@@ -526,6 +526,7 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
               resource={selectedResource}
               onNavigateToFolder={(folderId) => setSelectedFolderId(folderId)}
               onOpenHighlight={(_rid, hid) => onOpenResource(selectedResource, hid)}
+              onOpenQuestion={onOpenQuestion}
             />
           ) : (
             <div className={styles.mainPlaceholder}>

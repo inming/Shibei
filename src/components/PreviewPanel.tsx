@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import type { Resource } from "@/types";
+import type { Resource, Question } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 import { useAnnotations } from "@/hooks/useAnnotations";
+import { useQuestionsForTarget } from "@/hooks/useQuestionsForTarget";
 import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import styles from "./PreviewPanel.module.css";
@@ -13,13 +14,16 @@ interface PreviewPanelProps {
   resource: Resource;
   onNavigateToFolder?: (folderId: string) => void;
   onOpenHighlight?: (resourceId: string, highlightId: string) => void;
+  onOpenQuestion?: (question: Question) => void;
 }
 
-export function PreviewPanel({ resource: initialResource, onNavigateToFolder, onOpenHighlight }: PreviewPanelProps) {
+export function PreviewPanel({ resource: initialResource, onNavigateToFolder, onOpenHighlight, onOpenQuestion }: PreviewPanelProps) {
   const { t: tSidebar } = useTranslation('sidebar');
   const { t: tAnnotation } = useTranslation('annotation');
+  const { t: tQuestion } = useTranslation('question');
   const [resource, setResource] = useState<Resource>(initialResource);
   const { highlights, getCommentsForHighlight, resourceNotes, loading } = useAnnotations(resource.id);
+  const { questions: relatedQuestions } = useQuestionsForTarget("resource", resource.id);
   const [summary, setSummary] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,6 +59,32 @@ export function PreviewPanel({ resource: initialResource, onNavigateToFolder, on
             {resource.description || summary || tSidebar('previewNoDescription')}
           </p>
         </div>
+
+        {/* Related questions (reverse lookup) */}
+        {relatedQuestions.length > 0 && (
+          <div className={styles.questionsSection}>
+            <div className={styles.sectionLabel}>{tQuestion('linksHeader')}</div>
+            <div className={styles.questionChips}>
+              {relatedQuestions.map((q) => {
+                const archived = q.status === "archived";
+                return (
+                  <button
+                    key={q.id}
+                    className={`${styles.questionChip} ${archived ? styles.questionChipArchived : ""}`}
+                    onClick={() => onOpenQuestion?.(q)}
+                    title={q.description ?? q.title}
+                    disabled={!onOpenQuestion}
+                  >
+                    <span
+                      className={`${styles.questionChipDot} ${archived ? styles.questionChipDotArchived : ""}`}
+                    />
+                    <span>{q.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Highlights & comments */}
         {!loading && highlights.length > 0 && (

@@ -30,6 +30,60 @@
   border-bottom: 1px solid var(--color-border-light);
 }
 
+.questionsSection {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.questionChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--spacing-xs);
+}
+
+.questionChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary, transparent);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.questionChip:hover {
+  border-color: var(--color-accent, #4caf50);
+  background: var(--color-bg-hover, var(--color-hover));
+}
+
+.questionChipArchived {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+.questionChipDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent, #4caf50);
+  flex-shrink: 0;
+}
+
+.questionChipDotArchived {
+  background: var(--color-text-muted, var(--color-text-secondary));
+}
+
 .summaryText {
   font-size: var(--font-size-base);
   color: var(--color-text-secondary);
