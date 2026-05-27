@@ -7,7 +7,8 @@ import { Modal } from "@/components/Modal";
 import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
-import { useFlipPosition } from "@/hooks/useFlipPosition";
+import { LinkToQuestionSubMenu } from "@/components/Sidebar/LinkToQuestionSubMenu";
+import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 import * as cmd from "@/lib/commands";
 
 function autoResize(el: HTMLTextAreaElement | null) {
@@ -247,6 +248,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     ref,
   ) {
     const { t } = useTranslation('annotation');
+    const { t: tq } = useTranslation('question');
     const [showInput, setShowInput] = useState(false);
     const [flashing, setFlashing] = useState(false);
     const [commentText, setCommentText] = useState("");
@@ -257,6 +259,10 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
     const ctxRef = useRef<HTMLDivElement>(null);
     const ctxAdjustedPos = useFlipPosition(ctxRef, ctxMenu?.x ?? 0, ctxMenu?.y ?? 0);
+    const linkAnchorRef = useRef<HTMLDivElement>(null);
+    const linkSubmenuRef = useRef<HTMLDivElement>(null);
+    const [linkSubOpen, setLinkSubOpen] = useState(false);
+    const linkSubStyle = useSubmenuPosition(linkAnchorRef, linkSubmenuRef, linkSubOpen);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
       e.preventDefault();
@@ -270,10 +276,16 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     useEffect(() => {
       if (!ctxMenu) return;
       function handleClick(e: MouseEvent) {
-        if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) setCtxMenu(null);
+        if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) {
+          setCtxMenu(null);
+          setLinkSubOpen(false);
+        }
       }
       function handleKey(e: KeyboardEvent) {
-        if (e.key === "Escape") setCtxMenu(null);
+        if (e.key === "Escape") {
+          setCtxMenu(null);
+          setLinkSubOpen(false);
+        }
       }
       document.addEventListener("mousedown", handleClick);
       document.addEventListener("keydown", handleKey);
@@ -360,6 +372,27 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
             >
               {t('copyLink')}
             </button>
+            <div
+              ref={linkAnchorRef}
+              className={`${styles.hlContextItem} ${styles.hlContextItemHasSubmenu}`}
+              onMouseEnter={() => setLinkSubOpen(true)}
+            >
+              <span>{tq('linkToQuestion')}</span>
+              <span className={styles.hlContextArrow}>&rsaquo;</span>
+              {linkSubOpen && (
+                <div
+                  ref={linkSubmenuRef}
+                  className={styles.hlContextSubmenuPanel}
+                  style={linkSubStyle}
+                >
+                  <LinkToQuestionSubMenu
+                    targetType="highlight"
+                    targetIds={[highlight.id]}
+                    onClose={() => { setCtxMenu(null); setLinkSubOpen(false); }}
+                  />
+                </div>
+              )}
+            </div>
             <button
               className={`${styles.hlContextItem} ${styles.danger}`}
               onClick={() => { onDelete(); setCtxMenu(null); }}

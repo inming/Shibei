@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
 import type { Highlight } from "@/types";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
-import { useFlipPosition } from "@/hooks/useFlipPosition";
+import { LinkToQuestionSubMenu } from "@/components/Sidebar/LinkToQuestionSubMenu";
+import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 import styles from "./HighlightContextMenu.module.css";
 
 interface HighlightContextMenuProps {
@@ -25,6 +26,10 @@ export function HighlightContextMenu({
 }: HighlightContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const adjustedPos = useFlipPosition(ref, position.left, position.top);
+  const linkAnchorRef = useRef<HTMLDivElement>(null);
+  const linkSubmenuRef = useRef<HTMLDivElement>(null);
+  const [submenuOpen, setSubmenuOpen] = useState(false);
+  const linkSubStyle = useSubmenuPosition(linkAnchorRef, linkSubmenuRef, submenuOpen);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -44,6 +49,7 @@ export function HighlightContextMenu({
   }, [onClose]);
 
   const { t } = useTranslation('annotation');
+  const { t: tq } = useTranslation('question');
 
   if (!highlight) return null;
 
@@ -84,6 +90,23 @@ export function HighlightContextMenu({
       >
         {t('copyLink')}
       </button>
+      <div
+        ref={linkAnchorRef}
+        className={`${styles.item} ${styles.hasSubmenu}`}
+        onMouseEnter={() => setSubmenuOpen(true)}
+      >
+        <span>{tq('linkToQuestion')}</span>
+        <span className={styles.arrow}>&rsaquo;</span>
+        {submenuOpen && (
+          <div ref={linkSubmenuRef} className={styles.submenuPanel} style={linkSubStyle}>
+            <LinkToQuestionSubMenu
+              targetType="highlight"
+              targetIds={[highlight.id]}
+              onClose={onClose}
+            />
+          </div>
+        )}
+      </div>
       <button className={`${styles.item} ${styles.danger}`} onClick={onDelete}>
         {t('deleteAnnotation')}
       </button>

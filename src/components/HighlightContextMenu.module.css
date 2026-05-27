@@ -81,3 +81,31 @@
   background: var(--color-danger);
   color: white;
 }
+
+.hasSubmenu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: default;
+}
+
+.arrow {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  margin-left: 8px;
+}
+
+.submenuPanel {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+  z-index: 1001;
+  max-height: 60vh;
+  overflow-y: auto;
+}
