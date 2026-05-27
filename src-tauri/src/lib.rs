@@ -385,6 +385,7 @@ pub fn run() {
             commands::cmd_get_highlight,
             commands::cmd_get_comment,
             commands::cmd_list_questions,
+            commands::cmd_search_questions,
             commands::cmd_get_question,
             commands::cmd_create_question,
             commands::cmd_update_question,
@@ -574,6 +575,19 @@ pub fn run() {
                                 }
                             }
                             Err(e) => eprintln!("[shibei] FTS init check failed: {}", e),
+                            _ => {}
+                        }
+                        // Question FTS init — separate flag so existing FTS
+                        // users still get the new index built on upgrade.
+                        match db::search::is_question_fts_initialized(&conn) {
+                            Ok(false) => {
+                                if let Err(e) = db::search::rebuild_all_question_search_index(&conn) {
+                                    eprintln!("[shibei] question FTS rebuild failed: {}", e);
+                                } else if let Err(e) = db::search::mark_question_fts_initialized(&conn) {
+                                    eprintln!("[shibei] question FTS flag write failed: {}", e);
+                                }
+                            }
+                            Err(e) => eprintln!("[shibei] question FTS init check failed: {}", e),
                             _ => {}
                         }
                     }

@@ -3,8 +3,10 @@ import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "react-i18next";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
-import type { Resource, Tag } from "@/types";
+import type { Resource, Tag, Question } from "@/types";
 import { ALL_RESOURCES_ID } from "@/types";
+import { listen } from "@tauri-apps/api/event";
+import { DataEvents } from "@/lib/events";
 import { ResourceListSkeleton } from "@/components/Skeleton";
 import { Modal } from "@/components/Modal";
 import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
@@ -42,6 +44,7 @@ interface ResourceListProps {
   onSearchChange: (query: string) => void;
   onSelectResource: (resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => void;
   onOpen: (resource: Resource) => void;
+  onOpenQuestion?: (question: Question) => void;
   onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
   initialScrollTop?: number;
@@ -114,7 +117,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFilterTagsChange, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFilterTagsChange, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onOpenQuestion, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
   const { t } = useTranslation('sidebar');
   const { t: tSearch } = useTranslation('search');
   const { t: tReader } = useTranslation('reader');
@@ -173,6 +176,36 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
   const filteredResources = resources;
 
   const MIN_SEARCH_CHARS = 2;
+
+  // Sibling search: questions matching the same query. Surfaces above the
+  // resource list as a chip row so users can pivot to a question without
+  // leaving the search context.
+  const [matchedQuestions, setMatchedQuestions] = useState<Question[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (searchQuery.length < MIN_SEARCH_CHARS) {
+      setMatchedQuestions([]);
+      return;
+    }
+    cmd.searchQuestions(searchQuery)
+      .then((qs) => { if (!cancelled) setMatchedQuestions(qs); })
+      .catch(() => { if (!cancelled) setMatchedQuestions([]); });
+    return () => { cancelled = true; };
+  }, [searchQuery]);
+
+  // Refresh question chips when questions mutate while the query is active.
+  useEffect(() => {
+    if (searchQuery.length < MIN_SEARCH_CHARS) return;
+    const refresh = () => {
+      cmd.searchQuestions(searchQuery).then(setMatchedQuestions).catch(() => {});
+    };
+    const u1 = listen(DataEvents.QUESTION_CHANGED, refresh);
+    const u2 = listen(DataEvents.SYNC_COMPLETED, refresh);
+    return () => {
+      u1.then((f) => f());
+      u2.then((f) => f());
+    };
+  }, [searchQuery]);
 
   function handleSearchInput(value: string) {
     setInputValue(value);
@@ -368,6 +401,26 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
         </div>
       </div>
       <div ref={scrollContainerRef} className={styles.listScroll} onContextMenu={handleListContextMenu}>
+        {searchQuery.length >= MIN_SEARCH_CHARS && matchedQuestions.length > 0 && onOpenQuestion && (
+          <div className={styles.matchedQuestionsBar}>
+            <span className={styles.matchedQuestionsLabel}>
+              {tSearch('matchedQuestions', { defaultValue: '问题' })}:
+            </span>
+            <div className={styles.matchedQuestionsChips}>
+              {matchedQuestions.map((q) => (
+                <button
+                  key={q.id}
+                  className={`${styles.matchedQuestionChip} ${q.status === 'archived' ? styles.matchedQuestionChipArchived : ''}`}
+                  onClick={() => onOpenQuestion(q)}
+                  title={q.description ?? q.title}
+                >
+                  <span className={styles.matchedQuestionDot} />
+                  <span>{q.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {!folderId && (
           <div className={styles.empty}>{t('selectFolderHint')}</div>
         )}

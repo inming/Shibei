@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 
-use crate::db::{comments, highlights, questions};
+use crate::db::{comments, highlights, questions, search};
 use crate::events;
 
 use super::{AppState, CommandError};
@@ -46,6 +46,15 @@ pub async fn cmd_list_questions(
 ) -> Result<Vec<questions::Question>, CommandError> {
     let conn = state.conn()?;
     questions::list_questions(&conn, status.as_deref()).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_search_questions(
+    state: tauri::State<'_, Arc<AppState>>,
+    query: String,
+) -> Result<Vec<questions::Question>, CommandError> {
+    let conn = state.conn()?;
+    search::search_questions(&conn, &query).map_err(Into::into)
 }
 
 #[tauri::command]

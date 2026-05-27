@@ -123,6 +123,9 @@ pub fn create_question(
         )?;
     }
 
+    // FTS index: best-effort, never fail the create on index trouble.
+    let _ = super::search::rebuild_question_search_index(conn, &question.id);
+
     Ok(question)
 }
 
@@ -159,6 +162,8 @@ pub fn update_question(
             hlc_str.as_deref(),
         )?;
     }
+
+    let _ = super::search::rebuild_question_search_index(conn, id);
 
     Ok(())
 }
@@ -338,6 +343,8 @@ pub fn delete_question(
             hlc_str.as_deref(),
         )?;
     }
+
+    let _ = super::search::delete_question_search_index(conn, id);
 
     Ok(())
 }

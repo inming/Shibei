@@ -507,6 +507,7 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
               onSearchChange={setSearchQuery}
               onSelectResource={handleResourceSelect}
               onOpen={(resource) => onOpenResource(resource)}
+              onOpenQuestion={onOpenQuestion}
               onSortByChange={setSortBy}
               onSortOrderChange={setSortOrder}
               initialScrollTop={initialLibrary.listScrollTop}

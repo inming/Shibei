@@ -1054,6 +1054,8 @@ impl SyncEngine {
         let mut applied = 0usize;
         let mut affected_resource_ids = HashSet::new();
 
+        let mut affected_question_ids = HashSet::new();
+
         for entry in &entries {
             // Skip entries from self
             if entry.device_id == self.device_id {
@@ -1087,6 +1089,7 @@ impl SyncEngine {
                                 affected_resource_ids.insert(rid.to_string());
                             }
                         }
+                        "question" => { affected_question_ids.insert(entry.entity_id.clone()); }
                         _ => {}
                     }
                 }
@@ -1104,6 +1107,7 @@ impl SyncEngine {
                                 affected_resource_ids.insert(rid.to_string());
                             }
                         }
+                        "question" => { affected_question_ids.insert(entry.entity_id.clone()); }
                         _ => {}
                     }
                 }
@@ -1112,8 +1116,10 @@ impl SyncEngine {
                     // If it's still active locally, skip — the DELETE must arrive first.
                     self.purge_entity(&conn, &entry.entity_type, &entry.entity_id)?;
                     applied += 1;
-                    if entry.entity_type == "resource" {
-                        affected_resource_ids.insert(entry.entity_id.clone());
+                    match entry.entity_type.as_str() {
+                        "resource" => { affected_resource_ids.insert(entry.entity_id.clone()); }
+                        "question" => { affected_question_ids.insert(entry.entity_id.clone()); }
+                        _ => {}
                     }
                 }
                 _ => {
@@ -1137,6 +1143,22 @@ impl SyncEngine {
                 let _ = shibei_db::search::delete_search_index(&conn, rid);
             } else {
                 let _ = shibei_db::search::rebuild_search_index(&conn, rid);
+            }
+        }
+
+        // Rebuild question FTS for affected questions (separate index).
+        for qid in &affected_question_ids {
+            let is_deleted: bool = conn
+                .query_row(
+                    "SELECT deleted_at IS NOT NULL FROM questions WHERE id = ?1",
+                    rusqlite::params![qid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(true);
+            if is_deleted {
+                let _ = shibei_db::search::delete_question_search_index(&conn, qid);
+            } else {
+                let _ = shibei_db::search::rebuild_question_search_index(&conn, qid);
             }
         }
 

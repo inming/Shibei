@@ -150,6 +150,135 @@ where
 }
 
 /// Rebuild FTS index for all non-deleted resources.
+/// Rebuild the FTS index for a single question. Idempotent.
+pub fn rebuild_question_search_index(
+    conn: &Connection,
+    question_id: &str,
+) -> Result<(), DbError> {
+    let (title, description): (String, Option<String>) = conn
+        .query_row(
+            "SELECT title, description FROM questions WHERE id = ?1 AND deleted_at IS NULL",
+            params![question_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                DbError::NotFound(format!("question {}", question_id))
+            }
+            other => DbError::Sqlite(other),
+        })?;
+
+    conn.execute(
+        "DELETE FROM question_index WHERE question_id = ?1",
+        params![question_id],
+    )?;
+    conn.execute(
+        "INSERT INTO question_index (question_id, title, description)
+         VALUES (?1, ?2, ?3)",
+        params![question_id, title, description.unwrap_or_default()],
+    )?;
+
+    Ok(())
+}
+
+/// Delete the FTS index entry for a question. Idempotent.
+pub fn delete_question_search_index(
+    conn: &Connection,
+    question_id: &str,
+) -> Result<(), DbError> {
+    conn.execute(
+        "DELETE FROM question_index WHERE question_id = ?1",
+        params![question_id],
+    )?;
+    Ok(())
+}
+
+/// One-time backfill of question_index for all alive questions. Used on first
+/// startup after migration 009 (gated by `config:question_fts_initialized`).
+pub fn rebuild_all_question_search_index(conn: &Connection) -> Result<(), DbError> {
+    conn.execute("DELETE FROM question_index", [])?;
+    let mut stmt = conn.prepare("SELECT id FROM questions WHERE deleted_at IS NULL")?;
+    let ids: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for id in &ids {
+        rebuild_question_search_index(conn, id)?;
+    }
+    Ok(())
+}
+
+pub fn is_question_fts_initialized(conn: &Connection) -> Result<bool, DbError> {
+    let row: Option<String> = conn
+        .query_row(
+            "SELECT value FROM sync_state WHERE key = 'config:question_fts_initialized'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    Ok(row.as_deref() == Some("1"))
+}
+
+pub fn mark_question_fts_initialized(conn: &Connection) -> Result<(), DbError> {
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_state (key, value) VALUES ('config:question_fts_initialized', '1')",
+        [],
+    )?;
+    Ok(())
+}
+
+/// Search questions via FTS5 MATCH (>= 3 chars) or LIKE fallback for shorter
+/// queries (esp. 2-char CJK words). Returns ranked alive questions; archived
+/// rows are included so users can find historical context.
+pub fn search_questions(
+    conn: &Connection,
+    query: &str,
+) -> Result<Vec<super::questions::Question>, DbError> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let use_fts = trimmed.chars().count() >= 3;
+
+    let sql = if use_fts {
+        "SELECT q.id, q.title, q.description, q.status, q.archived_at,
+                q.created_at, q.updated_at
+         FROM questions q
+         JOIN question_index qi ON q.id = qi.question_id
+         WHERE q.deleted_at IS NULL AND question_index MATCH ?1
+         ORDER BY q.status ASC, q.updated_at DESC"
+    } else {
+        "SELECT q.id, q.title, q.description, q.status, q.archived_at,
+                q.created_at, q.updated_at
+         FROM questions q
+         JOIN question_index qi ON q.id = qi.question_id
+         WHERE q.deleted_at IS NULL
+           AND (qi.title LIKE ?1 OR qi.description LIKE ?1)
+         ORDER BY q.status ASC, q.updated_at DESC"
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+    let param = if use_fts {
+        escape_fts_query(trimmed)
+    } else {
+        format!("%{}%", trimmed)
+    };
+    let rows = stmt
+        .query_map(params![param], |row| {
+            Ok(super::questions::Question {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                description: row.get(2)?,
+                status: row.get(3)?,
+                archived_at: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 pub fn rebuild_all_search_index(conn: &Connection) -> Result<(), DbError> {
     conn.execute("DELETE FROM search_index", [])?;
 
@@ -800,5 +929,95 @@ mod tests {
         assert!(results[0].match_fields.contains(&"title".to_string()));
         assert!(!results[0].matched_body);
         assert!(results[0].snippet.is_none());
+    }
+
+    // ─── question FTS ───────────────────────────────────────────────
+
+    #[test]
+    fn test_search_questions_by_title_fts() {
+        let conn = test_db();
+        crate::questions::create_question(&conn, "可观测性体系", Some("微服务"), None).unwrap();
+        crate::questions::create_question(&conn, "估值方法", None, None).unwrap();
+
+        let results = search_questions(&conn, "可观测").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "可观测性体系");
+    }
+
+    #[test]
+    fn test_search_questions_by_description() {
+        let conn = test_db();
+        crate::questions::create_question(
+            &conn,
+            "Topic A",
+            Some("we want to study distributed tracing strategies"),
+            None,
+        )
+        .unwrap();
+        let results = search_questions(&conn, "distributed tracing").unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_search_questions_includes_archived() {
+        let conn = test_db();
+        let q = crate::questions::create_question(&conn, "可观测性", None, None).unwrap();
+        crate::questions::archive_question(&conn, &q.id, None).unwrap();
+        let results = search_questions(&conn, "可观测").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].status, "archived");
+    }
+
+    #[test]
+    fn test_search_questions_excludes_deleted() {
+        let conn = test_db();
+        let q = crate::questions::create_question(&conn, "可观测性", None, None).unwrap();
+        crate::questions::delete_question(&conn, &q.id, None).unwrap();
+        let results = search_questions(&conn, "可观测").unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_search_questions_updates_on_edit() {
+        let conn = test_db();
+        let q = crate::questions::create_question(&conn, "旧标题", None, None).unwrap();
+        assert_eq!(search_questions(&conn, "旧标题").unwrap().len(), 1);
+        assert!(search_questions(&conn, "新标题").unwrap().is_empty());
+
+        crate::questions::update_question(&conn, &q.id, "新标题啊", None, None).unwrap();
+        assert!(search_questions(&conn, "旧标题").unwrap().is_empty());
+        assert_eq!(search_questions(&conn, "新标题").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_search_questions_short_query_like_fallback() {
+        let conn = test_db();
+        crate::questions::create_question(&conn, "AI研究计划", None, None).unwrap();
+        // 2-char CJK is below the trigram MATCH threshold; expect LIKE fallback.
+        let results = search_questions(&conn, "AI").unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_search_questions_empty_query_returns_empty() {
+        let conn = test_db();
+        crate::questions::create_question(&conn, "Q", None, None).unwrap();
+        assert!(search_questions(&conn, "").unwrap().is_empty());
+        assert!(search_questions(&conn, "   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_rebuild_all_question_search_index() {
+        let conn = test_db();
+        crate::questions::create_question(&conn, "first", None, None).unwrap();
+        crate::questions::create_question(&conn, "second", None, None).unwrap();
+
+        // Wipe and rebuild — should still find both.
+        conn.execute("DELETE FROM question_index", []).unwrap();
+        assert!(search_questions(&conn, "first").unwrap().is_empty());
+
+        rebuild_all_question_search_index(&conn).unwrap();
+        assert_eq!(search_questions(&conn, "first").unwrap().len(), 1);
+        assert_eq!(search_questions(&conn, "second").unwrap().len(), 1);
     }
 }

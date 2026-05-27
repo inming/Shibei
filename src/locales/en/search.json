@@ -3,5 +3,6 @@
   "clearSearch": "Clear search",
   "bodyMatch": "Body match",
   "highlightsMatch": "Highlights match",
-  "commentsMatch": "Comments match"
+  "commentsMatch": "Comments match",
+  "matchedQuestions": "Questions"
 }

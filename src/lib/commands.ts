@@ -497,6 +497,10 @@ export function listQuestions(status?: QuestionStatus): Promise<Question[]> {
   return invoke("cmd_list_questions", { status: status ?? null });
 }
 
+export function searchQuestions(query: string): Promise<Question[]> {
+  return invoke("cmd_search_questions", { query });
+}
+
 export function getQuestion(id: string): Promise<Question> {
   return invoke("cmd_get_question", { id });
 }
