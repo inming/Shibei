@@ -9,14 +9,23 @@ import {
   type ResourceChangedPayload,
   type FolderChangedPayload,
   type TagChangedPayload,
+  type QuestionChangedPayload,
 } from "@/lib/events";
-import { loadSessionState, saveSessionState } from "@/lib/sessionState";
+import {
+  loadSessionState,
+  saveSessionState,
+  type LibraryMode,
+  type QuestionFilter,
+} from "@/lib/sessionState";
 import * as cmd from "@/lib/commands";
 import { useSync } from "@/hooks/useSync";
 import { FolderTree } from "@/components/Sidebar/FolderTree";
-import { QuestionSection } from "@/components/Sidebar/QuestionSection";
+import { QuestionEntry } from "@/components/Sidebar/QuestionEntry";
 import { ResourceList } from "@/components/Sidebar/ResourceList";
+import { QuestionList } from "@/components/QuestionList/QuestionList";
 import { PreviewPanel } from "@/components/PreviewPanel";
+import { QuestionDetailView } from "@/components/QuestionDetail/QuestionDetailView";
+import { useQuestion } from "@/hooks/useQuestion";
 import { SyncStatus } from "@/components/SyncStatus";
 import { TrashList } from "@/components/TrashList";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
@@ -39,6 +48,7 @@ interface LibraryViewProps {
 
 export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lockEnabled, onLock, folderOpenRequest }: LibraryViewProps) {
   const { t } = useTranslation('sidebar');
+  const { t: tQuestion } = useTranslation('question');
   const initialLibrary = useRef(loadSessionState().library).current;
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
     initialLibrary.selectedFolderId ?? ALL_RESOURCES_ID,
@@ -55,11 +65,54 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
   );
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [filterTagIds, setFilterTagIds] = useState<string[]>(initialLibrary.filterTagIds ?? []);
-  const listScrollTopRef = useRef<number>(initialLibrary.listScrollTop ?? 0);
+  const listScrollTopRef = useRef<number>(initialLibrary.resourceListScrollTop ?? 0);
   const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
   const [showTrash, setShowTrash] = useState(false);
+
+  // ---- Library mode + questions-mode state ----
+  // mode flips when the user picks an entry in the Sidebar (folder / questions
+  // / trash). Each mode owns its own selection state; switching back and forth
+  // is lossless because both sets persist in session.
+  const [libraryMode, setLibraryModeState] = useState<LibraryMode>(initialLibrary.mode);
+  const [questionFilter, setQuestionFilterState] = useState<QuestionFilter>(initialLibrary.questionFilter);
+  const [selectedQuestionId, setSelectedQuestionIdState] = useState<string | null>(
+    initialLibrary.selectedQuestionId,
+  );
+  /** Live question snapshot for the col-3 preview. Null while loading or if id is null. */
+  const previewQuestion = useQuestion(libraryMode === "questions" ? selectedQuestionId : null);
+  const questionListScrollTopRef = useRef<number>(initialLibrary.questionListScrollTop ?? 0);
+  const questionScrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setLibraryMode = useCallback((next: LibraryMode) => {
+    setLibraryModeState(next);
+    saveSessionState({ library: { mode: next } });
+  }, []);
+
+  const setQuestionFilter = useCallback((next: QuestionFilter) => {
+    setQuestionFilterState(next);
+    saveSessionState({ library: { questionFilter: next } });
+  }, []);
+
+  const setSelectedQuestionId = useCallback((next: string | null) => {
+    setSelectedQuestionIdState(next);
+    saveSessionState({ library: { selectedQuestionId: next } });
+  }, []);
+
+  const handleQuestionListScrollChange = useCallback((n: number) => {
+    questionListScrollTopRef.current = n;
+    if (questionScrollDebounceRef.current) clearTimeout(questionScrollDebounceRef.current);
+    questionScrollDebounceRef.current = setTimeout(() => {
+      saveSessionState({ library: { questionListScrollTop: n } });
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (questionScrollDebounceRef.current) clearTimeout(questionScrollDebounceRef.current);
+    };
+  }, []);
   const [trashContextMenu, setTrashContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showClearTrashConfirm, setShowClearTrashConfirm] = useState(false);
   const sync = useSync();
@@ -134,14 +187,16 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
     return () => { cancelled = true; };
   }, [folderOpenRequest, t]);
 
-  // Persist library selection on any change
+  // Persist library selection on any change. Only writes the resources-mode
+  // fields it owns; questions-mode fields are managed by their own handlers
+  // and are not clobbered thanks to saveSessionState's shallow library merge.
   const persistLibrary = useCallback(() => {
     saveSessionState({
       library: {
         selectedFolderId,
         filterTagIds,
         selectedResourceId: selectedResource?.id ?? null,
-        listScrollTop: listScrollTopRef.current,
+        resourceListScrollTop: listScrollTopRef.current,
       },
     });
   }, [selectedFolderId, filterTagIds, selectedResource]);
@@ -155,7 +210,7 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
         selectedFolderId,
         filterTagIds,
         selectedResourceId: selectedResource?.id ?? null,
-        listScrollTop: n,
+        resourceListScrollTop: n,
       },
     });
   }, [selectedFolderId, filterTagIds, selectedResource]);
@@ -182,6 +237,26 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
       const deletedId = event.payload.tag_id;
       if (!deletedId) return;
       setFilterTagIds((prev) => prev.filter((id) => id !== deletedId));
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
+
+  // If the currently previewed question gets deleted (from any surface), clear
+  // selectedQuestionId so PreviewPanel falls back to its empty state.
+  useEffect(() => {
+    const unlisten = listen<QuestionChangedPayload>(DataEvents.QUESTION_CHANGED, (event) => {
+      if (event.payload.action !== "deleted") return;
+      const deletedId = event.payload.question_id;
+      if (!deletedId) return;
+      setSelectedQuestionIdState((current) => {
+        if (current === deletedId) {
+          // Also clear it from persistence; can't reuse setSelectedQuestionId
+          // here because it's not a referenceless setter.
+          saveSessionState({ library: { selectedQuestionId: null } });
+          return null;
+        }
+        return current;
+      });
     });
     return () => { unlisten.then((f) => f()); };
   }, []);
@@ -451,10 +526,21 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
         <div className={styles.sidebar} style={{ width: sidebarWidth }}>
           <div className={styles.sidebarMain}>
             <FolderTree
-              selectedFolderId={selectedFolderId}
-              onSelectFolder={(id) => { setSelectedFolderId(id); setShowTrash(false); setFilterTagIds([]); }}
+              selectedFolderId={libraryMode === "resources" && !showTrash ? selectedFolderId : null}
+              onSelectFolder={(id) => {
+                setSelectedFolderId(id);
+                setShowTrash(false);
+                setFilterTagIds([]);
+                setLibraryMode("resources");
+              }}
             />
-            <QuestionSection onOpenQuestion={onOpenQuestion} />
+            <QuestionEntry
+              active={libraryMode === "questions" && !showTrash}
+              onClick={() => {
+                setLibraryMode("questions");
+                setShowTrash(false);
+              }}
+            />
             <button
               className={`${styles.trashBtn} ${showTrash ? styles.trashBtnActive : ""}`}
               onClick={() => { setShowTrash(!showTrash); setSelectedResource(null); }}
@@ -491,10 +577,26 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
         {/* Sidebar resize handle */}
         <div className={styles.resizeHandle} onMouseDown={handleSidebarMouseDown} />
 
-        {/* Col 2: Resource list or Trash */}
+        {/* Col 2: Resource list / Question list / Trash */}
         <div className={styles.listPanel} style={{ width: listPanelWidth }}>
           {showTrash ? (
             <TrashList />
+          ) : libraryMode === "questions" ? (
+            <QuestionList
+              filter={questionFilter}
+              onFilterChange={setQuestionFilter}
+              selectedQuestionId={selectedQuestionId}
+              onSelect={(q) => setSelectedQuestionId(q.id)}
+              onOpenInTab={onOpenQuestion}
+              onCreate={(q) => {
+                // Creation side effect per spec §8 task matrix:
+                // ensure user sees the new question + don't auto-open a Tab.
+                setQuestionFilter("active");
+                setSelectedQuestionId(q.id);
+              }}
+              initialScrollTop={initialLibrary.questionListScrollTop}
+              onScrollTopChange={handleQuestionListScrollChange}
+            />
           ) : (
             <ResourceList
               folderId={selectedFolderId}
@@ -508,9 +610,16 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
               onSelectResource={handleResourceSelect}
               onOpen={(resource) => onOpenResource(resource)}
               onOpenQuestion={onOpenQuestion}
+              onSelectQuestion={(q) => {
+                // Spec §"Library 模式 — chip 单击行为变更": switch the middle
+                // column to questions mode and surface the question in the
+                // preview pane (no Tab open).
+                setLibraryMode("questions");
+                setSelectedQuestionId(q.id);
+              }}
               onSortByChange={setSortBy}
               onSortOrderChange={setSortOrder}
-              initialScrollTop={initialLibrary.listScrollTop}
+              initialScrollTop={initialLibrary.resourceListScrollTop}
               onScrollTopChange={handleListScrollTopChange}
             />
           )}
@@ -519,9 +628,23 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
         {/* List↔Preview resize handle */}
         <div className={styles.resizeHandle} onMouseDown={handleMouseDown} />
 
-        {/* Col 3: Preview or placeholder */}
+        {/* Col 3: Preview pane. Three branches: resource preview, question
+            preview (variant=preview), or mode-appropriate placeholder. */}
         <div className={styles.main}>
-          {selectedResource ? (
+          {libraryMode === "questions" ? (
+            previewQuestion ? (
+              <QuestionDetailView
+                key={previewQuestion.id}
+                question={previewQuestion}
+                variant="preview"
+                onOpenResource={(resource, hid) => onOpenResource(resource, hid)}
+                onOpenInTab={onOpenQuestion}
+                onClose={() => setSelectedQuestionId(null)}
+              />
+            ) : (
+              <div className={styles.mainPlaceholder}>{tQuestion('preview.emptyState')}</div>
+            )
+          ) : selectedResource ? (
             <PreviewPanel
               key={selectedResource.id}
               resource={selectedResource}
@@ -530,9 +653,7 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
               onOpenQuestion={onOpenQuestion}
             />
           ) : (
-            <div className={styles.mainPlaceholder}>
-              {t('previewPlaceholder')}
-            </div>
+            <div className={styles.mainPlaceholder}>{t('previewPlaceholder')}</div>
           )}
         </div>
       </div>

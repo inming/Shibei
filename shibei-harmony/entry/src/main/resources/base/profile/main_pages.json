@@ -15,7 +15,6 @@
     "pages/settings/DataSettings",
     "pages/settings/TrashSettings",
     "pages/settings/AboutSettings",
-    "pages/Questions",
     "pages/QuestionDetail",
     "pages/QuestionEdit"
   ]

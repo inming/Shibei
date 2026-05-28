@@ -15,6 +15,15 @@
   gap: 24px;
 }
 
+/**
+ * Preview variant: third-column PreviewPanel can shrink to ~280px wide.
+ * Tighten horizontal padding so action buttons and links don't wrap awkwardly.
+ */
+.scrollAreaCompact {
+  padding: 20px 20px 48px;
+  gap: 20px;
+}
+
 .header {
   display: flex;
   flex-direction: column;

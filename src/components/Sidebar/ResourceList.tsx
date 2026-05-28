@@ -44,7 +44,10 @@ interface ResourceListProps {
   onSearchChange: (query: string) => void;
   onSelectResource: (resource: Resource, resources: Resource[], event: { metaKey: boolean; shiftKey: boolean }) => void;
   onOpen: (resource: Resource) => void;
+  /** Open a question in a Tab (double-click on the chip, deep-link parity). */
   onOpenQuestion?: (question: Question) => void;
+  /** Single-click on the chip: switch to questions mode + select for preview. */
+  onSelectQuestion?: (question: Question) => void;
   onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
   initialScrollTop?: number;
@@ -117,10 +120,11 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
   );
 }
 
-export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFilterTagsChange, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onOpenQuestion, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
+export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFilterTagsChange, sortBy, sortOrder, searchQuery, onSearchChange, onSelectResource, onOpen, onOpenQuestion, onSelectQuestion, onSortByChange, onSortOrderChange, initialScrollTop, onScrollTopChange }: ResourceListProps) {
   const { t } = useTranslation('sidebar');
   const { t: tSearch } = useTranslation('search');
   const { t: tReader } = useTranslation('reader');
+  const { t: tQuestion } = useTranslation('question');
   const [inputValue, setInputValue] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const composingRef = useRef(false);
@@ -401,7 +405,7 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
         </div>
       </div>
       <div ref={scrollContainerRef} className={styles.listScroll} onContextMenu={handleListContextMenu}>
-        {searchQuery.length >= MIN_SEARCH_CHARS && matchedQuestions.length > 0 && onOpenQuestion && (
+        {searchQuery.length >= MIN_SEARCH_CHARS && matchedQuestions.length > 0 && (onOpenQuestion || onSelectQuestion) && (
           <div className={styles.matchedQuestionsBar}>
             <span className={styles.matchedQuestionsLabel}>
               {tSearch('matchedQuestions', { defaultValue: '问题' })}:
@@ -411,8 +415,15 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
                 <button
                   key={q.id}
                   className={`${styles.matchedQuestionChip} ${q.status === 'archived' ? styles.matchedQuestionChipArchived : ''}`}
-                  onClick={() => onOpenQuestion(q)}
-                  title={q.description ?? q.title}
+                  // Single click → switch to questions mode + select for preview.
+                  // Double click → open Tab (deep-link parity).
+                  // Tooltip explains the affordance to discover the dual interaction.
+                  onClick={() => {
+                    if (onSelectQuestion) onSelectQuestion(q);
+                    else if (onOpenQuestion) onOpenQuestion(q);
+                  }}
+                  onDoubleClick={() => onOpenQuestion?.(q)}
+                  title={tQuestion('chipHint')}
                 >
                   <span className={styles.matchedQuestionDot} />
                   <span>{q.title}</span>

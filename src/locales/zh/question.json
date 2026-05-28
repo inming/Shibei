@@ -36,5 +36,21 @@
   "jumpToTarget": "跳转到原文",
   "unknownTarget": "（来源不可用）",
   "createSuccess": "已创建问题",
-  "operationFailed": "操作失败"
+  "operationFailed": "操作失败",
+  "filter": {
+    "active": "进行中",
+    "archived": "已归档",
+    "all": "全部"
+  },
+  "preview": {
+    "emptyState": "选择问题以查看详情",
+    "openInTab": "在 Tab 中打开"
+  },
+  "list": {
+    "searchPlaceholder": "搜索问题…",
+    "createButton": "新建问题",
+    "emptyAll": "暂无问题",
+    "emptySearch": "无搜索结果"
+  },
+  "chipHint": "单击预览，双击在 Tab 中打开"
 }

@@ -3,6 +3,7 @@ import { promptAction, router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { I18n } from '../services/I18n';
+import type { LibraryMode } from '../app/SessionState';
 
 // Virtual folder ids mirrored from desktop src/types/index.ts.
 export const INBOX_FOLDER_ID = '__inbox__';
@@ -28,7 +29,19 @@ const ROOT_PARENT_ID = '__root__';
 @Component
 export struct FolderDrawer {
   @Link selectedFolderId: string;
+  /**
+   * Reflects which mode the parent Library is in. When 'questions', the
+   * folder rows are not highlighted (since the user is browsing questions,
+   * not a folder) and the "Questions" footer row picks up the highlight.
+   *
+   * Must be @Prop (one-way value copy with re-render on parent update) —
+   * a bare class field would only capture the initial value and never react
+   * when the parent's @State flips.
+   */
+  @Prop libraryMode: LibraryMode = 'resources';
   onPick?: (id: string) => void;
+  /** Switch the parent Library page's main area to the question list. */
+  onSelectQuestionsMode?: () => void;
   @State folders: Folder[] = [];
   @State error: string = '';
   @State syncing: boolean = false;
@@ -255,7 +268,14 @@ export struct FolderDrawer {
                 .fontColor([$r('sys.color.ohos_id_color_text_secondary')]);
               Text(item.label).fontSize(15)
                 .fontColor($r('sys.color.ohos_id_color_text_primary'))
-                .fontWeight(this.selectedFolderId === item.id ? FontWeight.Bold : FontWeight.Normal)
+                // Folder highlight is suppressed while the parent is in
+                // questions mode — the drawer should truthfully reflect "you
+                // are looking at questions, not at this folder".
+                .fontWeight(
+                  this.libraryMode === 'resources' && this.selectedFolderId === item.id
+                    ? FontWeight.Bold
+                    : FontWeight.Normal,
+                )
                 .layoutWeight(1)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -264,7 +284,7 @@ export struct FolderDrawer {
             // 16px base left padding + 16px per nesting level.
             .padding({ left: 16 + item.depth * 16, right: 16, top: 10, bottom: 10 })
             .backgroundColor(
-              this.selectedFolderId === item.id
+              this.libraryMode === 'resources' && this.selectedFolderId === item.id
                 ? $r('sys.color.ohos_id_color_component_normal')
                 : Color.Transparent
             )
@@ -289,14 +309,22 @@ export struct FolderDrawer {
             .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
           Text(I18n.t($r('app.string.question_section_title')))
             .fontSize(15)
-            .fontColor($r('sys.color.ohos_id_color_text_primary'));
+            .fontColor($r('sys.color.ohos_id_color_text_primary'))
+            .fontWeight(this.libraryMode === 'questions' ? FontWeight.Medium : FontWeight.Regular);
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+        // Highlight when parent Library is in questions mode — mirrors how
+        // a selected folder row is highlighted in resources mode.
+        .backgroundColor(
+          this.libraryMode === 'questions'
+            ? $r('sys.color.ohos_id_color_component_normal')
+            : Color.Transparent,
+        )
         .onClick(() => {
-          router.pushUrl({ url: 'pages/Questions' }).catch((err: Error) => {
-            hilog.warn(0x0000, 'shibei', 'Questions pushUrl fail: %{public}s', err.message);
-          });
+          // Switch the parent Library to questions mode (in-page swap).
+          // pages/Questions.ets was removed; Library is the only host now.
+          if (this.onSelectQuestionsMode) this.onSelectQuestionsMode();
         });
 
         Row() {

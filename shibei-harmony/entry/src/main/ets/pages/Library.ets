@@ -9,7 +9,8 @@ import { FilterChipsRow } from '../components/FilterChipsRow';
 import { KEY_FOLD_STATUS, KEY_PENDING_DEEP_LINK, KEY_PENDING_SHARE_URL } from '../app/AppStorageKeys';
 import { AddByUrlDialog } from '../components/AddByUrlDialog';
 import { FoldStatus } from '../app/FoldObserver';
-import { SessionState, SessionLibrary } from '../app/SessionState';
+import { SessionState, SessionLibrary, LibraryMode, QuestionFilter } from '../app/SessionState';
+import { QuestionListView } from '../components/QuestionListView';
 
 // Track E — Library with dual-state layout.
 //   FOLDED   → SideBarContainer(Overlay); drawer slides out under the ☰
@@ -33,6 +34,12 @@ struct Library {
   @State selectedFolderLabel: string = '';
   @State selectedTagIds: string[] = [];
   @State filterSheetOpen: boolean = false;
+  // Library mode: which list occupies the main area. Driven by the
+  // FolderDrawer (Questions row flips to 'questions'; any folder row flips
+  // back to 'resources'). Persisted in SessionState so cold start lands the
+  // user on the same view they left.
+  @State libraryMode: LibraryMode = 'resources';
+  @State questionFilter: QuestionFilter = 'active';
   // Kept in sync with FoldObserver; updates here trigger an automatic
   // re-layout between Embed / Overlay without reopening the page.
   @StorageProp(KEY_FOLD_STATUS) foldStatus: FoldStatus = FoldStatus.EXPANDED;
@@ -92,6 +99,12 @@ struct Library {
       }
       if (state.library.selectedTagIds && state.library.selectedTagIds.length > 0) {
         this.selectedTagIds = [...state.library.selectedTagIds];
+      }
+      if (state.library.mode) {
+        this.libraryMode = state.library.mode;
+      }
+      if (state.library.questionFilter) {
+        this.questionFilter = state.library.questionFilter;
       }
       if (this.consumePendingDeepLink()) {
         this.restoredOnce = true;
@@ -301,12 +314,16 @@ struct Library {
   private onFolderPick(id: string): void {
     this.selectedFolderId = id;
     this.selectedTagIds = [];
+    // Folder click always returns the main area to the resources view.
+    this.libraryMode = 'resources';
     this.syncFolderLabel(id);
     const ctx = getContext(this) as common.UIAbilityContext;
     const lib: SessionLibrary = {
+      mode: 'resources',
       selectedFolderId: id,
       selectedTagIds: [],
       selectedResourceId: null,
+      questionFilter: this.questionFilter,
     };
     SessionState.save(ctx, { library: lib });
     // Only collapse the drawer in the folded single-column mode; on an
@@ -315,6 +332,35 @@ struct Library {
     if (this.foldStatus === FoldStatus.FOLDED) {
       this.setDrawerOpen(false);
     }
+  }
+
+  private onSelectQuestionsMode(): void {
+    this.libraryMode = 'questions';
+    const ctx = getContext(this) as common.UIAbilityContext;
+    const lib: SessionLibrary = {
+      mode: 'questions',
+      selectedFolderId: this.selectedFolderId,
+      selectedTagIds: this.selectedTagIds,
+      selectedResourceId: null,
+      questionFilter: this.questionFilter,
+    };
+    SessionState.save(ctx, { library: lib });
+    if (this.foldStatus === FoldStatus.FOLDED) {
+      this.setDrawerOpen(false);
+    }
+  }
+
+  private onQuestionFilterChange(next: QuestionFilter): void {
+    this.questionFilter = next;
+    const ctx = getContext(this) as common.UIAbilityContext;
+    const lib: SessionLibrary = {
+      mode: this.libraryMode,
+      selectedFolderId: this.selectedFolderId,
+      selectedTagIds: this.selectedTagIds,
+      selectedResourceId: null,
+      questionFilter: next,
+    };
+    SessionState.save(ctx, { library: lib });
   }
 
   /// Toggle drawer state inside animateTo so the SideBarContainer width and
@@ -361,7 +407,11 @@ struct Library {
         ) {
           FolderDrawer({
             selectedFolderId: $selectedFolderId,
+            // When libraryMode is 'questions', the drawer hides folder-row
+            // highlights and instead highlights the "Questions" footer row.
+            libraryMode: this.libraryMode,
             onPick: (id: string) => this.onFolderPick(id),
+            onSelectQuestionsMode: () => this.onSelectQuestionsMode(),
           });
 
           Stack() {
@@ -383,62 +433,78 @@ struct Library {
                     .width(44).height(44).textAlign(TextAlign.Center)
                     .onClick(() => { this.setDrawerOpen(!this.drawerOpen); });
                 }
-                Text(this.selectedFolderLabel).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
+                Text(
+                  this.libraryMode === 'questions'
+                    ? I18n.t($r('app.string.question_section_title'))
+                    : this.selectedFolderLabel,
+                ).fontSize(17).fontWeight(FontWeight.Medium).layoutWeight(1)
                   .fontColor($r('sys.color.ohos_id_color_text_primary'))
                   .textAlign(TextAlign.Center);
-                // Settings entry moved to the drawer footer (above Sync) so
-                // the top bar only carries the primary navigation (Search).
-                // Plain Text + onClick (rather than Button) so the glyph isn't
-                // squeezed by Button's default inner padding.
-                // Flat monochrome system symbol — emoji 🔍 renders in
-                // color and looks 3D on this SDK; SymbolGlyph respects
-                // .fontColor and stays line-art.
-                Stack({ alignContent: Alignment.TopEnd }) {
+                // Funnel filter targets resources only — hide in questions mode.
+                if (this.libraryMode === 'resources') {
+                  Stack({ alignContent: Alignment.TopEnd }) {
+                    Row() {
+                      SymbolGlyph($r('sys.symbol.funnel'))
+                        .fontSize(22)
+                        .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
+                    }
+                    .width(44).height(44).justifyContent(FlexAlign.Center);
+                    if (this.selectedTagIds.length > 0) {
+                      Circle({ width: 8, height: 8 })
+                        .fill($r('app.color.accent_primary'))
+                        .margin({ top: 10, right: 10 });
+                    }
+                  }
+                  .width(44).height(44)
+                  .onClick(() => { this.filterSheetOpen = true; });
+                } else {
+                  // Reserve symmetric 44vp slot so the title stays centered.
+                  Text('').width(44).height(44);
+                }
+
+                // Resource search button — QuestionListView has its own
+                // internal search, so we hide this slot in questions mode.
+                if (this.libraryMode === 'resources') {
                   Row() {
-                    SymbolGlyph($r('sys.symbol.funnel'))
+                    SymbolGlyph($r('sys.symbol.magnifyingglass'))
                       .fontSize(22)
                       .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
                   }
-                  .width(44).height(44).justifyContent(FlexAlign.Center);
-                  if (this.selectedTagIds.length > 0) {
-                    Circle({ width: 8, height: 8 })
-                      .fill($r('app.color.accent_primary'))
-                      .margin({ top: 10, right: 10 });
-                  }
-                }
-                .width(44).height(44)
-                .onClick(() => { this.filterSheetOpen = true; });
-
-                Row() {
-                  SymbolGlyph($r('sys.symbol.magnifyingglass'))
-                    .fontSize(22)
-                    .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
-                }
-                .width(44).height(44).justifyContent(FlexAlign.Center)
-                .onClick(() => {
-                    router.pushUrl({
-                      url: 'pages/Search',
-                      params: { tagIds: [...this.selectedTagIds] },
-                    }).catch((err: Error) => {
-                      hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
+                  .width(44).height(44).justifyContent(FlexAlign.Center)
+                  .onClick(() => {
+                      router.pushUrl({
+                        url: 'pages/Search',
+                        params: { tagIds: [...this.selectedTagIds] },
+                      }).catch((err: Error) => {
+                        hilog.warn(0x0000, 'shibei', 'Search pushUrl fail: %{public}s', err.message);
+                      });
                     });
-                  });
+                } else {
+                  Text('').width(44).height(44);
+                }
               }
               .width('100%')
               .padding({ left: 4, right: 4, top: 4, bottom: 4 })
               .backgroundColor($r('sys.color.ohos_id_color_background'));
 
-              FilterChipsRow({
-                filterTagIds: $selectedTagIds,
-                folderId: this.selectedFolderId,
-                showSheet: $filterSheetOpen,
-              });
+              if (this.libraryMode === 'resources') {
+                FilterChipsRow({
+                  filterTagIds: $selectedTagIds,
+                  folderId: this.selectedFolderId,
+                  showSheet: $filterSheetOpen,
+                });
 
-              ResourceList({
-                folderId: this.selectedFolderId,
-                tagIds: this.selectedTagIds,
-                onOpenResource: (id: string) => this.onOpenResource(id),
-              });
+                ResourceList({
+                  folderId: this.selectedFolderId,
+                  tagIds: this.selectedTagIds,
+                  onOpenResource: (id: string) => this.onOpenResource(id),
+                });
+              } else {
+                QuestionListView({
+                  filter: this.questionFilter,
+                  onFilterChange: (next: QuestionFilter) => this.onQuestionFilterChange(next),
+                });
+              }
 
             }.width('100%').height('100%')
             .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
@@ -475,7 +541,17 @@ struct Library {
                 offsetX: 0,
                 offsetY: 4,
               })
-              .onClick(() => { this.addByUrlOpen = true; });
+              .onClick(() => {
+                if (this.libraryMode === 'questions') {
+                  // Questions mode: FAB creates a new question. Mirrors the
+                  // desktop QuestionList "+" button entry point.
+                  router.pushUrl({ url: 'pages/QuestionEdit' }).catch((err: Error) => {
+                    hilog.warn(0x0000, 'shibei', 'QuestionEdit push fail: %{public}s', err.message);
+                  });
+                } else {
+                  this.addByUrlOpen = true;
+                }
+              });
             }
           }
           .width('100%').height('100%');

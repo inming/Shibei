@@ -36,5 +36,21 @@
   "jumpToTarget": "Jump to source",
   "unknownTarget": "(source unavailable)",
   "createSuccess": "Question created",
-  "operationFailed": "Operation failed"
+  "operationFailed": "Operation failed",
+  "filter": {
+    "active": "Active",
+    "archived": "Archived",
+    "all": "All"
+  },
+  "preview": {
+    "emptyState": "Select a question to view details",
+    "openInTab": "Open in tab"
+  },
+  "list": {
+    "searchPlaceholder": "Search questions…",
+    "createButton": "New question",
+    "emptyAll": "No questions yet",
+    "emptySearch": "No results"
+  },
+  "chipHint": "Click to preview, double-click to open in tab"
 }

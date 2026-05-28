@@ -392,6 +392,9 @@
     { "name": "question_operation_failed", "value": "操作失败" },
     { "name": "question_save", "value": "保存" },
     { "name": "question_related_count", "value": "相关问题 (%1$d)" },
-    { "name": "question_edit_reason", "value": "编辑理由" }
+    { "name": "question_edit_reason", "value": "编辑理由" },
+    { "name": "question_filter_all", "value": "全部" },
+    { "name": "question_list_empty_all", "value": "暂无问题" },
+    { "name": "question_list_empty_search", "value": "无搜索结果" }
   ]
 }

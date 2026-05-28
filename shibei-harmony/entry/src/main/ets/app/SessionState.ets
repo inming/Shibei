@@ -19,6 +19,11 @@ import { PREF_SESSION_STATE } from './AppStorageKeys';
 const CURRENT_VERSION = 1;
 const PREF_STORE = 'shibei_prefs';
 
+// Library mode controls which view occupies the Library page's main area.
+// Mirrors desktop src/lib/sessionState.ts.
+export type LibraryMode = 'resources' | 'questions';
+export type QuestionFilter = 'active' | 'archived' | 'all';
+
 export interface SessionState {
   version: 1;
   inReader: boolean;
@@ -27,10 +32,14 @@ export interface SessionState {
 }
 
 export interface SessionLibrary {
+  /** Which list the main area renders. Defaults to 'resources'. */
+  mode: LibraryMode;
   selectedFolderId: string;
   selectedTagIds: string[];
   selectedResourceId: string | null;
   listScrollTop?: number;
+  /** Filter chip state for questions mode. Defaults to 'active'. */
+  questionFilter: QuestionFilter;
 }
 
 function makeDefaultState(): SessionState {
@@ -39,19 +48,33 @@ function makeDefaultState(): SessionState {
     inReader: false,
     readerResourceId: null,
     library: {
+      mode: 'resources',
       selectedFolderId: '__all__',
       selectedTagIds: [],
       selectedResourceId: null,
+      questionFilter: 'active',
     },
   };
 }
 
 function makeDefaultLibrary(): SessionLibrary {
   return {
+    mode: 'resources',
     selectedFolderId: '__all__',
     selectedTagIds: [],
     selectedResourceId: null,
+    questionFilter: 'active',
   };
+}
+
+function validLibraryMode(value: string): LibraryMode {
+  return value === 'questions' ? 'questions' : 'resources';
+}
+
+function validQuestionFilter(value: string): QuestionFilter {
+  if (value === 'archived') return 'archived';
+  if (value === 'all') return 'all';
+  return 'active';
 }
 
 function validate(raw: Record<string, Object>): SessionState {
@@ -93,6 +116,14 @@ function validate(raw: Record<string, Object>): SessionState {
     if (typeof scrollTop === 'number') {
       state.library.listScrollTop = scrollTop;
     }
+    const mode = libRaw['mode'] as string;
+    if (typeof mode === 'string') {
+      state.library.mode = validLibraryMode(mode);
+    }
+    const qFilter = libRaw['questionFilter'] as string;
+    if (typeof qFilter === 'string') {
+      state.library.questionFilter = validQuestionFilter(qFilter);
+    }
   }
 
   return state;
@@ -100,10 +131,12 @@ function validate(raw: Record<string, Object>): SessionState {
 
 function mergeLibrary(base: SessionLibrary, patch: SessionLibrary): SessionLibrary {
   const result: SessionLibrary = {
+    mode: patch.mode !== undefined ? patch.mode : base.mode,
     selectedFolderId: patch.selectedFolderId !== undefined ? patch.selectedFolderId : base.selectedFolderId,
     selectedTagIds: patch.selectedTagIds !== undefined ? patch.selectedTagIds : base.selectedTagIds,
     selectedResourceId: patch.selectedResourceId !== undefined ? patch.selectedResourceId : base.selectedResourceId,
     listScrollTop: patch.listScrollTop !== undefined ? patch.listScrollTop : base.listScrollTop,
+    questionFilter: patch.questionFilter !== undefined ? patch.questionFilter : base.questionFilter,
   };
   return result;
 }

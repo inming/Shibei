@@ -6,15 +6,36 @@ import type { Question } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { buildQuestionDeepLink } from "@/lib/deepLink";
-import styles from "./QuestionItem.module.css";
+import styles from "./QuestionListItem.module.css";
 
-interface QuestionItemProps {
+interface QuestionListItemProps {
   question: Question;
-  onOpen: (question: Question) => void;
+  selected: boolean;
+  /** Single click — used to surface the question in the third-column preview. */
+  onClick: (question: Question) => void;
+  /** Double click — used to open a dedicated Tab. */
+  onDoubleClick: (question: Question) => void;
+  /** Right-click "Open in tab" menu item delegates here, mirroring double-click. */
+  onOpenInTab: (question: Question) => void;
+  /** Right-click "Edit" surfaces the edit dialog from a higher level. */
   onEdit: (question: Question) => void;
 }
 
-export function QuestionItem({ question, onOpen, onEdit }: QuestionItemProps) {
+/**
+ * Middle-column row for a question in the new QuestionList view.
+ *
+ * Ported from `src/components/Sidebar/QuestionItem.tsx` (Phase 1). Key
+ * differences: `selected` highlight, separate `onClick` / `onDoubleClick`
+ * handlers, "Open in tab" promoted to its own menu item.
+ */
+export function QuestionListItem({
+  question,
+  selected,
+  onClick,
+  onDoubleClick,
+  onOpenInTab,
+  onEdit,
+}: QuestionListItemProps) {
   const { t } = useTranslation("question");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const itemRef = useRef<HTMLButtonElement>(null);
@@ -65,7 +86,7 @@ export function QuestionItem({ question, onOpen, onEdit }: QuestionItemProps) {
   }, [question.id, question.title, t]);
 
   const menuItems: MenuItem[] = [
-    { label: t("openQuestion"), onClick: () => onOpen(question) },
+    { label: t("openQuestion"), onClick: () => onOpenInTab(question) },
     { label: t("copyLink"), onClick: handleCopyLink },
     { label: t("editQuestion"), onClick: () => onEdit(question) },
     {
@@ -81,8 +102,9 @@ export function QuestionItem({ question, onOpen, onEdit }: QuestionItemProps) {
     <>
       <button
         ref={itemRef}
-        className={styles.item}
-        onClick={() => onOpen(question)}
+        className={`${styles.item} ${selected ? styles.itemSelected : ""}`}
+        onClick={() => onClick(question)}
+        onDoubleClick={() => onDoubleClick(question)}
         onContextMenu={handleContextMenu}
         title={question.description ?? undefined}
       >

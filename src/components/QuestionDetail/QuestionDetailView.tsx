@@ -17,7 +17,25 @@ interface QuestionDetailViewProps {
   /** Initial snapshot — refreshed in-place when QUESTION_CHANGED fires. */
   question: Question;
   onOpenResource: (resource: Resource, highlightId?: string) => void;
+  /**
+   * Called when the question is deleted from this view. The host decides what
+   * "close" means:
+   *   - tab variant: close the QuestionDetail tab
+   *   - preview variant: clear selectedQuestionId
+   */
   onClose: () => void;
+  /**
+   * Visual + behavioral variant.
+   *   - "tab" (default): full layout, used in dedicated QuestionDetail tabs
+   *   - "preview": tighter horizontal padding, shows an "Open in Tab" affordance
+   */
+  variant?: "tab" | "preview";
+  /**
+   * Only meaningful when variant === "preview". Wired to the "Open in Tab"
+   * button so the user has a discoverable alternative to double-clicking the
+   * source list row.
+   */
+  onOpenInTab?: (question: Question) => void;
 }
 
 const GROUP_ORDER: QuestionTargetType[] = ["resource", "highlight", "comment"];
@@ -26,6 +44,8 @@ export function QuestionDetailView({
   question: initialQuestion,
   onOpenResource,
   onClose,
+  variant = "tab",
+  onOpenInTab,
 }: QuestionDetailViewProps) {
   const { t } = useTranslation("question");
   const [question, setQuestion] = useState<Question>(initialQuestion);
@@ -103,13 +123,22 @@ export function QuestionDetailView({
 
   return (
     <div className={styles.view}>
-      <div className={styles.scrollArea}>
+      <div className={`${styles.scrollArea} ${variant === "preview" ? styles.scrollAreaCompact : ""}`}>
         <div className={styles.header}>
           <div className={styles.titleRow}>
             <h1 className={`${styles.title} ${archived ? styles.titleArchived : ""}`}>
               {question.title}
             </h1>
             <div className={styles.actions}>
+              {variant === "preview" && onOpenInTab && (
+                <button
+                  className={styles.iconBtn}
+                  onClick={() => onOpenInTab(question)}
+                  title={t("preview.openInTab")}
+                >
+                  {t("preview.openInTab")}
+                </button>
+              )}
               <button
                 className={styles.iconBtn}
                 onClick={() => setEditorOpen(true)}

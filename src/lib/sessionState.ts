@@ -1,5 +1,5 @@
 export const STORAGE_KEY = "shibei-session-state";
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 export interface ReaderTabState {
   resourceId: string;
@@ -23,16 +23,33 @@ export interface QuestionTabState {
   questionId: string;
 }
 
+export type LibraryMode = "resources" | "questions";
+export type QuestionFilter = "active" | "archived" | "all";
+
+const LIBRARY_MODES: readonly LibraryMode[] = ["resources", "questions"];
+const QUESTION_FILTERS: readonly QuestionFilter[] = ["active", "archived", "all"];
+
 export interface LibraryState {
+  /** Which list the middle column renders. Drives Sidebar entry highlight too. */
+  mode: LibraryMode;
+  // ---- resources mode ----
   selectedFolderId: string | null;
-  selectedTagIds?: string[]; // deprecated, kept for backward compat with stored data
+  /** @deprecated kept for backward compat with stored data; new code uses filterTagIds */
+  selectedTagIds?: string[];
   filterTagIds: string[];
   selectedResourceId: string | null;
-  listScrollTop?: number;
+  /** Resource list scroll position. Optional; consumers use `?? 0`. Renamed from v1's `listScrollTop`. */
+  resourceListScrollTop?: number;
+  // ---- questions mode ----
+  /** Question-list filter chip selection. Defaults to "active". */
+  questionFilter: QuestionFilter;
+  selectedQuestionId: string | null;
+  /** Question list scroll position. Optional; consumers use `?? 0`. */
+  questionListScrollTop?: number;
 }
 
 export interface SessionState {
-  version: 1;
+  version: 2;
   activeTabId: string;
   readerTabs: ReaderTabState[];
   /** v2026-05-27: question detail tabs. Missing in older session files. */
@@ -46,10 +63,13 @@ export const DEFAULT_STATE: SessionState = {
   readerTabs: [],
   questionTabs: [],
   library: {
+    mode: "resources",
     selectedFolderId: "__all__",
     selectedTagIds: [],
     filterTagIds: [],
     selectedResourceId: null,
+    questionFilter: "active",
+    selectedQuestionId: null,
   },
 };
 
@@ -72,12 +92,39 @@ function getMirror(): SessionState {
   return mirror;
 }
 
+function validateEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
 function loadFromStorage(): SessionState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return cloneDefault();
-    const parsed = JSON.parse(raw) as Partial<SessionState> & { version?: number };
-    if (parsed.version !== CURRENT_VERSION) return cloneDefault();
+    // Type loosely as Record so we can compare against legacy version numbers
+    // (SessionState.version is literally 2, so a strict Partial<SessionState>
+    // would narrow `version` and forbid comparing to 1).
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    // Only v1 (legacy, migrates here) and v2 (current) are accepted. Anything
+    // else — including absent version — falls back to default to avoid loading
+    // foreign / corrupted blobs.
+    const versionNum = typeof parsed.version === "number" ? (parsed.version as number) : null;
+    if (versionNum !== 1 && versionNum !== 2) return cloneDefault();
+
+    const lib = (parsed.library ?? {}) as Record<string, unknown>;
+
+    // v1 → v2: `listScrollTop` was renamed to `resourceListScrollTop`. Accept
+    // either spelling; prefer the new one if both are present.
+    const legacyScroll = typeof (lib as { listScrollTop?: unknown }).listScrollTop === "number"
+      ? (lib as { listScrollTop: number }).listScrollTop
+      : undefined;
+    const resourceScrollRaw = typeof lib.resourceListScrollTop === "number"
+      ? (lib.resourceListScrollTop as number)
+      : legacyScroll;
+
+    const mode = validateEnum(lib.mode, LIBRARY_MODES, "resources");
+    const questionFilter = validateEnum(lib.questionFilter, QUESTION_FILTERS, "active");
+
     return {
       version: CURRENT_VERSION,
       activeTabId: typeof parsed.activeTabId === "string" ? parsed.activeTabId : DEFAULT_STATE.activeTabId,
@@ -88,23 +135,22 @@ function loadFromStorage(): SessionState {
           )
         : [],
       library: {
+        mode,
         selectedFolderId:
-          parsed.library && "selectedFolderId" in parsed.library
-            ? (parsed.library.selectedFolderId as string | null)
+          "selectedFolderId" in lib
+            ? (lib.selectedFolderId as string | null)
             : DEFAULT_STATE.library.selectedFolderId,
-        selectedTagIds: Array.isArray(parsed.library?.selectedTagIds)
-          ? (parsed.library!.selectedTagIds as string[])
-          : [],
-        filterTagIds: Array.isArray(parsed.library?.filterTagIds)
-          ? (parsed.library!.filterTagIds as string[])
-          : [],
+        selectedTagIds: Array.isArray(lib.selectedTagIds) ? (lib.selectedTagIds as string[]) : [],
+        filterTagIds: Array.isArray(lib.filterTagIds) ? (lib.filterTagIds as string[]) : [],
         selectedResourceId:
-          parsed.library && "selectedResourceId" in parsed.library
-            ? (parsed.library.selectedResourceId as string | null)
-            : null,
-        listScrollTop:
-          typeof parsed.library?.listScrollTop === "number"
-            ? parsed.library.listScrollTop
+          "selectedResourceId" in lib ? (lib.selectedResourceId as string | null) : null,
+        resourceListScrollTop: resourceScrollRaw,
+        questionFilter,
+        selectedQuestionId:
+          typeof lib.selectedQuestionId === "string" ? (lib.selectedQuestionId as string) : null,
+        questionListScrollTop:
+          typeof lib.questionListScrollTop === "number"
+            ? (lib.questionListScrollTop as number)
             : undefined,
       },
     };
@@ -137,7 +183,11 @@ export function loadSessionState(): SessionState {
   return mirror;
 }
 
-export function saveSessionState(patch: Partial<SessionState>): void {
+type SessionStatePatch = Partial<Omit<SessionState, "library">> & {
+  library?: Partial<LibraryState>;
+};
+
+export function saveSessionState(patch: SessionStatePatch): void {
   const current = getMirror();
   mirror = {
     ...current,

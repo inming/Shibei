@@ -387,6 +387,9 @@
     { "name": "question_operation_failed", "value": "Operation failed" },
     { "name": "question_save", "value": "Save" },
     { "name": "question_related_count", "value": "Related questions (%1$d)" },
-    { "name": "question_edit_reason", "value": "Edit reason" }
+    { "name": "question_edit_reason", "value": "Edit reason" },
+    { "name": "question_filter_all", "value": "All" },
+    { "name": "question_list_empty_all", "value": "No questions yet" },
+    { "name": "question_list_empty_search", "value": "No results" }
   ]
 }
