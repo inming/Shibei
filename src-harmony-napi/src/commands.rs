@@ -2036,3 +2036,254 @@ pub fn purge_all_deleted() -> String {
         Err(e) => format!(r#"{{"error":"{e}"}}"#),
     }
 }
+
+// ────────────────────────────────────────────────────────────
+// Questions (Phase H — mobile parity with desktop)
+// ────────────────────────────────────────────────────────────
+// All commands return JSON strings to fit the codegen's scalar contract.
+// Read paths return either `[…]` (lists) or the entity object directly; write
+// paths return `{"ok":true}` / `{"id":"…"}` / `{"link_id":"…"}` envelopes so
+// ArkTS can pattern-match without reflective parsing.
+
+#[shibei_napi]
+pub fn list_questions(status_filter: String) -> String {
+    // status_filter is "" / "null" → no filter, otherwise "active" | "archived"
+    let status = if status_filter.is_empty() || status_filter == "null" {
+        None
+    } else {
+        Some(status_filter)
+    };
+    let result = with_conn(|conn| {
+        shibei_db::questions::list_questions(conn, status.as_deref())
+    });
+    match result {
+        Ok(qs) => to_json(&qs),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn get_question(id: String) -> String {
+    let result = with_conn(|conn| shibei_db::questions::get_question(conn, &id));
+    match result {
+        Ok(q) => to_json(&q),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+/// Input JSON: `{"title":"...", "description":"..."?}`
+#[shibei_napi]
+pub fn create_question(input_json: String) -> String {
+    #[derive(serde::Deserialize)]
+    struct Input {
+        title: String,
+        description: Option<String>,
+    }
+    let input: Input = match serde_json::from_str(&input_json) {
+        Ok(v) => v,
+        Err(e) => return format!(r#"{{"error":"error.badInput: {e}"}}"#),
+    };
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::create_question(
+            conn,
+            &input.title,
+            input.description.as_deref(),
+            Some(&ctx),
+        )
+    });
+    match result {
+        Ok(q) => format!(r#"{{"question":{}}}"#, to_json(&q)),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+/// Input JSON: `{"title":"...", "description":"..."?}`
+#[shibei_napi]
+pub fn update_question(id: String, input_json: String) -> String {
+    #[derive(serde::Deserialize)]
+    struct Input {
+        title: String,
+        description: Option<String>,
+    }
+    let input: Input = match serde_json::from_str(&input_json) {
+        Ok(v) => v,
+        Err(e) => return format!(r#"{{"error":"error.badInput: {e}"}}"#),
+    };
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::update_question(
+            conn,
+            &id,
+            &input.title,
+            input.description.as_deref(),
+            Some(&ctx),
+        )
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn archive_question(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::archive_question(conn, &id, Some(&ctx))
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn unarchive_question(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::unarchive_question(conn, &id, Some(&ctx))
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn delete_question(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::delete_question(conn, &id, Some(&ctx))
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn list_question_links(question_id: String) -> String {
+    let result = with_conn(|conn| {
+        shibei_db::questions::list_links_for_question(conn, &question_id)
+    });
+    match result {
+        Ok(links) => to_json(&links),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn list_questions_for_target(target_type: String, target_id: String) -> String {
+    let result = with_conn(|conn| {
+        shibei_db::questions::list_questions_for_target(conn, &target_type, &target_id)
+    });
+    match result {
+        Ok(qs) => to_json(&qs),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+/// Input JSON: `{"questionId":"...", "targetType":"resource|highlight|comment", "targetId":"...", "reason":"..."?}`
+#[shibei_napi]
+pub fn link_to_question(input_json: String) -> String {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Input {
+        question_id: String,
+        target_type: String,
+        target_id: String,
+        reason: Option<String>,
+    }
+    let input: Input = match serde_json::from_str(&input_json) {
+        Ok(v) => v,
+        Err(e) => return format!(r#"{{"error":"error.badInput: {e}"}}"#),
+    };
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::link(
+            conn,
+            &input.question_id,
+            &input.target_type,
+            &input.target_id,
+            input.reason.as_deref(),
+            Some(&ctx),
+        )
+    });
+    match result {
+        Ok(link) => format!(r#"{{"link":{}}}"#, to_json(&link)),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn update_link_reason(link_id: String, reason: String) -> String {
+    // Empty string clears the reason (null in DB).
+    let reason_opt = if reason.is_empty() { None } else { Some(reason) };
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::update_link_reason(
+            conn,
+            &link_id,
+            reason_opt.as_deref(),
+            Some(&ctx),
+        )
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn unlink_question(link_id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::unlink(conn, &link_id, Some(&ctx))
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn search_questions(query: String) -> String {
+    let result = with_conn(|conn| shibei_db::search::search_questions(conn, &query));
+    match result {
+        Ok(qs) => to_json(&qs),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}

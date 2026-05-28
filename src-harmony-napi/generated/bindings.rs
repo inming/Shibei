@@ -733,3 +733,81 @@ pub unsafe extern "C" fn shibei_ffi_purge_all_deleted() -> *mut c_char {
     leak_cstring(s)
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_questions(status_filter: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_questions(cstr_to_string(status_filter));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_get_question(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::get_question(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_create_question(input_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::create_question(cstr_to_string(input_json));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_update_question(id: *const c_char, input_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::update_question(cstr_to_string(id), cstr_to_string(input_json));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_archive_question(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::archive_question(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_unarchive_question(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::unarchive_question(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_delete_question(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::delete_question(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_question_links(question_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_question_links(cstr_to_string(question_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_questions_for_target(target_type: *const c_char, target_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_questions_for_target(cstr_to_string(target_type), cstr_to_string(target_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_link_to_question(input_json: *const c_char) -> *mut c_char {
+    let s = crate::commands::link_to_question(cstr_to_string(input_json));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_update_link_reason(link_id: *const c_char, reason: *const c_char) -> *mut c_char {
+    let s = crate::commands::update_link_reason(cstr_to_string(link_id), cstr_to_string(reason));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_unlink_question(link_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::unlink_question(cstr_to_string(link_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_search_questions(query: *const c_char) -> *mut c_char {
+    let s = crate::commands::search_questions(cstr_to_string(query));
+    leak_cstring(s)
+}
+

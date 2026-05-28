@@ -1,6 +1,7 @@
-import { Highlight, Comment, AnnotationsBundle, Resource, ShibeiService } from '../services/ShibeiService';
+import { Highlight, Comment, AnnotationsBundle, Resource, ShibeiService, QuestionTargetType } from '../services/ShibeiService';
 import { I18n } from '../services/I18n';
 import { MarkdownText } from './MarkdownText';
+import { QuestionLinkSheet } from './QuestionLinkSheet';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 // Four-color palette — same order as Reader.ets so the "change color" swatch
@@ -43,6 +44,12 @@ export struct AnnotationPanel {
   // ShibeiService.getResourceSummary. Empty string → SummarySection is
   // omitted entirely (and so is the divider above MetaRow).
   @State summaryText: string = '';
+  // Question link sheet — opened from highlight long-press menu's
+  // 「关联到问题…」entry. targetType/targetId are reset every time we
+  // open so the sheet's @Watch picks up the right pair.
+  @State questionSheetOpen: boolean = false;
+  @State questionSheetTargetType: QuestionTargetType = 'highlight';
+  @State questionSheetTargetId: string = '';
   // In-place expand toggle for SummarySection. Default collapsed at 3
   // lines. Reset to false whenever the resource changes — we don't
   // persist the expanded state (per design, MVP keeps it ephemeral).
@@ -154,6 +161,13 @@ export struct AnnotationPanel {
 
   build() {
     Column() {
+      // Hidden host for the question-link sheet — bindSheet lives inside
+      // the component, this just keeps it in the build tree.
+      QuestionLinkSheet({
+        open: $questionSheetOpen,
+        targetType: this.questionSheetTargetType,
+        targetId: this.questionSheetTargetId,
+      });
       // Header — title only; add-note button moved to a sticky footer for
       // parity with the desktop panel layout. Title text swaps to 笔记 (M)
       // when the user scrolls past the in-scroll 笔记 section header.
@@ -481,6 +495,18 @@ export struct AnnotationPanel {
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
 
       Row() {
+        Text(I18n.t($r('app.string.question_link_to')))
+          .fontSize(15)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .onClick(() => this.openQuestionSheetForHighlight(h.id));
+
+      Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
+
+      Row() {
         Text(I18n.t($r('app.string.common_delete')))
           .fontSize(15)
           .fontColor($r('sys.color.ohos_id_color_warning'))
@@ -492,6 +518,14 @@ export struct AnnotationPanel {
     }
     .width(240)
     .backgroundColor($r('sys.color.ohos_id_color_background'));
+  }
+
+  // Set the target BEFORE flipping `open` so QuestionLinkSheet's @Watch
+  // sees the right id on its first reload.
+  private openQuestionSheetForHighlight(highlightId: string): void {
+    this.questionSheetTargetType = 'highlight';
+    this.questionSheetTargetId = highlightId;
+    this.questionSheetOpen = true;
   }
 
   @Builder CommentCard(c: Comment) {

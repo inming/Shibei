@@ -5,6 +5,7 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { ResourceItem } from './ResourceItem';
 import { TagAssignSheet } from './TagAssignSheet';
 import { TagManageSheet } from './TagManageSheet';
+import { QuestionLinkSheet } from './QuestionLinkSheet';
 import { I18n } from '../services/I18n';
 
 @Component
@@ -29,6 +30,10 @@ export struct ResourceList {
   // footer. Mirrors desktop: TagSubMenu → FilterManagePanel handoff. Lives
   // here (not in FilterChipsRow) so the same instance serves both flows.
   @State tagManageOpen: boolean = false;
+  // Question link sheet — flipped on by the long-press menu's
+  // "关联到问题…" entry. Mirrors the tag-sheet pattern.
+  @State questionSheetOpen: boolean = false;
+  @State questionSheetResId: string = '';
   private cachedSet: Set<string> = new Set<string>();
   private unsubDataChanged?: () => void;
 
@@ -95,6 +100,7 @@ export struct ResourceList {
         { text: I18n.t($r('app.string.cache_action_this_resource')), color: $r('app.color.accent_primary') },
         { text: I18n.t($r('app.string.cache_action_this_folder')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.tag_assign_action')), color: $r('app.color.accent_primary_alt') },
+        { text: I18n.t($r('app.string.question_link_to')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.annotation_copy_link')), color: $r('app.color.accent_primary_alt') },
         { text: I18n.t($r('app.string.common_delete')), color: $r('app.color.accent_danger') },
         { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
@@ -103,11 +109,19 @@ export struct ResourceList {
       if (r.index === 0) this.preloadOne(id);
       else if (r.index === 1) this.preloadFolder();
       else if (r.index === 2) this.openTagSheet(id);
-      else if (r.index === 3) this.copyLink(id);
-      else if (r.index === 4) this.confirmDelete(id);
+      else if (r.index === 3) this.openQuestionSheet(id);
+      else if (r.index === 4) this.copyLink(id);
+      else if (r.index === 5) this.confirmDelete(id);
     }).catch((err: Error) => {
       hilog.warn(0x0000, 'shibei', 'cache dialog dismissed: %{public}s', err.message);
     });
+  }
+
+  // Set the resource id BEFORE flipping `open` so QuestionLinkSheet's
+  // @Watch sees the right id on its first reload.
+  private openQuestionSheet(id: string): void {
+    this.questionSheetResId = id;
+    this.questionSheetOpen = true;
   }
 
   // Soft-delete with confirmation. The row stays gone from the list because
@@ -236,6 +250,12 @@ export struct ResourceList {
         // Sibling host for the manage sheet — opened either via assign
         // sheet's footer or, in the future, from a Settings entry.
         TagManageSheet({ open: $tagManageOpen });
+        // Hidden host for the question-link sheet.
+        QuestionLinkSheet({
+          open: $questionSheetOpen,
+          targetType: 'resource',
+          targetId: this.questionSheetResId,
+        });
         if (this.error) {
           Column() {
             Text(I18n.t($r('app.string.resource_list_error'), this.error))

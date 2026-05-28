@@ -279,12 +279,26 @@ export struct FolderDrawer {
       .width('100%')
       .layoutWeight(1);
 
-      // Footer — Settings + Sync pinned to drawer bottom.
-      // Order (top to bottom inside the footer) is [Settings, Sync] so the
-      // most-frequently-used action (sync) sits at the very edge where the
-      // thumb lands. The top-bar ⚙ was removed to avoid two entry points.
+      // Footer — Questions + Settings + Sync pinned to drawer bottom.
+      // Order (top to bottom): [Questions, Settings, Sync]. Sync is at the
+      // very edge where the thumb lands.
       Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
       Column() {
+        Row() {
+          SymbolGlyph($r('sys.symbol.questionmark_circle')).fontSize(18).margin({ right: 8 })
+            .fontColor([$r('sys.color.ohos_id_color_text_primary')]);
+          Text(I18n.t($r('app.string.question_section_title')))
+            .fontSize(15)
+            .fontColor($r('sys.color.ohos_id_color_text_primary'));
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+        .onClick(() => {
+          router.pushUrl({ url: 'pages/Questions' }).catch((err: Error) => {
+            hilog.warn(0x0000, 'shibei', 'Questions pushUrl fail: %{public}s', err.message);
+          });
+        });
+
         Row() {
           SymbolGlyph($r('sys.symbol.gearshape')).fontSize(18).margin({ right: 8 })
             .fontColor([$r('sys.color.ohos_id_color_text_primary')]);

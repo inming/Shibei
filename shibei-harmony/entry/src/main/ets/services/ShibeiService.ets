@@ -84,6 +84,19 @@ import {
   purgeResource as napiPurgeResource,
   purgeFolder as napiPurgeFolder,
   purgeAllDeleted as napiPurgeAllDeleted,
+  listQuestions as napiListQuestions,
+  getQuestion as napiGetQuestion,
+  createQuestion as napiCreateQuestion,
+  updateQuestion as napiUpdateQuestion,
+  archiveQuestion as napiArchiveQuestion,
+  unarchiveQuestion as napiUnarchiveQuestion,
+  deleteQuestion as napiDeleteQuestion,
+  listQuestionLinks as napiListQuestionLinks,
+  listQuestionsForTarget as napiListQuestionsForTarget,
+  linkToQuestion as napiLinkToQuestion,
+  updateLinkReason as napiUpdateLinkReason,
+  unlinkQuestion as napiUnlinkQuestion,
+  searchQuestions as napiSearchQuestions,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -821,6 +834,86 @@ export class ShibeiService {
   async echoAsync(text: string): Promise<string> {
     return napiEchoAsync(text);
   }
+
+  // ── Questions (Phase H) ──
+  //
+  // Pass-throughs to NAPI. Question entities are JSON-serialized over the
+  // boundary (codegen's scalar contract). Higher-level cache / subscriber
+  // logic lives in QuestionService.
+
+  listQuestions(status: QuestionStatus | null = null): Question[] {
+    const arg = status === null ? '' : status;
+    return parseListOrThrow<Question>(napiListQuestions(arg), 'listQuestions');
+  }
+
+  getQuestion(id: string): Question {
+    return parseSingleOrThrow<Question>(napiGetQuestion(id), 'getQuestion');
+  }
+
+  createQuestion(title: string, description: string | null = null): Question {
+    const input = JSON.stringify({ title, description } as QuestionInput);
+    const env = parseSingleOrThrow<QuestionEnvelope>(napiCreateQuestion(input), 'createQuestion');
+    return env.question;
+  }
+
+  updateQuestion(id: string, title: string, description: string | null = null): void {
+    const input = JSON.stringify({ title, description } as QuestionInput);
+    parseSingleOrThrow<OkEnvelope>(napiUpdateQuestion(id, input), 'updateQuestion');
+  }
+
+  archiveQuestion(id: string): void {
+    parseSingleOrThrow<OkEnvelope>(napiArchiveQuestion(id), 'archiveQuestion');
+  }
+
+  unarchiveQuestion(id: string): void {
+    parseSingleOrThrow<OkEnvelope>(napiUnarchiveQuestion(id), 'unarchiveQuestion');
+  }
+
+  deleteQuestion(id: string): void {
+    parseSingleOrThrow<OkEnvelope>(napiDeleteQuestion(id), 'deleteQuestion');
+  }
+
+  listQuestionLinks(questionId: string): QuestionLink[] {
+    return parseListOrThrow<QuestionLink>(napiListQuestionLinks(questionId), 'listQuestionLinks');
+  }
+
+  listQuestionsForTarget(targetType: QuestionTargetType, targetId: string): Question[] {
+    return parseListOrThrow<Question>(
+      napiListQuestionsForTarget(targetType, targetId),
+      'listQuestionsForTarget',
+    );
+  }
+
+  linkToQuestion(
+    questionId: string,
+    targetType: QuestionTargetType,
+    targetId: string,
+    reason: string | null = null,
+  ): QuestionLink {
+    const input = JSON.stringify({
+      questionId,
+      targetType,
+      targetId,
+      reason,
+    } as LinkInput);
+    const env = parseSingleOrThrow<LinkEnvelope>(napiLinkToQuestion(input), 'linkToQuestion');
+    return env.link;
+  }
+
+  updateLinkReason(linkId: string, reason: string | null): void {
+    parseSingleOrThrow<OkEnvelope>(
+      napiUpdateLinkReason(linkId, reason ?? ''),
+      'updateLinkReason',
+    );
+  }
+
+  unlinkQuestion(linkId: string): void {
+    parseSingleOrThrow<OkEnvelope>(napiUnlinkQuestion(linkId), 'unlinkQuestion');
+  }
+
+  searchQuestions(query: string): Question[] {
+    return parseListOrThrow<Question>(napiSearchQuestions(query), 'searchQuestions');
+  }
 }
 
 // ── Types mirrored from shibei-db (kept narrow — only fields UI reads) ─
@@ -867,6 +960,57 @@ export interface Comment {
 export interface AnnotationsBundle {
   highlights: Highlight[];
   comments: Comment[];
+}
+
+// ── Questions (Phase H) ──
+
+export type QuestionStatus = 'active' | 'archived';
+
+export type QuestionTargetType = 'resource' | 'highlight' | 'comment';
+
+export interface Question {
+  id: string;
+  title: string;
+  description: string | null;
+  status: QuestionStatus;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuestionLink {
+  id: string;
+  question_id: string;
+  target_type: QuestionTargetType;
+  target_id: string;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Internal NAPI envelope shapes (matching the JSON returned by commands.rs).
+interface QuestionInput {
+  title: string;
+  description: string | null;
+}
+
+interface QuestionEnvelope {
+  question: Question;
+}
+
+interface LinkInput {
+  questionId: string;
+  targetType: QuestionTargetType;
+  targetId: string;
+  reason: string | null;
+}
+
+interface LinkEnvelope {
+  link: QuestionLink;
+}
+
+interface OkEnvelope {
+  ok: boolean;
 }
 
 // Recycle bin row shapes — mirror shibei-db's `DeletedResource` /

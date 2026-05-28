@@ -93,6 +93,19 @@ extern char* shibei_ffi_restore_folder(const char* id);
 extern char* shibei_ffi_purge_resource(const char* id);
 extern char* shibei_ffi_purge_folder(const char* id);
 extern char* shibei_ffi_purge_all_deleted(void);
+extern char* shibei_ffi_list_questions(const char* status_filter);
+extern char* shibei_ffi_get_question(const char* id);
+extern char* shibei_ffi_create_question(const char* input_json);
+extern char* shibei_ffi_update_question(const char* id, const char* input_json);
+extern char* shibei_ffi_archive_question(const char* id);
+extern char* shibei_ffi_unarchive_question(const char* id);
+extern char* shibei_ffi_delete_question(const char* id);
+extern char* shibei_ffi_list_question_links(const char* question_id);
+extern char* shibei_ffi_list_questions_for_target(const char* target_type, const char* target_id);
+extern char* shibei_ffi_link_to_question(const char* input_json);
+extern char* shibei_ffi_update_link_reason(const char* link_id, const char* reason);
+extern char* shibei_ffi_unlink_question(const char* link_id);
+extern char* shibei_ffi_search_questions(const char* query);
 
 // C callbacks invoked from Rust worker threads.
 void shibei_async_resolve(void* ctx, int ok, const char* payload);
@@ -2037,6 +2050,357 @@ static napi_value purge_all_deleted_wrap(napi_env env, napi_callback_info info) 
     return result;
 }
 
+static napi_value list_questions_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_status_filter = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_status_filter = (char*)malloc(need + 1);
+        if (buf_status_filter) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_status_filter, need + 1, &got);
+            buf_status_filter[got] = 0;
+        }
+    }
+    if (!buf_status_filter) { buf_status_filter = (char*)malloc(1); if (buf_status_filter) buf_status_filter[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_list_questions(buf_status_filter);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_status_filter);
+    return result;
+}
+
+static napi_value get_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_get_question(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value create_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_input_json = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_input_json = (char*)malloc(need + 1);
+        if (buf_input_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_input_json, need + 1, &got);
+            buf_input_json[got] = 0;
+        }
+    }
+    if (!buf_input_json) { buf_input_json = (char*)malloc(1); if (buf_input_json) buf_input_json[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_create_question(buf_input_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_input_json);
+    return result;
+}
+
+static napi_value update_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    char* buf_input_json = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_input_json = (char*)malloc(need + 1);
+        if (buf_input_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_input_json, need + 1, &got);
+            buf_input_json[got] = 0;
+        }
+    }
+    if (!buf_input_json) { buf_input_json = (char*)malloc(1); if (buf_input_json) buf_input_json[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_update_question(buf_id, buf_input_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    free(buf_input_json);
+    return result;
+}
+
+static napi_value archive_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_archive_question(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value unarchive_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_unarchive_question(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value delete_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_id = (char*)malloc(need + 1);
+        if (buf_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_id, need + 1, &got);
+            buf_id[got] = 0;
+        }
+    }
+    if (!buf_id) { buf_id = (char*)malloc(1); if (buf_id) buf_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_delete_question(buf_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_id);
+    return result;
+}
+
+static napi_value list_question_links_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_question_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_question_id = (char*)malloc(need + 1);
+        if (buf_question_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_question_id, need + 1, &got);
+            buf_question_id[got] = 0;
+        }
+    }
+    if (!buf_question_id) { buf_question_id = (char*)malloc(1); if (buf_question_id) buf_question_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_list_question_links(buf_question_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_question_id);
+    return result;
+}
+
+static napi_value list_questions_for_target_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_target_type = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_target_type = (char*)malloc(need + 1);
+        if (buf_target_type) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_target_type, need + 1, &got);
+            buf_target_type[got] = 0;
+        }
+    }
+    if (!buf_target_type) { buf_target_type = (char*)malloc(1); if (buf_target_type) buf_target_type[0] = 0; }
+    char* buf_target_id = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_target_id = (char*)malloc(need + 1);
+        if (buf_target_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_target_id, need + 1, &got);
+            buf_target_id[got] = 0;
+        }
+    }
+    if (!buf_target_id) { buf_target_id = (char*)malloc(1); if (buf_target_id) buf_target_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_list_questions_for_target(buf_target_type, buf_target_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_target_type);
+    free(buf_target_id);
+    return result;
+}
+
+static napi_value link_to_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_input_json = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_input_json = (char*)malloc(need + 1);
+        if (buf_input_json) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_input_json, need + 1, &got);
+            buf_input_json[got] = 0;
+        }
+    }
+    if (!buf_input_json) { buf_input_json = (char*)malloc(1); if (buf_input_json) buf_input_json[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_link_to_question(buf_input_json);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_input_json);
+    return result;
+}
+
+static napi_value update_link_reason_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_link_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_link_id = (char*)malloc(need + 1);
+        if (buf_link_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_link_id, need + 1, &got);
+            buf_link_id[got] = 0;
+        }
+    }
+    if (!buf_link_id) { buf_link_id = (char*)malloc(1); if (buf_link_id) buf_link_id[0] = 0; }
+    char* buf_reason = NULL;
+    if (1 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[1], NULL, 0, &need);
+        buf_reason = (char*)malloc(need + 1);
+        if (buf_reason) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[1], buf_reason, need + 1, &got);
+            buf_reason[got] = 0;
+        }
+    }
+    if (!buf_reason) { buf_reason = (char*)malloc(1); if (buf_reason) buf_reason[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_update_link_reason(buf_link_id, buf_reason);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_link_id);
+    free(buf_reason);
+    return result;
+}
+
+static napi_value unlink_question_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_link_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_link_id = (char*)malloc(need + 1);
+        if (buf_link_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_link_id, need + 1, &got);
+            buf_link_id[got] = 0;
+        }
+    }
+    if (!buf_link_id) { buf_link_id = (char*)malloc(1); if (buf_link_id) buf_link_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_unlink_question(buf_link_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_link_id);
+    return result;
+}
+
+static napi_value search_questions_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_query = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_query = (char*)malloc(need + 1);
+        if (buf_query) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_query, need + 1, &got);
+            buf_query[got] = 0;
+        }
+    }
+    if (!buf_query) { buf_query = (char*)malloc(1); if (buf_query) buf_query[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_search_questions(buf_query);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_query);
+    return result;
+}
+
 // ── Module registration ───────────────────────────────────────────
 static napi_value shibei_register_exports(napi_env env, napi_value exports) {
     napi_property_descriptor props[] = {
@@ -2120,6 +2484,19 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"purgeResource", NULL, purge_resource_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"purgeFolder", NULL, purge_folder_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"purgeAllDeleted", NULL, purge_all_deleted_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"listQuestions", NULL, list_questions_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"getQuestion", NULL, get_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"createQuestion", NULL, create_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"updateQuestion", NULL, update_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"archiveQuestion", NULL, archive_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"unarchiveQuestion", NULL, unarchive_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"deleteQuestion", NULL, delete_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"listQuestionLinks", NULL, list_question_links_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"listQuestionsForTarget", NULL, list_questions_for_target_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"linkToQuestion", NULL, link_to_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"updateLinkReason", NULL, update_link_reason_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"unlinkQuestion", NULL, unlink_question_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"searchQuestions", NULL, search_questions_wrap, NULL, NULL, NULL, napi_default, NULL},
     };
     napi_define_properties(env, exports, sizeof(props) / sizeof(props[0]), props);
     return exports;
