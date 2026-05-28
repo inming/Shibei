@@ -8,7 +8,6 @@ import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
 import { LinkToQuestionSubMenu } from "@/components/Sidebar/LinkToQuestionSubMenu";
-import { LinkToQuestionPopover } from "@/components/Sidebar/LinkToQuestionPopover";
 import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 import * as cmd from "@/lib/commands";
 
@@ -264,10 +263,6 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
     const linkSubmenuRef = useRef<HTMLDivElement>(null);
     const [linkSubOpen, setLinkSubOpen] = useState(false);
     const linkSubStyle = useSubmenuPosition(linkAnchorRef, linkSubmenuRef, linkSubOpen);
-    /** Per-comment "Link to question..." popover; only one open at a time. */
-    const [commentLinkMenu, setCommentLinkMenu] = useState<
-      { commentId: string; x: number; y: number } | null
-    >(null);
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => {
       e.preventDefault();
@@ -411,18 +406,7 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
         {comments.length > 0 && (
           <div className={styles.commentSection} onClick={(e) => e.stopPropagation()}>
             {comments.map((c) => (
-              <div
-                key={c.id}
-                className={styles.commentItem}
-                onContextMenu={(e) => {
-                  // Don't override during inline edit — user is probably
-                  // trying to use the OS native textarea menu.
-                  if (editingCommentId === c.id) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setCommentLinkMenu({ commentId: c.id, x: e.clientX, y: e.clientY });
-                }}
-              >
+              <div key={c.id} className={styles.commentItem}>
                 {editingCommentId === c.id ? (
                   <div>
                     <div className={styles.editContainer}>
@@ -560,16 +544,6 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
             </button>
           )}
         </div>
-
-        {commentLinkMenu && (
-          <LinkToQuestionPopover
-            x={commentLinkMenu.x}
-            y={commentLinkMenu.y}
-            targetType="comment"
-            targetIds={[commentLinkMenu.commentId]}
-            onClose={() => setCommentLinkMenu(null)}
-          />
-        )}
       </div>
     );
   },
@@ -587,25 +561,13 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [previewingNoteEdit, setPreviewingNoteEdit] = useState(false);
-  const [noteLinkMenu, setNoteLinkMenu] = useState<
-    { noteId: string; x: number; y: number } | null
-  >(null);
 
   return (
     <div className={styles.notesSection}>
       <div ref={ref} className={styles.notesHeader}>{t('notesCount', { count: notes.length })}</div>
 
       {notes.map((note) => (
-        <div
-          key={note.id}
-          className={styles.noteItem}
-          onContextMenu={(e) => {
-            if (editingNoteId === note.id) return;
-            e.preventDefault();
-            e.stopPropagation();
-            setNoteLinkMenu({ noteId: note.id, x: e.clientX, y: e.clientY });
-          }}
-        >
+        <div key={note.id} className={styles.noteItem}>
           {editingNoteId === note.id ? (
             <div>
               <div className={styles.editContainer}>
@@ -677,16 +639,6 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
           )}
         </div>
       ))}
-
-      {noteLinkMenu && (
-        <LinkToQuestionPopover
-          x={noteLinkMenu.x}
-          y={noteLinkMenu.y}
-          targetType="comment"
-          targetIds={[noteLinkMenu.noteId]}
-          onClose={() => setNoteLinkMenu(null)}
-        />
-      )}
     </div>
   );
 });
