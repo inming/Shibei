@@ -19,6 +19,17 @@ import { I18n } from '../services/I18n';
 import { promptAction, router } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
+// Press-feedback styles for tappable rows. ArkUI requires @Styles fns to be
+// top-level (or members) so stateStyles can reference them; we keep them
+// here to share between the question rows and the "+ 新建问题" entry.
+@Styles function pressedRowStyle() {
+  .backgroundColor($r('app.color.bg_secondary'))
+}
+
+@Styles function normalRowStyle() {
+  .backgroundColor(Color.Transparent)
+}
+
 @Component
 export struct QuestionLinkSheet {
   @Link @Watch('onOpenChanged') open: boolean;
@@ -82,7 +93,10 @@ export struct QuestionLinkSheet {
       } else {
         QuestionService.instance.linkToQuestion(q.id, this.targetType, this.targetId);
       }
-      this.reload();
+      // Mirror desktop's LinkToQuestionSubMenu: any toggle dismisses the
+      // sheet. The 1:1 link-one-question case is overwhelmingly the common
+      // path; multi-link can be redone via another long-press in seconds.
+      this.open = false;
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
       hilog.warn(0x0000, 'shibei', 'question link toggle fail: %{public}s', code);
@@ -116,6 +130,13 @@ export struct QuestionLinkSheet {
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    // Tap feedback: highlight the row while pressed so users see exactly
+    // which option they're committing to (the sheet auto-dismisses on
+    // release, so without this you can't tell which question you tapped).
+    .stateStyles({
+      pressed: pressedRowStyle,
+      normal: normalRowStyle,
+    })
     .onClick(() => this.toggle(q));
   }
 
@@ -161,6 +182,10 @@ export struct QuestionLinkSheet {
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .stateStyles({
+        pressed: pressedRowStyle,
+        normal: normalRowStyle,
+      })
       .onClick(() => this.gotoCreate());
     }
     .width('100%')

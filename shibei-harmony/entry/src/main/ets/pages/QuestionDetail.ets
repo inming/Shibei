@@ -115,7 +115,10 @@ struct QuestionDetail {
   private resolveOne(link: QuestionLink): ResolvedLink {
     try {
       if (link.target_type === 'resource') {
-        const r: Resource = ShibeiService.instance.getResource(link.target_id);
+        const r: Resource | null = ShibeiService.instance.getResource(link.target_id);
+        if (!r) {
+          return { link, resourceTitle: null, snippet: null, highlightId: null, resourceId: null };
+        }
         return {
           link,
           resourceTitle: r.title,
@@ -327,16 +330,37 @@ struct QuestionDetail {
     });
   }
 
+  // Filter helpers — ArkUI @Builder forbids `const` / `return` statements
+  // in the body, so we materialize the filtered list via a method call.
+  private linksByType(targetType: QuestionTargetType): QuestionLink[] {
+    return this.links.filter((l: QuestionLink) => l.target_type === targetType);
+  }
+
+  // Resolved-target field accessors. Same reason — @Builder can't bind a
+  // local with `const r = ...`. Each accessor returns null when the link
+  // isn't resolved yet or when its target was unavailable.
+  private resolvedTitle(linkId: string): string | null {
+    const r = this.resolved.get(linkId);
+    return r ? r.resourceTitle : null;
+  }
+  private resolvedSnippet(linkId: string): string | null {
+    const r = this.resolved.get(linkId);
+    return r ? r.snippet : null;
+  }
+
+  private openLinkById(linkId: string): void {
+    const r = this.resolved.get(linkId);
+    if (r) this.openLink(r);
+  }
+
   @Builder
-  TargetGroup(targetType: QuestionTargetType, label: string) {
-    const group = this.links.filter((l: QuestionLink) => l.target_type === targetType);
-    if (group.length === 0) return;
+  TargetGroup(links: QuestionLink[], label: string) {
     Column() {
-      Text(`${label} (${group.length})`).fontSize(12)
+      Text(`${label} (${links.length})`).fontSize(12)
         .fontColor($r('sys.color.ohos_id_color_text_secondary'))
         .fontWeight(FontWeight.Medium)
         .padding({ left: 16, right: 16, top: 12, bottom: 6 });
-      ForEach(group, (link: QuestionLink) => {
+      ForEach(links, (link: QuestionLink) => {
         this.LinkRow(link);
       }, (link: QuestionLink) => link.id);
     }.alignItems(HorizontalAlign.Start).width('100%');
@@ -344,11 +368,10 @@ struct QuestionDetail {
 
   @Builder
   LinkRow(link: QuestionLink) {
-    const r = this.resolved.get(link.id);
     Row() {
       Column() {
-        if (r && r.resourceTitle) {
-          Text(r.resourceTitle).fontSize(14)
+        if (this.resolvedTitle(link.id)) {
+          Text(this.resolvedTitle(link.id)).fontSize(14)
             .fontColor($r('sys.color.ohos_id_color_text_primary'))
             .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
         } else {
@@ -356,8 +379,8 @@ struct QuestionDetail {
             .fontSize(14).fontStyle(FontStyle.Italic)
             .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
         }
-        if (r && r.snippet) {
-          Text(r.snippet).fontSize(12)
+        if (this.resolvedSnippet(link.id)) {
+          Text(this.resolvedSnippet(link.id)).fontSize(12)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
             .padding({ top: 4, bottom: 4, left: 6, right: 6 })
@@ -378,10 +401,7 @@ struct QuestionDetail {
         .onClick(() => this.confirmUnlink(link));
     }
     .width('100%').padding({ left: 16, right: 8, top: 10, bottom: 10 })
-    .onClick(() => {
-      const cur = this.resolved.get(link.id);
-      if (cur) this.openLink(cur);
-    });
+    .onClick(() => this.openLinkById(link.id));
     Divider().color($r('sys.color.ohos_id_color_list_separator'));
   }
 
@@ -458,9 +478,18 @@ struct QuestionDetail {
               .padding({ left: 16, right: 16, top: 24, bottom: 24 })
               .textAlign(TextAlign.Center).width('100%');
           } else {
-            this.TargetGroup('resource', I18n.t($r('app.string.question_links_resource')));
-            this.TargetGroup('highlight', I18n.t($r('app.string.question_links_highlight')));
-            this.TargetGroup('comment', I18n.t($r('app.string.question_links_comment')));
+            if (this.linksByType('resource').length > 0) {
+              this.TargetGroup(this.linksByType('resource'),
+                I18n.t($r('app.string.question_links_resource')));
+            }
+            if (this.linksByType('highlight').length > 0) {
+              this.TargetGroup(this.linksByType('highlight'),
+                I18n.t($r('app.string.question_links_highlight')));
+            }
+            if (this.linksByType('comment').length > 0) {
+              this.TargetGroup(this.linksByType('comment'),
+                I18n.t($r('app.string.question_links_comment')));
+            }
           }
         }.alignItems(HorizontalAlign.Start).width('100%');
       }
