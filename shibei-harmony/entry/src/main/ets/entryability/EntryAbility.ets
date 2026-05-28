@@ -159,6 +159,17 @@ export default class EntryAbility extends UIAbility {
           !ShibeiService.instance.isUnlocked()) {
         AppStorage.setOrCreate<string>(KEY_PENDING_DEEP_LINK, uri);
       } else {
+        const questionMatch = uri.match(/^shibei:\/\/open\/question\/([^?]+)(?:\?.*)?$/);
+        if (questionMatch) {
+          const questionId = decodeURIComponent(questionMatch[1]);
+          router.pushUrl({
+            url: 'pages/QuestionDetail',
+            params: { id: questionId },
+          }).catch((err: Error) => {
+            hilog.warn(0x0000, 'shibei', 'question deep link pushUrl fail: %{public}s', err.message);
+          });
+          return;
+        }
         const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
         if (!match) {
           if (uri.match(/^shibei:\/\/open\/folder\/([^?]+)(?:\?.*)?$/)) {

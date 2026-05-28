@@ -196,6 +196,19 @@ struct Library {
         if (folderId) this.openFolderDeepLink(folderId);
         return true;
       }
+      const questionMatch = uri.match(/^shibei:\/\/open\/question\/([^?]+)(?:\?.*)?$/);
+      if (questionMatch) {
+        const questionId = this.decodeDeepLinkSegment(questionMatch[1]);
+        if (questionId) {
+          router.pushUrl({
+            url: 'pages/QuestionDetail',
+            params: { id: questionId },
+          }).catch((err: Error) => {
+            hilog.error(0x0000, 'shibei', 'question deep link pushUrl fail: %{public}s', err.message);
+          });
+        }
+        return true;
+      }
       const match = uri.match(/^shibei:\/\/open\/resource\/([^?]+)(?:\?highlight=(.+))?$/);
       if (!match) return true;
       const resourceId = this.decodeDeepLinkSegment(match[1]);
