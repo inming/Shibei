@@ -528,6 +528,10 @@ export struct AnnotationPanel {
     this.questionSheetOpen = true;
   }
 
+  // NOTE: this @Builder is named CommentCard for historical reasons but it
+  // only renders **resource-level notes** (comments with highlight_id IS NULL).
+  // Comments attached to a highlight are rendered inline inside HighlightCard
+  // without their own card surface or long-press menu.
   @Builder CommentCard(c: Comment) {
     Column() {
       MarkdownText({ content: c.content })
@@ -535,7 +539,58 @@ export struct AnnotationPanel {
       this.CommentEditButton(c);
     }
     .width('100%')
-    .padding({ left: 12, right: 12, top: 8, bottom: 8 });
+    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+    .bindContextMenu(this.NoteContextMenu(c), ResponseType.LongPress);
+  }
+
+  private openQuestionSheetForNote(noteId: string): void {
+    this.questionSheetTargetType = 'comment';
+    this.questionSheetTargetId = noteId;
+    this.questionSheetOpen = true;
+  }
+
+  // Long-press menu for a resource-level note. Notes are user-authored
+  // first-class evidence — often the "seed idea" worth tracking under a
+  // dedicated question — so they get a link-to-question entry that
+  // highlight-attached comments deliberately don't.
+  @Builder NoteContextMenu(c: Comment) {
+    Column() {
+      Row() {
+        Text(I18n.t($r('app.string.question_link_to')))
+          .fontSize(15)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .onClick(() => this.openQuestionSheetForNote(c.id));
+
+      Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
+
+      Row() {
+        Text(I18n.t($r('app.string.common_edit')))
+          .fontSize(15)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .onClick(() => this.onEditComment(c.id));
+
+      Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
+
+      Row() {
+        Text(I18n.t($r('app.string.common_delete')))
+          .fontSize(15)
+          .fontColor($r('sys.color.ohos_id_color_warning'))
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .onClick(() => this.onDeleteComment(c.id));
+    }
+    .width(220)
+    .backgroundColor($r('sys.color.ohos_id_color_background'));
   }
 
   @Builder CommentEditButton(c: Comment) {

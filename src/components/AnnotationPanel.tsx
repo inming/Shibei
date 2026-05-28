@@ -8,6 +8,7 @@ import { ResourceMeta } from "@/components/ResourceMeta";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { LIGHT_COLORS, DARK_COLORS } from "@/components/SelectionToolbar";
 import { LinkToQuestionSubMenu } from "@/components/Sidebar/LinkToQuestionSubMenu";
+import { LinkToQuestionPopover } from "@/components/Sidebar/LinkToQuestionPopover";
 import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 import * as cmd from "@/lib/commands";
 
@@ -561,13 +562,28 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [previewingNoteEdit, setPreviewingNoteEdit] = useState(false);
+  // Resource-level notes (unlike highlight-attached comments) carry the
+  // user's own framing — often the seed of a new research question — so
+  // they get a right-click "Link to question" entry that comments don't.
+  const [noteLinkMenu, setNoteLinkMenu] = useState<
+    { noteId: string; x: number; y: number } | null
+  >(null);
 
   return (
     <div className={styles.notesSection}>
       <div ref={ref} className={styles.notesHeader}>{t('notesCount', { count: notes.length })}</div>
 
       {notes.map((note) => (
-        <div key={note.id} className={styles.noteItem}>
+        <div
+          key={note.id}
+          className={styles.noteItem}
+          onContextMenu={(e) => {
+            if (editingNoteId === note.id) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setNoteLinkMenu({ noteId: note.id, x: e.clientX, y: e.clientY });
+          }}
+        >
           {editingNoteId === note.id ? (
             <div>
               <div className={styles.editContainer}>
@@ -639,6 +655,16 @@ const NotesList = forwardRef<HTMLDivElement, NotesListProps>(
           )}
         </div>
       ))}
+
+      {noteLinkMenu && (
+        <LinkToQuestionPopover
+          x={noteLinkMenu.x}
+          y={noteLinkMenu.y}
+          targetType="comment"
+          targetIds={[noteLinkMenu.noteId]}
+          onClose={() => setNoteLinkMenu(null)}
+        />
+      )}
     </div>
   );
 });
