@@ -56,9 +56,9 @@ export function registerResourceTools(server: McpServer, client: ShibeiClient) {
     },
     async (params) => {
       const body: Record<string, string> = {};
-      if (params.title !== undefined) body.title = params.title;
-      if (params.description !== undefined) body.description = params.description;
-      if (params.folder_id !== undefined) body.folder_id = params.folder_id;
+      if (params.title !== undefined && params.title !== "") body.title = params.title;
+      if (params.description !== undefined && params.description !== "") body.description = params.description;
+      if (params.folder_id !== undefined && params.folder_id !== "") body.folder_id = params.folder_id;
       await client.put(`/api/resources/${encodeURIComponent(params.resource_id)}`, body);
       return { content: [{ type: "text" as const, text: "Resource updated successfully." }] };
     }

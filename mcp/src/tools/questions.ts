@@ -144,8 +144,8 @@ export function registerQuestionTools(server: McpServer, client: ShibeiClient) {
       switch (params.action) {
         case "update": {
           const body: Record<string, unknown> = {};
-          if (params.title !== undefined) body.title = params.title;
-          if (params.description !== undefined) body.description = params.description;
+          if (params.title !== undefined && params.title !== "") body.title = params.title;
+          if (params.description !== undefined && params.description !== "") body.description = params.description;
           await client.put(`/api/questions/${encodeURIComponent(params.id)}`, body);
           return { content: [{ type: "text" as const, text: "Question updated." }] };
         }
