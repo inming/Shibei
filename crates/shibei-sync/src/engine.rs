@@ -507,14 +507,22 @@ impl SyncEngine {
         let key = format!("state/snapshot-{}.json", ts);
         self.backend.upload(&key, &snapshot_json).await?;
 
-        // Upload all existing resource snapshots
+        // Upload existing resource snapshots that aren't already on S3.
+        // On a fresh device this uploads everything; on a cursor reset (which
+        // clears last_sync_at and re-enters this path) snapshots already on S3
+        // are skipped, so a reset no longer re-PUTs the whole library.
+        let mut uploaded = 0usize;
         for resource_id in &resource_ids {
             let resource_type = self.get_resource_type(resource_id);
-            if let Err(e) = self.upload_snapshot(resource_id, &resource_type).await {
-                eprintln!("[sync] Warning: failed to upload snapshot for {}: {}", resource_id, e);
-                let conn = self.conn()?;
-                let marker = format!("snapshot_upload:{}", resource_id);
-                sync_state::set(&conn, &marker, "retry")?;
+            match self.upload_snapshot_if_absent(resource_id, &resource_type).await {
+                Ok(true) => uploaded += 1,
+                Ok(false) => {}
+                Err(e) => {
+                    eprintln!("[sync] Warning: failed to upload snapshot for {}: {}", resource_id, e);
+                    let conn = self.conn()?;
+                    let marker = format!("snapshot_upload:{}", resource_id);
+                    sync_state::set(&conn, &marker, "retry")?;
+                }
             }
         }
 
@@ -524,7 +532,11 @@ impl SyncEngine {
             sync_log::mark_uploaded(&conn, max_id)?;
         }
 
-        eprintln!("[sync] Initial snapshot uploaded ({} resources)", resource_ids.len());
+        eprintln!(
+            "[sync] Initial snapshot uploaded ({} of {} resource snapshots, rest already on S3)",
+            uploaded,
+            resource_ids.len()
+        );
         Ok(())
     }
 
@@ -540,11 +552,11 @@ impl SyncEngine {
                     let resource_id = key.strip_prefix("snapshot_upload:").unwrap_or("");
                     if resource_id.is_empty() { continue; }
                     let resource_type = self.get_resource_type(resource_id);
-                    match self.upload_snapshot(resource_id, &resource_type).await {
-                        Ok(()) => {
+                    match self.upload_snapshot_if_absent(resource_id, &resource_type).await {
+                        Ok(_) => {
                             let conn = self.conn()?;
                             sync_state::delete(&conn, key)?;
-                            eprintln!("[sync] Phase 1: retry upload succeeded for {}", resource_id);
+                            eprintln!("[sync] Phase 1: retry upload resolved for {}", resource_id);
                         }
                         Err(e) => {
                             eprintln!("[sync] Phase 1: retry upload still failing for {}: {}", resource_id, e);
@@ -1969,6 +1981,24 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// Upload a snapshot only if S3 doesn't already have it. Snapshots are
+    /// immutable per resource_id (S3 PUT is atomic, so a present object is
+    /// complete and byte-identical), so re-uploading is pure waste. This keeps
+    /// "reset sync cursors" from re-PUTting the entire library — it only uploads
+    /// snapshots genuinely missing from S3. Returns true if an upload happened.
+    async fn upload_snapshot_if_absent(
+        &self,
+        resource_id: &str,
+        resource_type: &str,
+    ) -> Result<bool, SyncError> {
+        let key = snapshot_s3_key(resource_id, resource_type);
+        if self.backend.head(&key).await?.is_some() {
+            return Ok(false);
+        }
+        self.upload_snapshot(resource_id, resource_type).await?;
+        Ok(true)
+    }
+
     /// Download a snapshot from the backend (gzip-compressed) and save locally.
     /// Supports both HTML and PDF snapshots based on resource_type.
     pub async fn download_snapshot(&self, resource_id: &str, resource_type: &str) -> Result<(), SyncError> {
@@ -2457,6 +2487,43 @@ mod tests {
             let state = sync_state::get(&conn, "snapshot:res-1").unwrap();
             assert_eq!(state, Some("synced".to_string()));
         }
+    }
+
+    #[tokio::test]
+    async fn test_upload_snapshot_skips_when_already_on_s3() {
+        // Mirrors the download-side skip: a snapshot already on S3 must not be
+        // re-uploaded after a cursor reset. Snapshots are immutable, so the
+        // existing remote object is left untouched even if the local file
+        // changed (which can't happen in practice, but proves the guard works).
+        let backend = Arc::new(MockBackend::new());
+        let dir = tempfile::tempdir().unwrap();
+        let resource_dir = dir.path().join("storage").join("res-1");
+        std::fs::create_dir_all(&resource_dir).unwrap();
+        std::fs::write(resource_dir.join("snapshot.html"), b"<html>local</html>").unwrap();
+
+        let (_db_dir, pool) = test_pool();
+        let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
+
+        let key = "snapshots/res-1/snapshot.html.gz";
+
+        // Object absent → upload performed.
+        let did_upload = engine
+            .upload_snapshot_if_absent("res-1", "webpage")
+            .await
+            .unwrap();
+        assert!(did_upload, "first call should upload");
+        let first = { backend.store.lock().await.get(key).cloned().unwrap() };
+
+        // Change the local bytes, then call again: object present → skipped,
+        // and the S3 object is byte-for-byte unchanged.
+        std::fs::write(resource_dir.join("snapshot.html"), b"<html>CHANGED</html>").unwrap();
+        let did_upload = engine
+            .upload_snapshot_if_absent("res-1", "webpage")
+            .await
+            .unwrap();
+        assert!(!did_upload, "second call should skip (already on S3)");
+        let second = { backend.store.lock().await.get(key).cloned().unwrap() };
+        assert_eq!(first, second, "existing S3 snapshot must not be overwritten");
     }
 
     #[tokio::test]
