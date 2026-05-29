@@ -512,11 +512,12 @@ impl SyncEngine {
         // clears last_sync_at and re-enters this path) snapshots already on S3
         // are skipped, so a reset no longer re-PUTs the whole library.
         let mut uploaded = 0usize;
+        let mut skipped = 0usize;
         for resource_id in &resource_ids {
             let resource_type = self.get_resource_type(resource_id);
             match self.upload_snapshot_if_absent(resource_id, &resource_type).await {
                 Ok(true) => uploaded += 1,
-                Ok(false) => {}
+                Ok(false) => skipped += 1,
                 Err(e) => {
                     eprintln!("[sync] Warning: failed to upload snapshot for {}: {}", resource_id, e);
                     let conn = self.conn()?;
@@ -533,8 +534,9 @@ impl SyncEngine {
         }
 
         eprintln!(
-            "[sync] Initial snapshot uploaded ({} of {} resource snapshots, rest already on S3)",
+            "[sync] Initial snapshot: uploaded {} new snapshot(s), skipped {} already on S3 (of {} total)",
             uploaded,
+            skipped,
             resource_ids.len()
         );
         Ok(())
@@ -1856,6 +1858,12 @@ impl SyncEngine {
                     let _ = sync_state::set(&conn, &key, "synced");
                 }
             }
+            // Log skips explicitly so a cursor reset that re-fetches nothing
+            // still shows why — silence here looks like the phase did nothing.
+            eprintln!(
+                "[sync] Phase 4: {} snapshot(s) already on disk, skipped re-download",
+                already_present.len()
+            );
         }
 
         if to_download.is_empty() {
@@ -1864,9 +1872,8 @@ impl SyncEngine {
 
         let total = to_download.len();
         eprintln!(
-            "[sync] Phase 4: downloading {} pending resource snapshot(s) ({} already on disk, skipped)",
-            total,
-            already_present.len()
+            "[sync] Phase 4: downloading {} missing resource snapshot(s)",
+            total
         );
         for (i, (resource_id, resource_type)) in to_download.iter().enumerate() {
             if let Err(e) = self.download_snapshot(resource_id, resource_type).await {
