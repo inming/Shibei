@@ -1789,6 +1789,20 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// True if a non-empty snapshot file for this resource is already on disk.
+    /// Snapshots are immutable per resource_id (captured once, never re-uploaded
+    /// — compaction only uploads when `head()` shows the object is absent), so a
+    /// present local file is byte-identical to S3 and needs no re-download.
+    fn local_snapshot_present(&self, resource_id: &str, resource_type: &str) -> bool {
+        let filename = snapshot_filename(resource_type);
+        let path = self
+            .base_dir
+            .join("storage")
+            .join(resource_id)
+            .join(filename);
+        std::fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false)
+    }
+
     /// Phase 4: Download all resource snapshots that are marked as pending.
     /// Best-effort: failures are logged but don't abort sync.
     async fn download_pending_snapshots(&self, on_progress: Option<&ProgressCallback>) {
@@ -1804,11 +1818,46 @@ impl SyncEngine {
             return;
         }
 
-        let total = pending_ids.len();
-        eprintln!("[sync] Phase 4: downloading {} pending resource snapshot(s)", total);
-        for (i, resource_id) in pending_ids.iter().enumerate() {
+        // Split pending snapshots into ones already on disk and ones genuinely
+        // missing. "Reset sync cursors" re-marks every resource pending, but
+        // snapshots are immutable, so files we already hold are skipped — only
+        // the missing ones are re-fetched. This keeps a cursor reset cheap
+        // instead of re-downloading + re-decrypting the entire library.
+        // No DB connection is held across `get_resource_type` (which borrows its
+        // own pooled connection) to avoid a double-borrow on a size-1 pool.
+        let mut to_download: Vec<(String, String)> = Vec::new();
+        let mut already_present: Vec<&String> = Vec::new();
+        for resource_id in &pending_ids {
             let resource_type = self.get_resource_type(resource_id);
-            if let Err(e) = self.download_snapshot(resource_id, &resource_type).await {
+            if self.local_snapshot_present(resource_id, &resource_type) {
+                already_present.push(resource_id);
+            } else {
+                to_download.push((resource_id.clone(), resource_type));
+            }
+        }
+
+        // Clear pending markers for snapshots already on disk in a single pass.
+        if !already_present.is_empty() {
+            if let Ok(conn) = self.conn() {
+                for resource_id in &already_present {
+                    let key = format!("snapshot:{}", resource_id);
+                    let _ = sync_state::set(&conn, &key, "synced");
+                }
+            }
+        }
+
+        if to_download.is_empty() {
+            return;
+        }
+
+        let total = to_download.len();
+        eprintln!(
+            "[sync] Phase 4: downloading {} pending resource snapshot(s) ({} already on disk, skipped)",
+            total,
+            already_present.len()
+        );
+        for (i, (resource_id, resource_type)) in to_download.iter().enumerate() {
+            if let Err(e) = self.download_snapshot(resource_id, resource_type).await {
                 // If the resource no longer exists locally, clear the stale pending marker
                 let should_clear = match self.conn() {
                     Ok(conn) => {
@@ -2406,6 +2455,80 @@ mod tests {
         {
             let conn = pool2.read().unwrap().get().unwrap();
             let state = sync_state::get(&conn, "snapshot:res-1").unwrap();
+            assert_eq!(state, Some("synced".to_string()));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pending_snapshot_skipped_when_present_locally() {
+        // A snapshot already on disk must NOT be re-downloaded after a cursor
+        // reset re-marks it pending. The backend holds no object for res-1, so
+        // any actual download would fail — the marker flipping to "synced"
+        // proves the download was skipped, not performed.
+        let backend = Arc::new(MockBackend::new());
+        let dir = tempfile::tempdir().unwrap();
+
+        let resource_dir = dir.path().join("storage").join("res-1");
+        std::fs::create_dir_all(&resource_dir).unwrap();
+        std::fs::write(resource_dir.join("snapshot.html"), b"<html>local</html>").unwrap();
+
+        let (_db_dir, pool) = test_pool();
+        let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
+
+        {
+            let conn = pool.read().unwrap().get().unwrap();
+            sync_state::set(&conn, "snapshot:res-1", "pending").unwrap();
+        }
+
+        engine.download_pending_snapshots(None).await;
+
+        // Marker cleared without touching the backend, and the local file is intact.
+        {
+            let conn = pool.read().unwrap().get().unwrap();
+            let state = sync_state::get(&conn, "snapshot:res-1").unwrap();
+            assert_eq!(state, Some("synced".to_string()));
+        }
+        let on_disk =
+            std::fs::read_to_string(resource_dir.join("snapshot.html")).unwrap();
+        assert_eq!(on_disk, "<html>local</html>");
+        assert!(backend.list("snapshots/").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_pending_snapshot_downloaded_when_missing_locally() {
+        // The complement: when no local file exists, the pending snapshot is
+        // fetched from the backend as before.
+        let backend = Arc::new(MockBackend::new());
+        let dir = tempfile::tempdir().unwrap();
+
+        // Seed S3 with a gzip snapshot for res-2 via the upload path.
+        {
+            let src_dir = tempfile::tempdir().unwrap();
+            let src_storage = src_dir.path().join("storage").join("res-2");
+            std::fs::create_dir_all(&src_storage).unwrap();
+            std::fs::write(src_storage.join("snapshot.html"), b"<html>remote</html>").unwrap();
+            let (_d, src_pool) = test_pool();
+            let uploader =
+                make_engine(src_pool, backend.clone(), "dev-src", src_dir.path().to_path_buf());
+            uploader.upload_snapshot("res-2", "webpage").await.unwrap();
+        }
+
+        let (_db_dir, pool) = test_pool();
+        let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
+
+        {
+            let conn = pool.read().unwrap().get().unwrap();
+            sync_state::set(&conn, "snapshot:res-2", "pending").unwrap();
+        }
+
+        engine.download_pending_snapshots(None).await;
+
+        let downloaded =
+            std::fs::read_to_string(dir.path().join("storage/res-2/snapshot.html")).unwrap();
+        assert_eq!(downloaded, "<html>remote</html>");
+        {
+            let conn = pool.read().unwrap().get().unwrap();
+            let state = sync_state::get(&conn, "snapshot:res-2").unwrap();
             assert_eq!(state, Some("synced".to_string()));
         }
     }
