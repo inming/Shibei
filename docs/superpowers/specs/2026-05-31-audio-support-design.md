@@ -1,6 +1,6 @@
 # 音频资料支持设计文档
 
-> 状态：Phase A + B（B1/B2/B3）已实现（分支 `feat/audio-support`）。Phase C（鸿蒙）未做。
+> 状态：Phase A + B + C 全部实现。桌面（A/B）在 `main`；鸿蒙（Phase C：播放 + 转写视图 + 标注 + 多选）在分支 `feat/harmony-audio`，Mate X5 真机已验证。
 > 日期：2026-05-31
 > 模板参考：`docs/superpowers/specs/2026-04-15-v2.3-pdf-support-design.md`（PDF 接入模式）
 
@@ -237,7 +237,6 @@ list_resources(type=audio, transcribed=false)
 
 - 应用内录音
 - 浏览器插件音频抓取
-- 鸿蒙移动端音频播放/标注
 - 内置自动转写（数据模型已中立，将来可加而不返工）
 - 波形图可视化（用进度条 + 时间轴 marker 替代）
 - 音频转码 / 切块
@@ -278,6 +277,6 @@ list_resources(type=audio, transcribed=false)
 
 1. **Phase A — 音频核心**：导入 + 存储/同步（扩展名派生）+ 协议 Range 播放 + AudioReader 播放器 + 时间段标注。可独立交付（无转写也可用）。
 2. **Phase B — 转写联动**：MCP `set_transcript` + 路径返回 + transcript.json 同步 + AudioReader 转写视图 + 转写文本高亮 + FTS。
-3. **Phase C（后续，不在本轮）**：鸿蒙移动端音频。
+3. **Phase C — 鸿蒙移动端音频（已实现）**：NAPI `ensure_audio_downloaded`（返路径，AVPlayer `fdSrc` 直读）+ `get_transcript`（返 transcript.json 字符串）；`Reader.ets` `AudioContent` 分支 = AVPlayer 播放 + 转写视图（点句跳播 / 跟随 / seek 滚动）+ 高亮原生着色 + 长按建标注（单句 / 多选区间）。**关键坑**：音频无 Web，`webController.runJavaScript` 必须对 audio guard（否则同步抛异常闪退）。详见 CLAUDE.md「鸿蒙音频（Phase C）」。
 
 > 工程顺序：A 是基础，B 在其上叠加；两阶段可分别提交、各自可编译可运行。
