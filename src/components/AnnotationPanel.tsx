@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import toast from "react-hot-toast";
-import type { Highlight, Comment, Resource } from "@/types";
+import type { Highlight, Comment, Resource, AudioAnchor } from "@/types";
+import { formatTimecode } from "@/lib/audioTime";
 import styles from "./AnnotationPanel.module.css";
 import { Modal } from "@/components/Modal";
 import { ResourceMeta } from "@/components/ResourceMeta";
@@ -11,6 +12,12 @@ import { LinkToQuestionSubMenu } from "@/components/Sidebar/LinkToQuestionSubMen
 import { LinkToQuestionPopover } from "@/components/Sidebar/LinkToQuestionPopover";
 import { useFlipPosition, useSubmenuPosition } from "@/hooks/useFlipPosition";
 import * as cmd from "@/lib/commands";
+
+/** Start time (seconds) of an audio highlight's anchor, or null if not audio. */
+function audioAnchorStart(h: Highlight): number | null {
+  const a = h.anchor as AudioAnchor;
+  return a && a.type === "audio" && typeof a.start === "number" ? a.start : null;
+}
 
 function autoResize(el: HTMLTextAreaElement | null) {
   if (!el) return;
@@ -310,6 +317,8 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
       onClick();
     }
 
+    const hlTime = audioAnchorStart(highlight);
+
     return (
       <div
         ref={ref}
@@ -318,7 +327,12 @@ const HighlightEntry = forwardRef<HTMLDivElement, HighlightEntryProps>(
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        <div className={styles.highlightText}>{highlight.text_content}</div>
+        <div className={styles.highlightText}>
+          {hlTime !== null && (
+            <span className={styles.audioTimeChip}>{formatTimecode(hlTime)}</span>
+          )}
+          {highlight.text_content}
+        </div>
         <div className={styles.highlightMeta}>
           {isFailed && <span className={styles.failedBadge}>{t('locationFailed')}</span>}
           <span

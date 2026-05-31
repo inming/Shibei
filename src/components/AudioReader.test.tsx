@@ -36,19 +36,44 @@ describe("AudioReader", () => {
     expect(screen.getByRole("button", { name: /▶|play|播放/i })).toBeTruthy();
   });
 
-  test("'mark current position' emits an audio anchor selection", () => {
+  test("'mark current position' with no transcript is a point marker with empty text", () => {
     const onSelection = vi.fn();
     render(<AudioReader {...baseProps} onSelection={onSelection} />);
 
-    const markBtn = screen.getByTestId("audio-add-marker");
-    fireEvent.click(markBtn);
+    fireEvent.click(screen.getByTestId("audio-add-marker"));
 
     expect(onSelection).toHaveBeenCalledTimes(1);
     const arg = onSelection.mock.calls[0][0];
     expect(arg.anchor.type).toBe("audio");
-    expect(typeof arg.anchor.start).toBe("number");
-    expect(arg.anchor.end).toBe(arg.anchor.start);
-    expect(typeof arg.text).toBe("string");
+    expect(arg.anchor.end).toBe(arg.anchor.start); // point marker
+    expect(arg.text).toBe(""); // timestamp is NOT stored as the text
+  });
+
+  test("'mark current position' marks the current segment when a transcript exists", async () => {
+    const onSelection = vi.fn();
+    mockInvoke((cmd) => {
+      if (cmd === "cmd_get_transcript") {
+        return {
+          version: 1,
+          segments: [
+            { start: 0, end: 2, text: "alpha" },
+            { start: 2, end: 4, text: "beta" },
+          ],
+        };
+      }
+      return undefined;
+    });
+    render(<AudioReader {...baseProps} onSelection={onSelection} />);
+    await screen.findByText(/alpha/); // transcript loaded
+
+    fireEvent.click(screen.getByTestId("audio-add-marker"));
+
+    expect(onSelection).toHaveBeenCalledTimes(1);
+    const arg = onSelection.mock.calls[0][0];
+    // currentTime defaults to 0 → segment [0,2) "alpha"
+    expect(arg.text).toBe("alpha");
+    expect(arg.anchor.start).toBe(0);
+    expect(arg.anchor.end).toBe(2);
   });
 
   test("clicking a marker requests a seek and reports the highlight click", () => {

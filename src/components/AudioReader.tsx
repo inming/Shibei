@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { Highlight, AudioAnchor, Transcript } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
+import { formatTimecode as formatTime } from "@/lib/audioTime";
 import styles from "./AudioReader.module.css";
 
 // Tauri 2 protocol URLs differ per platform (see ReaderView).
@@ -34,16 +35,6 @@ interface AudioReaderProps {
   onHighlightContextMenu: (id: string, position: { top: number; left: number }) => void;
   onReady: () => void;
   seekRequest: AudioSeekRequest | null;
-}
-
-function formatTime(sec: number): string {
-  const total = isFinite(sec) && sec > 0 ? Math.floor(sec) : 0;
-  const s = total % 60;
-  const m = Math.floor(total / 60) % 60;
-  const h = Math.floor(total / 3600);
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
 /** Narrow a highlight's opaque anchor to an audio anchor, or null. */
@@ -171,13 +162,21 @@ export function AudioReader({
     const el = audioRef.current;
     if (!el) return;
     const at = el.currentTime;
-    const anchor: AudioAnchor = { type: "audio", start: at, end: at };
+    // If a transcript covers this moment, mark the current sentence (text = the
+    // spoken segment), consistent with selecting that segment. Otherwise create
+    // a point-in-time bookmark with no text — the timestamp is shown as a
+    // derived label, never stored as the highlight text.
+    const seg = segments.find((s) => at >= s.start && at < s.end);
+    const anchor: AudioAnchor = seg
+      ? { type: "audio", start: seg.start, end: seg.end }
+      : { type: "audio", start: at, end: at };
+    const text = seg ? seg.text.trim() : "";
     const btn = markBtnRef.current?.getBoundingClientRect();
     const rect = btn
       ? { top: btn.bottom + 6, left: btn.left, width: 0, height: 0 }
       : { top: 120, left: 120, width: 0, height: 0 };
-    onSelection({ text: formatTime(at), anchor, rect });
-  }, [onSelection]);
+    onSelection({ text, anchor, rect });
+  }, [segments, onSelection]);
 
   // Create a highlight from a transcript text selection spanning segment(s).
   const handleTranscriptMouseUp = useCallback(() => {
