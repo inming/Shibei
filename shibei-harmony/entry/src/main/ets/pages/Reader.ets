@@ -6,7 +6,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { pasteboard, BusinessError } from '@kit.BasicServicesKit';
 import { media } from '@kit.MediaKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
-import { ShibeiService, Resource, Comment } from '../services/ShibeiService';
+import { ShibeiService, Resource, Comment, Highlight } from '../services/ShibeiService';
 import { AnnotationsService } from '../services/AnnotationsService';
 import {
   AnnotationBridge,
@@ -54,6 +54,12 @@ const HL_COLORS: HlColor[] = [
 // (no 1.5x — the enum jumps 1.25 → 1.75).
 const AUDIO_SPEEDS: number[] = [0.75, 1.0, 1.25, 1.75, 2.0];
 const AUDIO_SKIP_MS: number = 15000;
+
+// Transcript (transcript.json) shape — mirrors the desktop format.
+interface TranscriptSegment { start: number; end: number; text: string; }
+interface TranscriptDoc { version?: number; language?: string; segments?: TranscriptSegment[]; }
+// Just the fields we read off an audio highlight's opaque anchor.
+interface AudioAnchorLite { type?: string; start?: number; end?: number; }
 
 // Header row shape for WebResourceResponse.setResponseHeader. ArkTS strict
 // mode rejects inline object-literal types, so we pin the shape here.
@@ -107,6 +113,11 @@ struct Reader {
   // True while the user is dragging the seek bar — suppresses timeUpdate so the
   // thumb doesn't fight the finger.
   private seeking: boolean = false;
+  // Transcript segments (empty if not transcribed / not synced yet).
+  @State segments: TranscriptSegment[] = [];
+  // Currently-playing segment for karaoke follow; -1 = none.
+  @State activeSeg: number = -1;
+  private transcriptScroller: Scroller = new Scroller();
 
   private webController: webview.WebviewController = new webview.WebviewController();
   private bridge: AnnotationBridge = new AnnotationBridge({
@@ -345,6 +356,7 @@ struct Reader {
     try {
       const path = await ShibeiService.instance.ensureAudioDownloaded(id);
       this.audioDownloading = false;
+      this.loadTranscript(id);
       await this.initAvPlayer(path);
     } catch (err) {
       this.audioDownloading = false;
@@ -373,6 +385,7 @@ struct Reader {
     player.on('timeUpdate', (time: number) => {
       if (!this.seeking) {
         this.currentTimeMs = time;
+        this.updateActiveSeg(true);
       }
     });
     player.on('durationUpdate', (d: number) => {
@@ -407,6 +420,7 @@ struct Reader {
     const clamped = Math.max(0, Math.min(ms, this.durationMs));
     p.seek(clamped, media.SeekMode.SEEK_CLOSEST);
     this.currentTimeMs = clamped;
+    this.updateActiveSeg(false);
   }
 
   private skipBy(deltaMs: number): void {
@@ -454,6 +468,65 @@ struct Reader {
     const mm = m < 10 ? `0${m}` : `${m}`;
     const ss = s < 10 ? `0${s}` : `${s}`;
     return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
+  private loadTranscript(id: string): void {
+    try {
+      const raw = ShibeiService.instance.getTranscript(id);
+      if (!raw) {
+        this.segments = [];
+        return;
+      }
+      const doc = JSON.parse(raw) as TranscriptDoc;
+      this.segments = doc.segments ?? [];
+    } catch (err) {
+      hilog.warn(0x0000, 'shibei', 'loadTranscript fail: %{public}s', (err as Error).message);
+      this.segments = [];
+    }
+  }
+
+  // Recompute the active (currently-playing) segment; when `follow` and playing,
+  // keep it centered in the transcript list (karaoke scroll).
+  private updateActiveSeg(follow: boolean): void {
+    if (this.segments.length === 0) return;
+    const t = this.currentTimeMs / 1000;
+    let idx = -1;
+    for (let i = 0; i < this.segments.length; i++) {
+      if (t >= this.segments[i].start && t < this.segments[i].end) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx === this.activeSeg) return;
+    this.activeSeg = idx;
+    if (follow && this.isPlaying && idx >= 0) {
+      this.transcriptScroller.scrollToIndex(idx, true, ScrollAlign.CENTER);
+    }
+  }
+
+  // Translucent tint (#AARRGGBB) for a transcript segment overlapped by a
+  // highlight, or '' if none. Half-open overlap so a highlight ending on a
+  // boundary doesn't bleed into the neighbor; point markers tint their segment.
+  private highlightTintForSeg(seg: TranscriptSegment): string {
+    for (const h of this.bundle.highlights) {
+      const a = h.anchor as AudioAnchorLite;
+      if (!a || a.type !== 'audio' || typeof a.start !== 'number') continue;
+      const end = typeof a.end === 'number' ? a.end : a.start;
+      const covered = end <= a.start
+        ? (a.start >= seg.start && a.start < seg.end)
+        : (a.start < seg.end && seg.start < end);
+      if (covered) return `#66${h.color.replace('#', '')}`;
+    }
+    return '#00000000';
+  }
+
+  // Start time (ms) of an audio highlight's anchor, or -1 if not an audio anchor.
+  private audioAnchorStartMs(h: Highlight): number {
+    const a = h.anchor as AudioAnchorLite;
+    if (a && a.type === 'audio' && typeof a.start === 'number') {
+      return Math.round(a.start * 1000);
+    }
+    return -1;
   }
 
   private paintHighlights(): void {
@@ -553,9 +626,14 @@ struct Reader {
 
   private flashHighlight(id: string): void {
     // Audio has no Web component bound to webController — runJavaScript would
-    // throw synchronously (the .catch can't help) and crash the page. Seeking
-    // to the highlight's timestamp lands in Phase C3.
+    // throw synchronously (the .catch can't help). Instead, seek to the
+    // highlight's start time.
     if (this.isAudio()) {
+      const h = this.bundle.highlights.find((x: Highlight) => x.id === id);
+      if (h) {
+        const ms = this.audioAnchorStartMs(h);
+        if (ms >= 0) this.seekTo(ms);
+      }
       return;
     }
     this.webController.runJavaScript(`window.__shibei && window.__shibei.flashHighlight('${id}');`)
@@ -1134,74 +1212,113 @@ struct Reader {
           Button(I18n.t($r('app.string.common_retry'))).margin({ top: 12 })
             .onClick(() => { if (this.resource) this.ensureAudioReady(this.resource.id); });
         }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center);
+      } else if (this.segments.length > 0) {
+        // Player pinned to top; transcript scrolls below.
+        this.PlayerControls();
+        this.TranscriptList();
       } else {
+        // No transcript — center the player.
         Column() {
-          // Seek bar + current / total time
-          Row() {
-            Text(this.formatMs(this.currentTimeMs)).fontSize(13)
-              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-              .width(56).textAlign(TextAlign.Center);
-            Slider({
-              value: this.currentTimeMs,
-              min: 0,
-              max: this.durationMs > 0 ? this.durationMs : 1,
-              step: 1000,
-            })
-              .layoutWeight(1)
-              .enabled(this.audioReady)
-              .selectedColor($r('sys.color.ohos_id_color_emphasize'))
-              .onChange((value: number, mode: SliderChangeMode) => {
-                if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
-                  this.seeking = true;
-                  this.currentTimeMs = value;
-                } else if (mode === SliderChangeMode.End) {
-                  this.seeking = false;
-                  this.seekTo(value);
-                }
-              });
-            Text(this.formatMs(this.durationMs)).fontSize(13)
-              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-              .width(56).textAlign(TextAlign.Center);
-          }.width('100%').padding({ left: 12, right: 12 });
-
-          // Transport: -15s · play/pause · +15s
-          Row() {
-            Text('« 15').fontSize(16)
-              .fontColor($r('sys.color.ohos_id_color_text_primary'))
-              .width(64).height(48).textAlign(TextAlign.Center)
-              .onClick(() => this.skipBy(-AUDIO_SKIP_MS));
-            Button() {
-              Text(this.isPlaying ? '⏸' : '▶').fontSize(26).fontColor(Color.White);
-            }
-              .type(ButtonType.Circle).width(64).height(64)
-              .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
-              .margin({ left: 24, right: 24 })
-              .enabled(this.audioReady)
-              .onClick(() => this.togglePlay());
-            Text('15 »').fontSize(16)
-              .fontColor($r('sys.color.ohos_id_color_text_primary'))
-              .width(64).height(48).textAlign(TextAlign.Center)
-              .onClick(() => this.skipBy(AUDIO_SKIP_MS));
-          }.width('100%').justifyContent(FlexAlign.Center).margin({ top: 28, bottom: 28 });
-
-          // Speed selector
-          Row() {
-            ForEach(AUDIO_SPEEDS, (sp: number) => {
-              Text(`${sp}×`).fontSize(13)
-                .fontColor(this.playbackSpeed === sp
-                  ? Color.White
-                  : $r('sys.color.ohos_id_color_text_secondary'))
-                .backgroundColor(this.playbackSpeed === sp
-                  ? $r('sys.color.ohos_id_color_emphasize')
-                  : $r('sys.color.ohos_id_color_component_normal'))
-                .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-                .borderRadius(12).margin({ left: 4, right: 4 })
-                .onClick(() => this.applySpeed(sp));
-            }, (sp: number) => sp.toString());
-          }.width('100%').justifyContent(FlexAlign.Center);
+          this.PlayerControls();
         }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center);
       }
     }.width('100%').height('100%');
+  }
+
+  @Builder PlayerControls() {
+    Column() {
+      // Seek bar + current / total time
+      Row() {
+        Text(this.formatMs(this.currentTimeMs)).fontSize(13)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .width(56).textAlign(TextAlign.Center);
+        Slider({
+          value: this.currentTimeMs,
+          min: 0,
+          max: this.durationMs > 0 ? this.durationMs : 1,
+          step: 1000,
+        })
+          .layoutWeight(1)
+          .enabled(this.audioReady)
+          .selectedColor($r('sys.color.ohos_id_color_emphasize'))
+          .onChange((value: number, mode: SliderChangeMode) => {
+            if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
+              this.seeking = true;
+              this.currentTimeMs = value;
+            } else if (mode === SliderChangeMode.End) {
+              this.seeking = false;
+              this.seekTo(value);
+            }
+          });
+        Text(this.formatMs(this.durationMs)).fontSize(13)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .width(56).textAlign(TextAlign.Center);
+      }.width('100%').padding({ left: 12, right: 12 });
+
+      // Transport: -15s · play/pause · +15s
+      Row() {
+        Text('« 15').fontSize(16)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .width(64).height(48).textAlign(TextAlign.Center)
+          .onClick(() => this.skipBy(-AUDIO_SKIP_MS));
+        Button() {
+          Text(this.isPlaying ? '⏸' : '▶').fontSize(26).fontColor(Color.White);
+        }
+          .type(ButtonType.Circle).width(64).height(64)
+          .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
+          .margin({ left: 24, right: 24 })
+          .enabled(this.audioReady)
+          .onClick(() => this.togglePlay());
+        Text('15 »').fontSize(16)
+          .fontColor($r('sys.color.ohos_id_color_text_primary'))
+          .width(64).height(48).textAlign(TextAlign.Center)
+          .onClick(() => this.skipBy(AUDIO_SKIP_MS));
+      }.width('100%').justifyContent(FlexAlign.Center).margin({ top: 20, bottom: 20 });
+
+      // Speed selector
+      Row() {
+        ForEach(AUDIO_SPEEDS, (sp: number) => {
+          Text(`${sp}×`).fontSize(13)
+            .fontColor(this.playbackSpeed === sp
+              ? Color.White
+              : $r('sys.color.ohos_id_color_text_secondary'))
+            .backgroundColor(this.playbackSpeed === sp
+              ? $r('sys.color.ohos_id_color_emphasize')
+              : $r('sys.color.ohos_id_color_component_normal'))
+            .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+            .borderRadius(12).margin({ left: 4, right: 4 })
+            .onClick(() => this.applySpeed(sp));
+        }, (sp: number) => sp.toString());
+      }.width('100%').justifyContent(FlexAlign.Center);
+    }.width('100%').padding({ top: 16, bottom: 8 });
+  }
+
+  // Transcript: tap a line to seek; the playing line stays highlighted and
+  // auto-scrolls (karaoke). Segments overlapping a highlight are tinted.
+  @Builder TranscriptList() {
+    List({ scroller: this.transcriptScroller, space: 2 }) {
+      ForEach(this.segments, (seg: TranscriptSegment, i: number) => {
+        ListItem() {
+          Text(seg.text)
+            .fontSize(15).lineHeight(24).width('100%')
+            .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+            .fontColor(i === this.activeSeg
+              ? $r('sys.color.ohos_id_color_text_primary')
+              : $r('sys.color.ohos_id_color_text_secondary'))
+            .fontWeight(i === this.activeSeg ? FontWeight.Medium : FontWeight.Normal)
+            .backgroundColor(this.highlightTintForSeg(seg))
+            .borderRadius(4)
+            .border({
+              width: { left: 3 },
+              color: { left: i === this.activeSeg ? $r('sys.color.ohos_id_color_emphasize') : Color.Transparent },
+            })
+            .onClick(() => this.seekTo(Math.round(seg.start * 1000)));
+        }
+      }, (seg: TranscriptSegment, i: number) => `${i}`);
+    }
+    .layoutWeight(1).width('100%')
+    .padding({ left: 8, right: 8, bottom: 16 })
+    .scrollBar(BarState.Auto);
   }
 
   @Builder CommentSheet() {
