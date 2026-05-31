@@ -249,12 +249,15 @@ export function AudioReader({
     return -1;
   }, [segments, currentTime]);
 
-  // Auto-scroll the active segment into view while playing.
+  // Keep the active segment in view whenever it changes — during playback
+  // (karaoke follow) and on an explicit seek (tapping a highlight/marker).
+  // `block: "nearest"` only scrolls when it's actually off-screen, so it
+  // doesn't fight manual scrolling (which doesn't change activeIdx).
   useEffect(() => {
-    if (!isPlaying || activeIdx < 0 || !transcriptRef.current) return;
+    if (activeIdx < 0 || !transcriptRef.current) return;
     const el = transcriptRef.current.querySelector<HTMLElement>(`[data-seg-idx="${activeIdx}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [activeIdx, isPlaying]);
+    el?.scrollIntoView?.({ block: "nearest" });
+  }, [activeIdx]);
 
   return (
     <div
