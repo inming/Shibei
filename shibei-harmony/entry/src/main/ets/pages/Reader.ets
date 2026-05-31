@@ -1401,12 +1401,27 @@ struct Reader {
         ListItem() {
           Row() {
             if (this.selectMode) {
-              Text(this.isInSelection(i) ? '☑' : '☐')
-                .fontSize(18)
-                .fontColor(this.isInSelection(i)
-                  ? $r('sys.color.ohos_id_color_emphasize')
-                  : $r('sys.color.ohos_id_color_text_tertiary'))
-                .margin({ right: 8 });
+              // Custom fixed-size checkbox (the ☑/☐ glyphs render at different
+              // sizes across fonts). Outline when unselected, filled + ✓ when
+              // selected. No gesture handler → taps pass through to the row.
+              Stack() {
+                Column()
+                  .width(18).height(18).borderRadius(4)
+                  .border({
+                    width: 1.5,
+                    color: this.isInSelection(i)
+                      ? $r('sys.color.ohos_id_color_emphasize')
+                      : $r('sys.color.ohos_id_color_text_tertiary'),
+                  })
+                  .backgroundColor(this.isInSelection(i)
+                    ? $r('sys.color.ohos_id_color_emphasize')
+                    : Color.Transparent);
+                if (this.isInSelection(i)) {
+                  Text('✓').fontSize(12).fontWeight(FontWeight.Bold).fontColor(Color.White);
+                }
+              }
+              .width(18).height(18)
+              .margin({ right: 10 });
             }
             Text(seg.text)
               .fontSize(15).lineHeight(24).layoutWeight(1)
