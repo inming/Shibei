@@ -536,8 +536,10 @@ struct Reader {
         color,
       );
       this.pendingSelection = null;
-      this.webController.runJavaScript(`window.__shibei && window.__shibei.clearSelection();`)
-        .catch(() => {});
+      if (!this.isAudio()) {
+        this.webController.runJavaScript(`window.__shibei && window.__shibei.clearSelection();`)
+          .catch(() => {});
+      }
     } catch (err) {
       promptAction.showToast({
         message: I18n.t($r('app.string.reader_create_failed'), (err as Error).message),
@@ -545,7 +547,17 @@ struct Reader {
     }
   }
 
+  private isAudio(): boolean {
+    return !!this.resource && this.resource.resource_type === 'audio';
+  }
+
   private flashHighlight(id: string): void {
+    // Audio has no Web component bound to webController — runJavaScript would
+    // throw synchronously (the .catch can't help) and crash the page. Seeking
+    // to the highlight's timestamp lands in Phase C3.
+    if (this.isAudio()) {
+      return;
+    }
     this.webController.runJavaScript(`window.__shibei && window.__shibei.flashHighlight('${id}');`)
       .catch(() => {});
   }
@@ -556,8 +568,10 @@ struct Reader {
     }
     try {
       AnnotationsService.instance.deleteHighlight(this.resource.id, id);
-      this.webController.runJavaScript(`window.__shibei && window.__shibei.removeHighlight('${id}');`)
-        .catch(() => {});
+      if (!this.isAudio()) {
+        this.webController.runJavaScript(`window.__shibei && window.__shibei.removeHighlight('${id}');`)
+          .catch(() => {});
+      }
     } catch (err) {
       promptAction.showToast({ message: (err as Error).message });
     }
