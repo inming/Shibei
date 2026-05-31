@@ -137,6 +137,7 @@
     { "name": "reader_pdf_downloading", "value": "正在下载 PDF…" },
     { "name": "reader_pdf_download_failed", "value": "下载失败：%1$s" },
     { "name": "reader_create_failed", "value": "创建失败：%1$s" },
+    { "name": "reader_multi_select", "value": "多选标记" },
     { "name": "reader_note_new", "value": "新建笔记" },
     { "name": "reader_note_edit", "value": "编辑笔记" },
     { "name": "reader_note_placeholder", "value": "写下你的想法…" },

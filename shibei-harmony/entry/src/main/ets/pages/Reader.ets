@@ -121,6 +121,11 @@ struct Reader {
   // Currently-playing segment for karaoke follow; -1 = none.
   @State activeSeg: number = -1;
   private transcriptScroller: Scroller = new Scroller();
+  // Multi-select mode: tap two transcript lines to mark a contiguous range.
+  // selStart is the long-pressed anchor; selEnd is the other end (-1 = off).
+  @State selectMode: boolean = false;
+  @State selStart: number = -1;
+  @State selEnd: number = -1;
 
   private webController: webview.WebviewController = new webview.WebviewController();
   private bridge: AnnotationBridge = new AnnotationBridge({
@@ -552,6 +557,59 @@ struct Reader {
     } catch (err) {
       promptAction.showToast({ message: (err as Error).message });
     }
+  }
+
+  // ── Multi-select (mark a contiguous range of transcript lines) ──
+
+  private enterMultiSelect(i: number): void {
+    this.selectMode = true;
+    this.selStart = i;
+    this.selEnd = i;
+  }
+
+  private exitMultiSelect(): void {
+    this.selectMode = false;
+    this.selStart = -1;
+    this.selEnd = -1;
+  }
+
+  private isInSelection(i: number): boolean {
+    if (!this.selectMode || this.selStart < 0) return false;
+    const lo = Math.min(this.selStart, this.selEnd);
+    const hi = Math.max(this.selStart, this.selEnd);
+    return i >= lo && i <= hi;
+  }
+
+  private selectionCount(): number {
+    if (!this.selectMode || this.selStart < 0) return 0;
+    return Math.abs(this.selStart - this.selEnd) + 1;
+  }
+
+  // Create one highlight spanning the selected line range.
+  private createHighlightForRange(color: string): void {
+    if (!this.resource || this.selStart < 0) {
+      this.exitMultiSelect();
+      return;
+    }
+    const lo = Math.min(this.selStart, this.selEnd);
+    const hi = Math.max(this.selStart, this.selEnd);
+    const text = this.segments
+      .slice(lo, hi + 1)
+      .map((s: TranscriptSegment) => s.text.trim())
+      .join(' ')
+      .trim();
+    try {
+      const anchor: AudioAnchorOut = {
+        type: 'audio',
+        start: this.segments[lo].start,
+        end: this.segments[hi].end,
+        textQuote: { exact: text, prefix: '', suffix: '' },
+      };
+      AnnotationsService.instance.createHighlight(this.resource.id, text, anchor, color);
+    } catch (err) {
+      promptAction.showToast({ message: (err as Error).message });
+    }
+    this.exitMultiSelect();
   }
 
   private paintHighlights(): void {
@@ -1224,6 +1282,8 @@ struct Reader {
   @Builder AudioContent() {
     Column() {
       this.TopBar();
+      Stack({ alignContent: Alignment.Bottom }) {
+        Column() {
       if (this.audioDownloading) {
         Column() {
           Text(I18n.t($r('app.string.common_loading')))
@@ -1247,6 +1307,21 @@ struct Reader {
           this.PlayerControls();
         }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center);
       }
+        }.width('100%').height('100%');
+
+        // Tap-catcher scrim — closes the annotation drawer when the content
+        // is tapped while the drawer is open (mirrors HtmlContent/PdfContent).
+        if (this.panelOpen) {
+          Column().width('100%').height('100%')
+            .backgroundColor($r('app.color.surface_tap_invisible'))
+            .onClick(() => { this.setPanelOpen(false); });
+        }
+
+        // Multi-select bottom bar (pick a color to mark the selected range).
+        if (this.selectMode) {
+          this.MultiSelectBar();
+        }
+      }.layoutWeight(1).width('100%');
     }.width('100%').height('100%');
   }
 
@@ -1324,21 +1399,38 @@ struct Reader {
     List({ scroller: this.transcriptScroller, space: 2 }) {
       ForEach(this.segments, (seg: TranscriptSegment, i: number) => {
         ListItem() {
-          Text(seg.text)
-            .fontSize(15).lineHeight(24).width('100%')
-            .padding({ left: 12, right: 12, top: 5, bottom: 5 })
-            .fontColor(i === this.activeSeg
-              ? $r('sys.color.ohos_id_color_text_primary')
-              : $r('sys.color.ohos_id_color_text_secondary'))
-            .fontWeight(i === this.activeSeg ? FontWeight.Medium : FontWeight.Normal)
-            .backgroundColor(this.highlightTintForSeg(seg))
-            .borderRadius(4)
-            .border({
-              width: { left: 3 },
-              color: { left: i === this.activeSeg ? $r('sys.color.ohos_id_color_emphasize') : Color.Transparent },
-            })
-            .onClick(() => this.seekTo(Math.round(seg.start * 1000)))
-            .bindContextMenu(this.SegmentMenu(seg), ResponseType.LongPress);
+          Row() {
+            if (this.selectMode) {
+              Text(this.isInSelection(i) ? '☑' : '☐')
+                .fontSize(18)
+                .fontColor(this.isInSelection(i)
+                  ? $r('sys.color.ohos_id_color_emphasize')
+                  : $r('sys.color.ohos_id_color_text_tertiary'))
+                .margin({ right: 8 });
+            }
+            Text(seg.text)
+              .fontSize(15).lineHeight(24).layoutWeight(1)
+              .fontColor(i === this.activeSeg
+                ? $r('sys.color.ohos_id_color_text_primary')
+                : $r('sys.color.ohos_id_color_text_secondary'))
+              .fontWeight(i === this.activeSeg ? FontWeight.Medium : FontWeight.Normal);
+          }
+          .width('100%')
+          .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+          .backgroundColor(this.isInSelection(i) ? '#3364b5f6' : this.highlightTintForSeg(seg))
+          .borderRadius(4)
+          .border({
+            width: { left: 3 },
+            color: { left: i === this.activeSeg ? $r('sys.color.ohos_id_color_emphasize') : Color.Transparent },
+          })
+          .onClick(() => {
+            if (this.selectMode) {
+              this.selEnd = i;
+            } else {
+              this.seekTo(Math.round(seg.start * 1000));
+            }
+          })
+          .bindContextMenu(this.SegmentMenu(seg, i), ResponseType.LongPress);
         }
       }, (seg: TranscriptSegment, i: number) => `${i}`);
     }
@@ -1347,9 +1439,46 @@ struct Reader {
     .scrollBar(BarState.Auto);
   }
 
-  // Long-press a transcript line → pick a color → mark that sentence.
-  @Builder SegmentMenu(seg: TranscriptSegment) {
+  // Long-press a transcript line → pick a color (mark this sentence) or enter
+  // multi-select to mark a range of lines.
+  @Builder SegmentMenu(seg: TranscriptSegment, i: number) {
+    Column() {
+      Row() {
+        ForEach(HL_COLORS, (c: HlColor) => {
+          Stack() {
+            Text('')
+              .width(26).height(26)
+              .backgroundColor(c.value)
+              .borderRadius(13);
+          }
+          .width(44).height(44)
+          .onClick(() => this.createHighlightForSegment(seg, c.value));
+        }, (c: HlColor) => c.value);
+      }
+      .padding({ left: 8, right: 8, top: 6, bottom: 2 })
+      .justifyContent(FlexAlign.SpaceAround);
+
+      Divider().strokeWidth(0.5).color($r('sys.color.ohos_id_color_list_separator'));
+
+      Row() {
+        Text(I18n.t($r('app.string.reader_multi_select')))
+          .fontSize(15).fontColor($r('sys.color.ohos_id_color_text_primary')).layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+      .onClick(() => this.enterMultiSelect(i));
+    }
+    .width(220)
+    .backgroundColor($r('sys.color.ohos_id_color_background'));
+  }
+
+  // Bottom bar shown in multi-select mode: count + color swatches + cancel.
+  @Builder MultiSelectBar() {
     Row() {
+      Text(`☑ ${this.selectionCount()}`)
+        .fontSize(14)
+        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .margin({ right: 8 });
       ForEach(HL_COLORS, (c: HlColor) => {
         Stack() {
           Text('')
@@ -1357,13 +1486,20 @@ struct Reader {
             .backgroundColor(c.value)
             .borderRadius(13);
         }
-        .width(44).height(44)
-        .onClick(() => this.createHighlightForSegment(seg, c.value));
+        .width(40).height(40)
+        .onClick(() => this.createHighlightForRange(c.value));
       }, (c: HlColor) => c.value);
+      Blank();
+      Text(I18n.t($r('app.string.common_cancel')))
+        .fontSize(15)
+        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+        .padding({ left: 12, right: 4 })
+        .onClick(() => this.exitMultiSelect());
     }
-    .padding({ left: 8, right: 8, top: 6, bottom: 6 })
-    .justifyContent(FlexAlign.SpaceAround)
-    .backgroundColor($r('sys.color.ohos_id_color_background'));
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+    .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .border({ width: { top: 0.5 }, color: { top: $r('sys.color.ohos_id_color_list_separator') } });
   }
 
   @Builder CommentSheet() {

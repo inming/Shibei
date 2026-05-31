@@ -137,6 +137,7 @@
     { "name": "reader_pdf_downloading", "value": "Downloading PDF…" },
     { "name": "reader_pdf_download_failed", "value": "Download failed: %1$s" },
     { "name": "reader_create_failed", "value": "Create failed: %1$s" },
+    { "name": "reader_multi_select", "value": "Select range" },
     { "name": "reader_note_new", "value": "New Note" },
     { "name": "reader_note_edit", "value": "Edit Note" },
     { "name": "reader_note_placeholder", "value": "Write your thoughts…" },
