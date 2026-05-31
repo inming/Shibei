@@ -83,15 +83,34 @@ pub struct SyncOptions {
     pub on_snapshot_saved: Option<SnapshotSavedCallback>,
 }
 
-/// Determine the S3 key for a resource's snapshot, based on resource_type.
-fn snapshot_s3_key(resource_id: &str, resource_type: &str) -> String {
-    let ext = if resource_type == "pdf" { "pdf" } else { "html" };
+/// Determine the S3 key for a resource's snapshot, given its file extension.
+fn snapshot_s3_key(resource_id: &str, ext: &str) -> String {
     format!("snapshots/{}/snapshot.{}.gz", resource_id, ext)
 }
 
-/// Determine the local snapshot filename based on resource_type.
-fn snapshot_filename(resource_type: &str) -> &str {
-    if resource_type == "pdf" { "snapshot.pdf" } else { "snapshot.html" }
+/// Determine the local snapshot filename, given its file extension.
+fn snapshot_filename(ext: &str) -> String {
+    format!("snapshot.{}", ext)
+}
+
+/// Derive a snapshot's file extension from its stored `file_path`, falling back
+/// to a `resource_type`-based default when `file_path` has no extension. Pure
+/// (no DB) so it's safe to call while a connection is held.
+fn ext_for(file_path: &str, resource_type: &str) -> String {
+    std::path::Path::new(file_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_else(|| default_ext(resource_type).to_string())
+}
+
+/// Fixed extension for the non-audio resource types. Audio is variable and must
+/// be resolved from `file_path` (see [`SyncEngine::snapshot_ext`]).
+fn default_ext(resource_type: &str) -> &'static str {
+    match resource_type {
+        "pdf" => "pdf",
+        _ => "html",
+    }
 }
 
 /// Convert a snapshot's `timestamp` (RFC3339) into the JSONL filename format
@@ -150,6 +169,38 @@ impl SyncEngine {
                 .unwrap_or_else(|_| "html".to_string()),
             Err(_) => "html".to_string(),
         }
+    }
+
+    /// Resolve a resource's on-disk snapshot extension. "pdf"/html are fixed and
+    /// resolved without touching the DB (so existing call sites — and tests with
+    /// no resources row — behave exactly as before). "audio" keeps its original
+    /// container extension (m4a/mp3/...), recovered from `file_path` via a DB
+    /// query. Callers must not hold a DB connection when `resource_type` is
+    /// "audio" (size-1 pools deadlock); all such sites resolve the extension
+    /// from a batch query instead.
+    fn snapshot_ext(&self, resource_id: &str, resource_type: &str) -> String {
+        if resource_type == "audio" {
+            self.resource_file_ext(resource_id)
+                .unwrap_or_else(|| "bin".to_string())
+        } else {
+            default_ext(resource_type).to_string()
+        }
+    }
+
+    /// Look up a resource's `file_path` and return its lowercased extension.
+    fn resource_file_ext(&self, resource_id: &str) -> Option<String> {
+        let conn = self.conn().ok()?;
+        let file_path: String = conn
+            .query_row(
+                "SELECT file_path FROM resources WHERE id = ?1",
+                rusqlite::params![resource_id],
+                |row| row.get(0),
+            )
+            .ok()?;
+        std::path::Path::new(&file_path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_ascii_lowercase())
     }
 
     /// Acquire a pooled database connection through the RwLock-guarded pool.
@@ -375,24 +426,34 @@ impl SyncEngine {
             }
         }
 
-        // 1c. Upload missing snapshots for active resources (HTML and PDF)
-        let active_resources: Vec<(String, String)> = {
+        // 1c. Upload missing snapshots for active resources (HTML, PDF, audio).
+        // `file_path` is fetched here so the snapshot extension is resolved
+        // without a per-row DB query — `conn` is still held in this loop, and a
+        // size-1 pool would deadlock on a second borrow.
+        let active_resources: Vec<(String, String, String)> = {
             let mut stmt = conn.prepare(
-                "SELECT id, resource_type FROM resources WHERE deleted_at IS NULL"
+                "SELECT id, resource_type, file_path FROM resources WHERE deleted_at IS NULL"
             )?;
             let rows = stmt
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })?
                 .filter_map(|r| r.ok())
                 .collect();
             rows
         };
         {
             let mut uploaded_count = 0usize;
-            for (id, resource_type) in &active_resources {
-                let s3_key = snapshot_s3_key(id, resource_type);
+            for (id, resource_type, file_path) in &active_resources {
+                let ext = ext_for(file_path, resource_type);
+                let s3_key = snapshot_s3_key(id, &ext);
                 let exists = self.backend.head(&s3_key).await?.is_some();
                 if !exists {
-                    if let Err(e) = self.upload_snapshot(id, resource_type).await {
+                    if let Err(e) = self.upload_snapshot(id, &ext).await {
                         eprintln!("[sync] Compaction: failed to upload missing snapshot for {}: {}", id, e);
                     } else {
                         uploaded_count += 1;
@@ -515,7 +576,8 @@ impl SyncEngine {
         let mut skipped = 0usize;
         for resource_id in &resource_ids {
             let resource_type = self.get_resource_type(resource_id);
-            match self.upload_snapshot_if_absent(resource_id, &resource_type).await {
+            let ext = self.snapshot_ext(resource_id, &resource_type);
+            match self.upload_snapshot_if_absent(resource_id, &ext).await {
                 Ok(true) => uploaded += 1,
                 Ok(false) => skipped += 1,
                 Err(e) => {
@@ -554,7 +616,8 @@ impl SyncEngine {
                     let resource_id = key.strip_prefix("snapshot_upload:").unwrap_or("");
                     if resource_id.is_empty() { continue; }
                     let resource_type = self.get_resource_type(resource_id);
-                    match self.upload_snapshot_if_absent(resource_id, &resource_type).await {
+                    let ext = self.snapshot_ext(resource_id, &resource_type);
+                    match self.upload_snapshot_if_absent(resource_id, &ext).await {
                         Ok(_) => {
                             let conn = self.conn()?;
                             sync_state::delete(&conn, key)?;
@@ -616,7 +679,8 @@ impl SyncEngine {
 
         for (i, entry) in snapshot_entries.iter().enumerate() {
             let resource_type = self.get_resource_type(&entry.entity_id);
-            if let Err(e) = self.upload_snapshot(&entry.entity_id, &resource_type).await {
+            let ext = self.snapshot_ext(&entry.entity_id, &resource_type);
+            if let Err(e) = self.upload_snapshot(&entry.entity_id, &ext).await {
                 eprintln!(
                     "warning: failed to upload snapshot for {}: {}",
                     entry.entity_id, e
@@ -1807,8 +1871,8 @@ impl SyncEngine {
     /// Snapshots are immutable per resource_id (captured once, never re-uploaded
     /// — compaction only uploads when `head()` shows the object is absent), so a
     /// present local file is byte-identical to S3 and needs no re-download.
-    fn local_snapshot_present(&self, resource_id: &str, resource_type: &str) -> bool {
-        let filename = snapshot_filename(resource_type);
+    fn local_snapshot_present(&self, resource_id: &str, ext: &str) -> bool {
+        let filename = snapshot_filename(ext);
         let path = self
             .base_dir
             .join("storage")
@@ -1843,7 +1907,8 @@ impl SyncEngine {
         let mut already_present: Vec<&String> = Vec::new();
         for resource_id in &pending_ids {
             let resource_type = self.get_resource_type(resource_id);
-            if self.local_snapshot_present(resource_id, &resource_type) {
+            let ext = self.snapshot_ext(resource_id, &resource_type);
+            if self.local_snapshot_present(resource_id, &ext) {
                 already_present.push(resource_id);
             } else {
                 to_download.push((resource_id.clone(), resource_type));
@@ -1967,10 +2032,10 @@ impl SyncEngine {
         Ok(())
     }
 
-    /// Upload a local snapshot to the backend (gzip-compressed).
-    /// Supports both HTML and PDF snapshots based on resource_type.
-    pub async fn upload_snapshot(&self, resource_id: &str, resource_type: &str) -> Result<(), SyncError> {
-        let filename = snapshot_filename(resource_type);
+    /// Upload a local snapshot to the backend (gzip-compressed). `ext` is the
+    /// snapshot's file extension (html/pdf/m4a/...); see [`Self::snapshot_ext`].
+    pub async fn upload_snapshot(&self, resource_id: &str, ext: &str) -> Result<(), SyncError> {
+        let filename = snapshot_filename(ext);
         let snapshot_path = self.base_dir.join("storage").join(resource_id).join(filename);
         if !snapshot_path.exists() {
             return Ok(()); // No snapshot to upload
@@ -1983,7 +2048,7 @@ impl SyncEngine {
         std::io::Write::write_all(&mut encoder, &data)?;
         let compressed = encoder.finish()?;
 
-        let key = snapshot_s3_key(resource_id, resource_type);
+        let key = snapshot_s3_key(resource_id, ext);
         self.backend.upload(&key, &compressed).await?;
         Ok(())
     }
@@ -1996,20 +2061,24 @@ impl SyncEngine {
     async fn upload_snapshot_if_absent(
         &self,
         resource_id: &str,
-        resource_type: &str,
+        ext: &str,
     ) -> Result<bool, SyncError> {
-        let key = snapshot_s3_key(resource_id, resource_type);
+        let key = snapshot_s3_key(resource_id, ext);
         if self.backend.head(&key).await?.is_some() {
             return Ok(false);
         }
-        self.upload_snapshot(resource_id, resource_type).await?;
+        self.upload_snapshot(resource_id, ext).await?;
         Ok(true)
     }
 
     /// Download a snapshot from the backend (gzip-compressed) and save locally.
-    /// Supports both HTML and PDF snapshots based on resource_type.
+    /// Supports HTML, PDF and audio snapshots. `resource_type` selects the
+    /// plain-text strategy; the on-disk extension is resolved from it (audio
+    /// keeps its original container extension). Only called where no DB
+    /// connection is held, so the audio `file_path` lookup is safe.
     pub async fn download_snapshot(&self, resource_id: &str, resource_type: &str) -> Result<(), SyncError> {
-        let key = snapshot_s3_key(resource_id, resource_type);
+        let ext = self.snapshot_ext(resource_id, resource_type);
+        let key = snapshot_s3_key(resource_id, &ext);
         let compressed = self.backend.download(&key).await?;
 
         // Gzip decompress
@@ -2020,7 +2089,7 @@ impl SyncEngine {
         let local_dir = self.base_dir.join("storage").join(resource_id);
         std::fs::create_dir_all(&local_dir)?;
 
-        let filename = snapshot_filename(resource_type);
+        let filename = snapshot_filename(&ext);
         let local_path = local_dir.join(filename);
         std::fs::write(&local_path, &data)?;
 
@@ -2039,6 +2108,10 @@ impl SyncEngine {
             if !text.is_empty() {
                 let _ = shibei_db::resources::set_plain_text(&conn, resource_id, &text);
             }
+        } else if resource_type == "audio" {
+            // Audio plain_text comes from transcript.json (written by the MCP
+            // `set_transcript` tool), not from the audio bytes — see
+            // audio-support-design §2/§7. Nothing to extract here.
         } else if let Ok(html_str) = std::str::from_utf8(&data) {
             let text = shibei_storage::plain_text::extract_plain_text(html_str);
             if !text.is_empty() {
@@ -2462,8 +2535,8 @@ mod tests {
         let (_db_dir, pool) = test_pool();
         let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
 
-        // Upload (default HTML type)
-        engine.upload_snapshot("res-1", "webpage").await.unwrap();
+        // Upload (HTML extension)
+        engine.upload_snapshot("res-1", "html").await.unwrap();
 
         // Verify S3 key is .html.gz
         {
@@ -2515,7 +2588,7 @@ mod tests {
 
         // Object absent → upload performed.
         let did_upload = engine
-            .upload_snapshot_if_absent("res-1", "webpage")
+            .upload_snapshot_if_absent("res-1", "html")
             .await
             .unwrap();
         assert!(did_upload, "first call should upload");
@@ -2525,7 +2598,7 @@ mod tests {
         // and the S3 object is byte-for-byte unchanged.
         std::fs::write(resource_dir.join("snapshot.html"), b"<html>CHANGED</html>").unwrap();
         let did_upload = engine
-            .upload_snapshot_if_absent("res-1", "webpage")
+            .upload_snapshot_if_absent("res-1", "html")
             .await
             .unwrap();
         assert!(!did_upload, "second call should skip (already on S3)");
@@ -2584,7 +2657,7 @@ mod tests {
             let (_d, src_pool) = test_pool();
             let uploader =
                 make_engine(src_pool, backend.clone(), "dev-src", src_dir.path().to_path_buf());
-            uploader.upload_snapshot("res-2", "webpage").await.unwrap();
+            uploader.upload_snapshot("res-2", "html").await.unwrap();
         }
 
         let (_db_dir, pool) = test_pool();
@@ -2605,6 +2678,76 @@ mod tests {
             let state = sync_state::get(&conn, "snapshot:res-2").unwrap();
             assert_eq!(state, Some("synced".to_string()));
         }
+    }
+
+    #[test]
+    fn test_ext_for_derives_from_file_path() {
+        // Audio keeps its real container extension, recovered from file_path.
+        assert_eq!(ext_for("storage/r/snapshot.m4a", "audio"), "m4a");
+        assert_eq!(ext_for("storage/r/snapshot.MP3", "audio"), "mp3"); // lowercased
+        assert_eq!(ext_for("storage/r/snapshot.html", "webpage"), "html");
+        assert_eq!(ext_for("storage/r/snapshot.pdf", "pdf"), "pdf");
+        // Missing extension falls back to the resource_type default.
+        assert_eq!(ext_for("storage/r/snapshot", "pdf"), "pdf");
+        assert_eq!(ext_for("storage/r/snapshot", "webpage"), "html");
+    }
+
+    #[tokio::test]
+    async fn test_audio_snapshot_roundtrip_uses_real_extension() {
+        // An audio snapshot round-trips through S3 keyed by its real extension
+        // (snapshot.m4a.gz), and the download side resolves that extension from
+        // the resource's file_path — not from the resource_type string.
+        let backend = Arc::new(MockBackend::new());
+        let dir = tempfile::tempdir().unwrap();
+        let resource_dir = dir.path().join("storage").join("aud-1");
+        std::fs::create_dir_all(&resource_dir).unwrap();
+        std::fs::write(resource_dir.join("snapshot.m4a"), b"FAKE-AUDIO-BYTES").unwrap();
+
+        let (_db_dir, pool) = test_pool();
+        let engine = make_engine(pool.clone(), backend.clone(), "dev-a", dir.path().to_path_buf());
+
+        // Upload using the real extension (as the sync loops now resolve it).
+        engine.upload_snapshot("aud-1", "m4a").await.unwrap();
+        {
+            let store = backend.store.lock().await;
+            assert!(
+                store.contains_key("snapshots/aud-1/snapshot.m4a.gz"),
+                "audio S3 key should use the real extension"
+            );
+        }
+
+        // Download side: a different device with the resource row present.
+        let dir2 = tempfile::tempdir().unwrap();
+        let (_db_dir2, pool2) = test_pool();
+        {
+            let conn = pool2.read().unwrap().get().unwrap();
+            conn.execute(
+                "INSERT INTO resources (id, title, url, folder_id, resource_type,
+                                        file_path, created_at, captured_at, hlc)
+                 VALUES ('aud-1', 'A', '', '__root__', 'audio',
+                         'storage/aud-1/snapshot.m4a', '2026-05-31T00:00:00Z',
+                         '2026-05-31T00:00:00Z', '1000000000000-0001-seed')",
+                [],
+            )
+            .unwrap();
+        }
+        let engine2 = make_engine(pool2.clone(), backend.clone(), "dev-b", dir2.path().to_path_buf());
+
+        // resource_type "audio" → ext resolved from file_path → snapshot.m4a.
+        engine2.download_snapshot("aud-1", "audio").await.unwrap();
+        let downloaded = std::fs::read(dir2.path().join("storage/aud-1/snapshot.m4a")).unwrap();
+        assert_eq!(downloaded, b"FAKE-AUDIO-BYTES");
+
+        // No plain_text is extracted from audio bytes (transcript handles it).
+        let conn = pool2.read().unwrap().get().unwrap();
+        let plain: Option<String> = conn
+            .query_row(
+                "SELECT plain_text FROM resources WHERE id = 'aud-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(plain.is_none(), "audio download must not populate plain_text");
     }
 
     #[tokio::test]

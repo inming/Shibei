@@ -7,6 +7,7 @@ import { SelectionToolbar } from "@/components/SelectionToolbar";
 import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightContextMenu } from "@/components/HighlightContextMenu";
 import { PDFReader } from "@/components/PDFReader";
+import { AudioReader, type AudioSeekRequest } from "@/components/AudioReader";
 import * as cmd from "@/lib/commands";
 import { updateReaderTab } from "@/lib/sessionState";
 import { clampZoom, nextZoom, prevZoom, ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX } from "@/lib/pdfZoom";
@@ -77,6 +78,7 @@ export function ReaderView({
   const [pdfZoom, setPdfZoom] = useState<number>(() =>
     clampZoom(initialPdfZoom ?? ZOOM_DEFAULT)
   );
+  const [audioSeekRequest, setAudioSeekRequest] = useState<AudioSeekRequest | null>(null);
 
   // Persist zoom on change (no debounce — changes are user-driven, low frequency)
   useEffect(() => {
@@ -357,6 +359,21 @@ export function ReaderView({
     }
   }, [initialHighlightId, iframeLoading, highlights, resource.resource_type]);
 
+  // Audio counterpart: seek to the deep-linked highlight once metadata is ready.
+  useEffect(() => {
+    if (resource.resource_type !== "audio") return;
+    if (
+      initialHighlightId &&
+      !iframeLoading &&
+      highlights.length > 0 &&
+      !didScrollToInitial.current
+    ) {
+      didScrollToInitial.current = true;
+      setActiveHighlightId(initialHighlightId);
+      setAudioSeekRequest({ id: initialHighlightId, ts: Date.now() });
+    }
+  }, [initialHighlightId, iframeLoading, highlights, resource.resource_type]);
+
   const didRestorePdfPosition = useRef(false);
 
   useEffect(() => {
@@ -547,6 +564,9 @@ export function ReaderView({
     if (resource.resource_type === "pdf") {
       // Trigger PDFReader scroll — ts forces re-trigger for same id
       setPdfScrollRequest({ kind: "highlight", id, ts: Date.now() });
+    } else if (resource.resource_type === "audio") {
+      // Trigger AudioReader seek — ts forces re-trigger for same id
+      setAudioSeekRequest({ id, ts: Date.now() });
     } else if (!failedHighlightIds.has(id)) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: "shibei:scroll-to-highlight", source: "shibei", id },
@@ -574,7 +594,7 @@ export function ReaderView({
           <span className={styles.metaTime}>
             {new Date(resource.created_at).toLocaleDateString()}
           </span>
-          {resource.resource_type !== "pdf" ? (
+          {resource.resource_type === "audio" ? null : resource.resource_type !== "pdf" ? (
             <button
               className={`${styles.invertBtn} ${inverted ? styles.invertBtnActive : ""}`}
               onClick={() => setInverted((v) => !v)}
@@ -659,6 +679,31 @@ export function ReaderView({
             <div className={styles.spinner} />
             <p>{t('downloadingSnapshot')}</p>
           </div>
+        ) : resource.resource_type === "audio" ? (
+          <AudioReader
+            key={iframeKey}
+            resourceId={resource.id}
+            highlights={highlights}
+            activeHighlightId={activeHighlightId}
+            onSelection={(info) => {
+              setSelection({
+                text: info.text,
+                anchor: info.anchor,
+                rect: info.rect,
+              });
+            }}
+            onClearSelection={() => {
+              setSelection(null);
+              setHighlightMenu(null);
+            }}
+            onHighlightClick={(id) => setActiveHighlightId(id)}
+            onHighlightContextMenu={(id, pos) => {
+              setHighlightMenu({ id, top: pos.top, left: pos.left });
+              setActiveHighlightId(id);
+            }}
+            onReady={() => setIframeLoading(false)}
+            seekRequest={audioSeekRequest}
+          />
         ) : (
           <>
             {iframeLoading && (

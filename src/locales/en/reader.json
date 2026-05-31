@@ -20,5 +20,13 @@
   "zoomIn": "Zoom in",
   "zoomOut": "Zoom out",
   "zoomReset": "Reset to 100%",
-  "zoomPercentage": "{{value}}%"
+  "zoomPercentage": "{{value}}%",
+  "importFileFilter": "PDF & Audio",
+  "audioPlay": "Play",
+  "audioPause": "Pause",
+  "audioSeek": "Seek",
+  "audioSkipBack": "Back {{sec}}s",
+  "audioSkipForward": "Forward {{sec}}s",
+  "audioAddMarker": "Mark current position",
+  "audioSpeed": "Speed"
 }

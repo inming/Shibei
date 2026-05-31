@@ -41,6 +41,7 @@
     "restore_failed": "恢复失败",
     "readPdfFailed": "读取 PDF 失败",
     "readFileFailed": "读取文件失败",
+    "unsupportedAudioFormat": "不支持的音频格式",
     "pairingInvalidPin": "PIN 必须为 6 位数字",
     "pairingSyncNotConfigured": "请先配置 S3 同步",
     "pairingCredentialsMissing": "S3 凭据缺失，请重新保存",

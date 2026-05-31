@@ -432,6 +432,10 @@ export function importPdf(filePath: string, folderId: string): Promise<Resource>
   return invoke("cmd_import_pdf", { filePath, folderId });
 }
 
+export function importAudio(filePath: string, folderId: string): Promise<Resource> {
+  return invoke("cmd_import_audio", { filePath, folderId });
+}
+
 export function backfillPlainText(resourceId: string, text: string): Promise<void> {
   return invoke("cmd_backfill_plain_text", { resourceId, text });
 }

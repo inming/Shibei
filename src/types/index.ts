@@ -71,9 +71,22 @@ export interface PdfAnchor {
   textQuote: TextQuote;
 }
 
+// Audio highlight: a time range [start, end] in seconds (start == end for a
+// point marker). When created from a transcript (Phase B) the optional
+// charIndex/length/textQuote fields locate the selection in the transcript
+// plain_text for re-anchoring; pure timeline markers omit them.
+export interface AudioAnchor {
+  type: "audio";
+  start: number;
+  end: number;
+  charIndex?: number;
+  length?: number;
+  textQuote?: TextQuote;
+}
+
 // Anchor is opaque JSON — backend stores without interpreting.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Anchor = HtmlAnchor | PdfAnchor | Record<string, any>;
+export type Anchor = HtmlAnchor | PdfAnchor | AudioAnchor | Record<string, any>;
 
 export interface Highlight {
   id: string;

@@ -377,6 +377,7 @@ pub fn run() {
             commands::cmd_import_backup,
             commands::cmd_read_pdf_bytes,
             commands::cmd_import_pdf,
+            commands::cmd_import_audio,
             commands::cmd_backfill_plain_text,
             commands::cmd_get_mcp_entry_path,
             commands::cmd_read_external_file,
@@ -409,16 +410,23 @@ pub fn run() {
 
             let resource_id = parts[1];
 
-            match load_resource_html(&protocol_base_dir, resource_id) {
-                Some(html) => {
-                    let with_annotator = inject_annotator_script(&html);
-                    tauri::http::Response::builder()
-                        .header("Content-Type", "text/html; charset=utf-8")
-                        .body(with_annotator.into_bytes())
-                        .unwrap()
-                }
-                None => not_found(&format!("resource not found: {}", resource_id)),
+            // HTML snapshot: inject annotator and serve as a document.
+            if let Some(html) = load_resource_html(&protocol_base_dir, resource_id) {
+                let with_annotator = inject_annotator_script(&html);
+                return tauri::http::Response::builder()
+                    .header("Content-Type", "text/html; charset=utf-8")
+                    .body(with_annotator.into_bytes())
+                    .unwrap();
             }
+
+            // Audio snapshot: serve raw bytes with HTTP Range support so the
+            // WebView's <audio> element can stream and seek without loading the
+            // whole file (see audio-support-design §3).
+            if let Some(audio_path) = find_audio_snapshot(&protocol_base_dir, resource_id) {
+                return serve_file_with_range(&audio_path, request.headers().get("Range"));
+            }
+
+            not_found(&format!("resource not found: {}", resource_id))
         })
         .setup(move |app| {
             // If launched by the OS autostart mechanism, hide the window
@@ -610,4 +618,156 @@ fn not_found(msg: &str) -> tauri::http::Response<Vec<u8>> {
         .header("Content-Type", "text/plain")
         .body(msg.as_bytes().to_vec())
         .unwrap()
+}
+
+/// Audio container extensions served over the `shibei://` protocol. Mirrors
+/// `commands::AUDIO_IMPORT_EXTENSIONS` and the frontend file-dialog filter.
+const AUDIO_EXTENSIONS: &[&str] =
+    &["mp3", "m4a", "aac", "mp4", "wav", "ogg", "oga", "opus", "flac", "weba", "webm"];
+
+/// Locate a resource's audio snapshot on disk (`storage/{id}/snapshot.{ext}`),
+/// trying only known audio extensions so a `snapshot.pdf` is never mistaken for
+/// audio.
+fn find_audio_snapshot(base_dir: &std::path::Path, resource_id: &str) -> Option<std::path::PathBuf> {
+    let dir = base_dir.join("storage").join(resource_id);
+    AUDIO_EXTENSIONS
+        .iter()
+        .map(|ext| dir.join(format!("snapshot.{ext}")))
+        .find(|p| p.is_file())
+}
+
+/// Map an audio file's extension to its MIME type. The WebView decides
+/// playability from this header, not the URL.
+fn audio_mime(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("mp3") => "audio/mpeg",
+        Some("m4a") | Some("aac") | Some("mp4") => "audio/mp4",
+        Some("wav") => "audio/wav",
+        Some("ogg") | Some("oga") => "audio/ogg",
+        Some("opus") => "audio/opus",
+        Some("flac") => "audio/flac",
+        Some("weba") | Some("webm") => "audio/webm",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Parse an HTTP `Range: bytes=...` header into an inclusive (start, end) byte
+/// range clamped to `total`. Supports `bytes=START-`, `bytes=START-END`, and
+/// suffix `bytes=-N`. Returns None for unsatisfiable or malformed ranges.
+fn parse_byte_range(header: &str, total: u64) -> Option<(u64, u64)> {
+    if total == 0 {
+        return None;
+    }
+    let spec = header.trim().strip_prefix("bytes=")?;
+    // Only the first range of a possibly-comma-separated list is honored.
+    let spec = spec.split(',').next()?.trim();
+    let (start_s, end_s) = spec.split_once('-')?;
+    if start_s.is_empty() {
+        // Suffix range: last N bytes.
+        let n: u64 = end_s.parse().ok()?;
+        if n == 0 {
+            return None;
+        }
+        return Some((total.saturating_sub(n), total - 1));
+    }
+    let start: u64 = start_s.parse().ok()?;
+    if start >= total {
+        return None;
+    }
+    let end: u64 = if end_s.is_empty() {
+        total - 1
+    } else {
+        end_s.parse::<u64>().ok()?.min(total - 1)
+    };
+    if start > end {
+        return None;
+    }
+    Some((start, end))
+}
+
+/// Serve a file with Range support: 206 + Content-Range for a ranged request,
+/// otherwise 200 with the full body. Always advertises `Accept-Ranges: bytes`.
+fn serve_file_with_range(
+    path: &std::path::Path,
+    range_header: Option<&tauri::http::HeaderValue>,
+) -> tauri::http::Response<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let total = match std::fs::metadata(path) {
+        Ok(m) => m.len(),
+        Err(_) => return not_found("audio file missing"),
+    };
+    let mime = audio_mime(path);
+
+    if let Some((start, end)) = range_header
+        .and_then(|v| v.to_str().ok())
+        .and_then(|h| parse_byte_range(h, total))
+    {
+        let len = end - start + 1;
+        let mut buf = vec![0u8; len as usize];
+        let read_ok = std::fs::File::open(path)
+            .and_then(|mut f| {
+                f.seek(SeekFrom::Start(start))?;
+                f.read_exact(&mut buf)?;
+                Ok(())
+            })
+            .is_ok();
+        if read_ok {
+            return tauri::http::Response::builder()
+                .status(206)
+                .header("Content-Type", mime)
+                .header("Accept-Ranges", "bytes")
+                .header("Content-Range", format!("bytes {}-{}/{}", start, end, total))
+                .header("Content-Length", len.to_string())
+                .body(buf)
+                .unwrap();
+        }
+    }
+
+    match std::fs::read(path) {
+        Ok(data) => tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", mime)
+            .header("Accept-Ranges", "bytes")
+            .header("Content-Length", total.to_string())
+            .body(data)
+            .unwrap(),
+        Err(_) => not_found("audio file unreadable"),
+    }
+}
+
+#[cfg(test)]
+mod audio_protocol_tests {
+    use super::parse_byte_range;
+
+    #[test]
+    fn parses_open_ended_range() {
+        assert_eq!(parse_byte_range("bytes=0-", 1000), Some((0, 999)));
+        assert_eq!(parse_byte_range("bytes=500-", 1000), Some((500, 999)));
+    }
+
+    #[test]
+    fn parses_closed_range_and_clamps_end() {
+        assert_eq!(parse_byte_range("bytes=0-499", 1000), Some((0, 499)));
+        assert_eq!(parse_byte_range("bytes=900-5000", 1000), Some((900, 999)));
+    }
+
+    #[test]
+    fn parses_suffix_range() {
+        assert_eq!(parse_byte_range("bytes=-200", 1000), Some((800, 999)));
+        assert_eq!(parse_byte_range("bytes=-5000", 1000), Some((0, 999)));
+    }
+
+    #[test]
+    fn rejects_malformed_or_unsatisfiable() {
+        assert_eq!(parse_byte_range("bytes=2000-3000", 1000), None);
+        assert_eq!(parse_byte_range("items=0-10", 1000), None);
+        assert_eq!(parse_byte_range("bytes=abc", 1000), None);
+        assert_eq!(parse_byte_range("bytes=0-0", 0), None);
+    }
 }

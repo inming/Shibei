@@ -9,7 +9,7 @@ import { ALL_RESOURCES_ID, INBOX_FOLDER_ID, type Folder } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { buildFolderDeepLink } from "@/lib/deepLink";
-import { importPdfToFolder } from "@/lib/importPdf";
+import { importFileToFolder } from "@/lib/importFile";
 import { FolderEditDialog } from "@/components/Sidebar/FolderEditDialog";
 import { Spinner } from "@/components/Spinner";
 import { Modal } from "@/components/Modal";
@@ -188,7 +188,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
       menuItems = [
         {
           label: t('importFile', { ns: 'reader' }),
-          onClick: () => importPdfToFolder(contextMenu.folderId),
+          onClick: () => importFileToFolder(contextMenu.folderId),
         },
         copyLinkItem,
       ];
@@ -203,7 +203,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
         },
         {
           label: t('importFile', { ns: 'reader' }),
-          onClick: () => importPdfToFolder(contextMenu.folderId),
+          onClick: () => importFileToFolder(contextMenu.folderId),
         },
         copyLinkItem,
         {

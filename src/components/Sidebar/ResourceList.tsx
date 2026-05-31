@@ -12,7 +12,7 @@ import { Modal } from "@/components/Modal";
 import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
 import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
 import { ContextMenu } from "@/components/ContextMenu";
-import { importPdfToFolder } from "@/lib/importPdf";
+import { importFileToFolder } from "@/lib/importFile";
 import { buildFolderDeepLink } from "@/lib/deepLink";
 import { FilterChips } from "@/components/Sidebar/FilterChips";
 import toast from "react-hot-toast";
@@ -483,7 +483,7 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
           items={[
             ...(isRealFolder ? [{
               label: tReader("importFile"),
-              onClick: () => importPdfToFolder(folderId),
+              onClick: () => importFileToFolder(folderId),
             }] : []),
             {
               label: t('contextCopyLink'),

@@ -1700,6 +1700,82 @@ pub async fn cmd_import_pdf(
     Ok(resource)
 }
 
+/// Known audio container extensions accepted for import. Mirrors the frontend
+/// file-dialog filter and the `shibei://` protocol's audio MIME table.
+const AUDIO_IMPORT_EXTENSIONS: &[&str] =
+    &["mp3", "m4a", "aac", "mp4", "wav", "ogg", "oga", "opus", "flac", "weba", "webm"];
+
+#[tauri::command]
+pub async fn cmd_import_audio(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    file_path: String,
+    folder_id: String,
+) -> Result<resources::Resource, CommandError> {
+    let source = std::path::PathBuf::from(&file_path);
+
+    // Resolve and validate the original container extension. Audio keeps its
+    // real extension on disk (unlike pdf/html which are fixed) so the player
+    // and sync can recover the MIME type / S3 key from `file_path`.
+    let ext = source
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .filter(|e| AUDIO_IMPORT_EXTENSIONS.contains(&e.as_str()))
+        .ok_or_else(|| CommandError {
+            message: "error.unsupportedAudioFormat".to_string(),
+        })?;
+
+    let content = std::fs::read(&source).map_err(|e| CommandError {
+        message: format!("error.readFileFailed: {}", e),
+    })?;
+
+    let resource_id = uuid::Uuid::new_v4().to_string();
+
+    let rel_path = storage::save_snapshot_ext(&state.base_dir, &resource_id, &content, &ext)?;
+
+    let title = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Untitled Audio")
+        .to_string();
+
+    let conn = state.conn()?;
+    let sync_ctx = state.sync_context();
+
+    // No plain-text extraction at import: transcription is delegated to an
+    // external agent via the MCP `set_transcript` tool, which populates
+    // `plain_text` + transcript.json later (see audio-support-design §7).
+    let resource = resources::create_resource(
+        &conn,
+        resources::CreateResourceInput {
+            id: Some(resource_id.clone()),
+            title,
+            url: String::new(),
+            domain: None,
+            author: None,
+            description: None,
+            folder_id,
+            resource_type: "audio".to_string(),
+            file_path: rel_path.to_string_lossy().to_string(),
+            captured_at: chrono::Utc::now().to_rfc3339(),
+            selection_meta: None,
+        },
+        sync_ctx.as_ref(),
+    )?;
+
+    let _ = app.emit(
+        events::DATA_RESOURCE_CHANGED,
+        serde_json::json!({
+            "action": "created",
+            "resource_id": resource.id,
+            "folder_id": resource.folder_id,
+        }),
+    );
+
+    Ok(resource)
+}
+
 // ── Debug ──
 
 #[tauri::command]

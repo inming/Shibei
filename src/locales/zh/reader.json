@@ -20,5 +20,13 @@
   "zoomIn": "放大",
   "zoomOut": "缩小",
   "zoomReset": "重置为 100%",
-  "zoomPercentage": "{{value}}%"
+  "zoomPercentage": "{{value}}%",
+  "importFileFilter": "PDF 与音频",
+  "audioPlay": "播放",
+  "audioPause": "暂停",
+  "audioSeek": "进度",
+  "audioSkipBack": "后退 {{sec}} 秒",
+  "audioSkipForward": "前进 {{sec}} 秒",
+  "audioAddMarker": "标记当前位置",
+  "audioSpeed": "倍速"
 }
