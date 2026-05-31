@@ -420,7 +420,7 @@ struct Reader {
     const clamped = Math.max(0, Math.min(ms, this.durationMs));
     p.seek(clamped, media.SeekMode.SEEK_CLOSEST);
     this.currentTimeMs = clamped;
-    this.updateActiveSeg(false);
+    this.updateActiveSeg(true);
   }
 
   private skipBy(deltaMs: number): void {
@@ -499,7 +499,10 @@ struct Reader {
     }
     if (idx === this.activeSeg) return;
     this.activeSeg = idx;
-    if (follow && this.isPlaying && idx >= 0) {
+    // Scroll on any active-segment change — playback follow AND explicit seeks
+    // (tapping a highlight/segment). timeUpdate only fires while playing, so
+    // this doesn't disturb manual scrolling when paused.
+    if (follow && idx >= 0) {
       this.transcriptScroller.scrollToIndex(idx, true, ScrollAlign.CENTER);
     }
   }
