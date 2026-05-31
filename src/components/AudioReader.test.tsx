@@ -103,4 +103,35 @@ describe("AudioReader", () => {
     fireEvent.click(beta);
     expect(onHighlightClick).toHaveBeenCalledWith("h1");
   });
+
+  test("range highlight does not bleed into the contiguous neighbor segment", async () => {
+    mockInvoke((cmd) => {
+      if (cmd === "cmd_get_transcript") {
+        return {
+          version: 1,
+          segments: [
+            { start: 0, end: 2, text: "alpha" },
+            { start: 2, end: 4, text: "beta" },
+          ],
+        };
+      }
+      return undefined;
+    });
+    // Range highlight covers exactly the second segment [2,4); the first
+    // segment [0,2) shares the boundary at t=2 but must NOT be tinted.
+    const rangeHl = {
+      id: "r1",
+      resource_id: "r1",
+      text_content: "beta",
+      anchor: { type: "audio", start: 2, end: 4 } as AudioAnchor,
+      color: "#FFEB3B",
+      created_at: new Date().toISOString(),
+    } as Highlight;
+    render(<AudioReader {...baseProps} highlights={[rangeHl]} />);
+
+    const alpha = (await screen.findByText(/alpha/)) as HTMLElement;
+    const beta = (await screen.findByText(/beta/)) as HTMLElement;
+    expect(beta.style.backgroundColor).toBeTruthy(); // tinted
+    expect(alpha.style.backgroundColor).toBeFalsy(); // not bled into
+  });
 });

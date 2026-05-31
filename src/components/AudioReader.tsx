@@ -52,6 +52,18 @@ function audioAnchorOf(h: Highlight): AudioAnchor | null {
   return a && a.type === "audio" && typeof a.start === "number" ? a : null;
 }
 
+/** Convert a #rrggbb / #rgb highlight color to a translucent rgba() so the
+ *  underlying (theme-colored) transcript text stays readable in light & dark. */
+function withAlpha(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  if ([r, g, b].some(Number.isNaN)) return hex;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 /** Walk up the DOM from a selection node to the enclosing segment index. */
 function segIndexOf(node: Node | null): number {
   let el: Element | null = node instanceof Element ? node : node?.parentElement ?? null;
@@ -179,15 +191,25 @@ export function AudioReader({
     if (a < 0 || b < 0) return;
     const lo = Math.min(a, b);
     const hi = Math.max(a, b);
+    // Snap to whole segments: the stored/displayed text matches exactly the
+    // segments that get tinted, so "what you select = what you get". (Sub-
+    // segment precision would need partial-span rendering — segment-granular
+    // is the agreed unit.)
+    const text = segments
+      .slice(lo, hi + 1)
+      .map((s) => s.text.trim())
+      .join(" ")
+      .trim();
+    if (!text) return;
     const anchor: AudioAnchor = {
       type: "audio",
       start: segments[lo].start,
       end: segments[hi].end,
-      textQuote: { exact, prefix: "", suffix: "" },
+      textQuote: { exact: text, prefix: "", suffix: "" },
     };
     const r = range.getBoundingClientRect();
     onSelection({
-      text: exact,
+      text,
       anchor,
       rect: { top: r.bottom + 6, left: r.left, width: 0, height: 0 },
     });
@@ -205,7 +227,15 @@ export function AudioReader({
   const highlightForSegment = useCallback(
     (segStart: number, segEnd: number): Highlight | null => {
       for (const { h, anchor } of markers) {
-        if (anchor.start <= segEnd && anchor.end >= segStart) return h;
+        // Half-open overlap: a highlight ending exactly at a segment boundary
+        // must not tint the adjacent (contiguous) segment, since segments share
+        // boundary timestamps. Point markers (end <= start) tint the segment
+        // that contains the instant.
+        const covered =
+          anchor.end <= anchor.start
+            ? anchor.start >= segStart && anchor.start < segEnd
+            : anchor.start < segEnd && segStart < anchor.end;
+        if (covered) return h;
       }
       return null;
     },
@@ -352,7 +382,7 @@ export function AudioReader({
                 key={i}
                 data-seg-idx={i}
                 className={`${styles.segment} ${i === activeIdx ? styles.segmentActive : ""} ${hl ? styles.segmentHighlighted : ""}`}
-                style={hl ? { backgroundColor: hl.color } : undefined}
+                style={hl ? { backgroundColor: withAlpha(hl.color, 0.4) } : undefined}
                 title={formatTime(seg.start)}
                 onClick={() => {
                   // Plain click (no text selected) → seek; selections create
