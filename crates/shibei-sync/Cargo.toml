@@ -11,7 +11,7 @@ name = "shibei_sync"
 [dependencies]
 shibei-db = { path = "../shibei-db" }
 shibei-pairing = { path = "../shibei-pairing" }
-shibei-storage = { path = "../shibei-storage" }
+shibei-storage = { path = "../shibei-storage", features = ["transcript"] }
 rusqlite = { version = "0.34", features = ["bundled"] }
 r2d2 = "0.8"
 r2d2_sqlite = { version = "0.27", features = ["bundled"] }

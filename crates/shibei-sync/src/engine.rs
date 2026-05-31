@@ -93,6 +93,13 @@ fn snapshot_filename(ext: &str) -> String {
     format!("snapshot.{}", ext)
 }
 
+/// S3 key for an audio resource's transcript (gzipped transcript.json). Unlike
+/// snapshots, transcripts are mutable (re-transcription), so this object is
+/// overwritten in place and change-detected by its S3 etag.
+fn transcript_s3_key(resource_id: &str) -> String {
+    format!("transcripts/{}.json.gz", resource_id)
+}
+
 /// Derive a snapshot's file extension from its stored `file_path`, falling back
 /// to a `resource_type`-based default when `file_path` has no extension. Pure
 /// (no DB) so it's safe to call while a connection is held.
@@ -230,11 +237,22 @@ impl SyncEngine {
         // Phase 1: Upload local changes
         let uploaded = self.upload_local_changes(on_progress).await?;
 
+        // Phase 1b: Upload transcripts written locally since last sync.
+        if let Err(e) = self.upload_pending_transcripts().await {
+            eprintln!("[sync] transcript upload phase failed: {}", e);
+        }
+
         // Phase 1.5: Import full snapshot if this is a new device
         let snapshot_imported = self.maybe_import_snapshot().await?;
 
         // Phase 2+3: Download and apply remote changes
         let (downloaded, applied) = self.download_and_apply(on_progress).await?;
+
+        // Phase 3b: Fetch transcripts for audio resources (small; eager so audio
+        // is searchable without downloading the audio file). Runs on mobile too.
+        if let Err(e) = self.download_remote_transcripts().await {
+            eprintln!("[sync] transcript download phase failed: {}", e);
+        }
 
         // Update last_sync_at
         {
@@ -2129,6 +2147,143 @@ impl SyncEngine {
 
         Ok(())
     }
+
+    /// Upload transcripts written locally since the last sync. The MCP
+    /// `set_transcript` handler marks each as `transcript_upload_pending:{id}`.
+    /// Transcripts are mutable (re-transcription) so the S3 object is always
+    /// overwritten; the returned etag is recorded for change detection.
+    /// No DB connection is held across the network upload.
+    async fn upload_pending_transcripts(&self) -> Result<(), SyncError> {
+        let pending: Vec<String> = {
+            let conn = self.conn()?;
+            sync_state::list_by_prefix(&conn, "transcript_upload_pending:")?
+                .into_iter()
+                .filter_map(|(k, _)| {
+                    k.strip_prefix("transcript_upload_pending:").map(|s| s.to_string())
+                })
+                .collect()
+        };
+        if pending.is_empty() {
+            return Ok(());
+        }
+
+        for id in pending {
+            let path = self.base_dir.join("storage").join(&id).join("transcript.json");
+            let data = match std::fs::read(&path) {
+                Ok(d) => d,
+                Err(_) => {
+                    // Transcript file gone (e.g. resource deleted) — drop the marker.
+                    if let Ok(conn) = self.conn() {
+                        let _ = sync_state::delete(
+                            &conn,
+                            &format!("transcript_upload_pending:{}", id),
+                        );
+                    }
+                    continue;
+                }
+            };
+
+            let mut encoder =
+                flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            std::io::Write::write_all(&mut encoder, &data)?;
+            let compressed = encoder.finish()?;
+
+            match self.backend.upload(&transcript_s3_key(&id), &compressed).await {
+                Ok(etag) => {
+                    if let Ok(conn) = self.conn() {
+                        let _ = sync_state::set(&conn, &format!("transcript_etag:{}", id), &etag);
+                        let _ = sync_state::delete(
+                            &conn,
+                            &format!("transcript_upload_pending:{}", id),
+                        );
+                    }
+                }
+                Err(e) => {
+                    // Leave the marker set so the next sync retries.
+                    eprintln!("[sync] transcript upload failed for {}: {}", id, e);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Download transcripts for active audio resources whose remote version
+    /// (by S3 etag) differs from the local copy, or is missing locally. Small
+    /// files, fetched eagerly so audio is full-text searchable without
+    /// downloading the audio itself. After saving, `plain_text` is re-derived
+    /// from the transcript (rebuilding FTS). No DB connection is held across a
+    /// network call.
+    async fn download_remote_transcripts(&self) -> Result<(), SyncError> {
+        let audio_ids: Vec<String> = {
+            let conn = self.conn()?;
+            let mut stmt = conn.prepare(
+                "SELECT id FROM resources WHERE resource_type = 'audio' AND deleted_at IS NULL",
+            )?;
+            let ids = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            ids
+        };
+
+        for id in audio_ids {
+            let key = transcript_s3_key(&id);
+            let meta = match self.backend.head(&key).await {
+                Ok(Some(m)) => m,
+                Ok(None) => continue, // no remote transcript
+                Err(e) => {
+                    eprintln!("[sync] transcript head failed for {}: {}", id, e);
+                    continue;
+                }
+            };
+
+            let local_path = self.base_dir.join("storage").join(&id).join("transcript.json");
+            let local_etag = {
+                let conn = self.conn()?;
+                sync_state::get(&conn, &format!("transcript_etag:{}", id))
+                    .ok()
+                    .flatten()
+            };
+            if local_etag.as_deref() == Some(meta.etag.as_str()) && local_path.exists() {
+                continue; // up to date
+            }
+
+            let compressed = match self.backend.download(&key).await {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("[sync] transcript download failed for {}: {}", id, e);
+                    continue;
+                }
+            };
+            let mut decoder = flate2::read::GzDecoder::new(&compressed[..]);
+            let mut data = Vec::new();
+            if std::io::Read::read_to_end(&mut decoder, &mut data).is_err() {
+                continue;
+            }
+
+            let dir = self.base_dir.join("storage").join(&id);
+            if std::fs::create_dir_all(&dir).is_err() || std::fs::write(&local_path, &data).is_err()
+            {
+                continue;
+            }
+
+            if let Ok(transcript) =
+                serde_json::from_slice::<shibei_storage::transcript::Transcript>(&data)
+            {
+                let plain = transcript.to_plain_text();
+                if !plain.trim().is_empty() {
+                    if let Ok(conn) = self.conn() {
+                        let _ = shibei_db::resources::set_plain_text(&conn, &id, &plain);
+                    }
+                }
+            }
+
+            if let Ok(conn) = self.conn() {
+                let _ = sync_state::set(&conn, &format!("transcript_etag:{}", id), &meta.etag);
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Topo-sort order for sync entries.
@@ -2748,6 +2903,91 @@ mod tests {
             )
             .unwrap();
         assert!(plain.is_none(), "audio download must not populate plain_text");
+    }
+
+    #[tokio::test]
+    async fn test_transcript_sync_roundtrip_and_update_propagation() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: an audio resource with a transcript + the upload marker.
+        let dir_a = tempfile::tempdir().unwrap();
+        let (_db_a, pool_a) = test_pool();
+        let t1 = shibei_storage::transcript::Transcript::new(
+            Some("en".to_string()),
+            vec![shibei_storage::transcript::Segment {
+                start: 0.0,
+                end: 2.0,
+                text: "first version".to_string(),
+            }],
+        );
+        shibei_storage::transcript::save_transcript(dir_a.path(), "aud-1", &t1).unwrap();
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            sync_state::set(&conn, "transcript_upload_pending:aud-1", "1").unwrap();
+        }
+        let engine_a = make_engine(pool_a.clone(), backend.clone(), "dev-a", dir_a.path().to_path_buf());
+        engine_a.upload_pending_transcripts().await.unwrap();
+        assert!(
+            backend.store.lock().await.contains_key("transcripts/aud-1.json.gz"),
+            "transcript should be uploaded"
+        );
+        {
+            // Upload marker cleared, etag recorded.
+            let conn = pool_a.read().unwrap().get().unwrap();
+            assert!(sync_state::get(&conn, "transcript_upload_pending:aud-1").unwrap().is_none());
+            assert!(sync_state::get(&conn, "transcript_etag:aud-1").unwrap().is_some());
+        }
+
+        // Device B: has the audio resource row but no transcript yet.
+        let dir_b = tempfile::tempdir().unwrap();
+        let (_db_b, pool_b) = test_pool();
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            conn.execute(
+                "INSERT INTO resources (id, title, url, folder_id, resource_type,
+                                        file_path, created_at, captured_at, hlc)
+                 VALUES ('aud-1', 'A', '', '__root__', 'audio',
+                         'storage/aud-1/snapshot.m4a', '2026-05-31T00:00:00Z',
+                         '2026-05-31T00:00:00Z', '1000000000000-0001-seed')",
+                [],
+            )
+            .unwrap();
+        }
+        let engine_b = make_engine(pool_b.clone(), backend.clone(), "dev-b", dir_b.path().to_path_buf());
+        engine_b.download_remote_transcripts().await.unwrap();
+
+        let got = shibei_storage::transcript::load_transcript(dir_b.path(), "aud-1").unwrap();
+        assert_eq!(got.segments[0].text, "first version");
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            let plain: Option<String> = conn
+                .query_row("SELECT plain_text FROM resources WHERE id = 'aud-1'", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(plain.as_deref(), Some("first version"));
+        }
+
+        // Re-transcribe on A → upload again (new etag) → B picks up the update.
+        let t2 = shibei_storage::transcript::Transcript::new(
+            None,
+            vec![shibei_storage::transcript::Segment {
+                start: 0.0,
+                end: 2.0,
+                text: "second version is longer".to_string(),
+            }],
+        );
+        shibei_storage::transcript::save_transcript(dir_a.path(), "aud-1", &t2).unwrap();
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            sync_state::set(&conn, "transcript_upload_pending:aud-1", "1").unwrap();
+        }
+        engine_a.upload_pending_transcripts().await.unwrap();
+        engine_b.download_remote_transcripts().await.unwrap();
+
+        let got2 = shibei_storage::transcript::load_transcript(dir_b.path(), "aud-1").unwrap();
+        assert_eq!(
+            got2.segments[0].text, "second version is longer",
+            "re-transcription should propagate to device B"
+        );
     }
 
     #[tokio::test]

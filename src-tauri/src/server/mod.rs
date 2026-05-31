@@ -1007,6 +1007,14 @@ async fn handle_set_transcript(
         resources::set_plain_text(&conn, &id, &plain).map_err(map_db_error)?;
     }
 
+    // Mark the transcript for upload on the next sync (best-effort; the local
+    // single-device flow works regardless of whether sync is configured).
+    let _ = crate::sync::sync_state::set(
+        &conn,
+        &format!("transcript_upload_pending:{}", id),
+        "1",
+    );
+
     let _ = state.app_handle.emit(
         events::DATA_RESOURCE_CHANGED,
         serde_json::json!({
