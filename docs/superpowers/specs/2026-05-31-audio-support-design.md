@@ -1,6 +1,6 @@
 # 音频资料支持设计文档
 
-> 状态：设计已确认，待实现
+> 状态：Phase A + B（B1/B2/B3）已实现（分支 `feat/audio-support`）。Phase C（鸿蒙）未做。
 > 日期：2026-05-31
 > 模板参考：`docs/superpowers/specs/2026-04-15-v2.3-pdf-support-design.md`（PDF 接入模式）
 
