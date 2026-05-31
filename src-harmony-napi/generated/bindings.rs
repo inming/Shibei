@@ -283,6 +283,32 @@ pub unsafe extern "C" fn shibei_ffi_ensure_html_downloaded(id: *const c_char, ct
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_ensure_audio_downloaded(id: *const c_char, ctx: *mut c_void) {
+    let id = cstr_to_string(id);
+    let ctx_addr = ctx as usize;
+    runtime().spawn(async move {
+        let result = crate::commands::ensure_audio_downloaded(id).await;
+        let ctx = ctx_addr as *mut c_void;
+        match result {
+            Ok(s) => {
+                let c = CString::new(s).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 1, c.as_ptr()); }
+            }
+            Err(e) => {
+                let c = CString::new(e.to_string()).unwrap_or_default();
+                unsafe { shibei_async_resolve(ctx, 0, c.as_ptr()); }
+            }
+        }
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_get_transcript(id: *const c_char) -> *mut c_char {
+    let s = crate::commands::get_transcript(cstr_to_string(id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_save_html_snapshot(url: *const c_char, title: *const c_char, html: *const c_char, folder_id: *const c_char) -> *mut c_char {
     let s = crate::commands::save_html_snapshot(cstr_to_string(url), cstr_to_string(title), cstr_to_string(html), cstr_to_string(folder_id));
     leak_cstring(s)

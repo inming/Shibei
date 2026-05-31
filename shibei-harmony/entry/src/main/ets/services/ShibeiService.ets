@@ -44,6 +44,8 @@ import {
   getPdfBytes as napiGetPdfBytes,
   ensurePdfDownloaded as napiEnsurePdfDownloaded,
   ensureHtmlDownloaded as napiEnsureHtmlDownloaded,
+  ensureAudioDownloaded as napiEnsureAudioDownloaded,
+  getTranscript as napiGetTranscript,
   cacheStats as napiCacheStats,
   cacheList as napiCacheList,
   cachedIds as napiCachedIds,
@@ -587,6 +589,22 @@ export class ShibeiService {
     if (result !== 'ok') {
       throw new ShibeiError(result);
     }
+  }
+
+  /// Ensure the audio file is on disk (download from S3 if missing) and return
+  /// its absolute path for AVPlayer's fdSrc. Throws ShibeiError on failure.
+  async ensureAudioDownloaded(id: string): Promise<string> {
+    const result: string = await napiEnsureAudioDownloaded(id);
+    if (result.startsWith('error.')) {
+      throw new ShibeiError(result);
+    }
+    return result;
+  }
+
+  /// Raw transcript.json string for an audio resource, or '' if none yet
+  /// (no transcript, or a sync hasn't fetched it). Caller JSON.parses.
+  getTranscript(id: string): string {
+    return napiGetTranscript(id);
   }
 
   // ── LRU cache management (§7.2) ───────────────────────────

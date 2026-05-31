@@ -985,6 +985,52 @@ pub async fn ensure_html_downloaded(id: String) -> Result<String, String> {
     Ok("ok".to_string())
 }
 
+/// Ensure the local audio file is present (download from S3 if missing) and
+/// return its absolute path so ArkTS can hand it to `AVPlayer` via `fdSrc` —
+/// audio is played directly from disk, never base64'd through NAPI (an hour of
+/// audio is tens of MB). On `error.*` the caller shows a "file unavailable" UI.
+///
+/// Audio keeps its original container extension, so the path comes from the
+/// resource's `file_path` rather than a fixed `snapshot.<ext>` like pdf/html.
+#[shibei_napi(async)]
+pub async fn ensure_audio_downloaded(id: String) -> Result<String, String> {
+    let app = state::get()?;
+    let rel = with_conn(|conn| shibei_db::resources::get_resource(conn, &id).map(|r| r.file_path))?;
+    let path = app.data_dir.join(&rel);
+    if path.exists() {
+        touch_cache(&id);
+        return Ok(path.to_string_lossy().into_owned());
+    }
+    let engine = build_sync_engine().await?;
+    engine
+        .download_snapshot(&id, "audio")
+        .await
+        .map_err(|e| format!("error.downloadFailed: {e}"))?;
+    touch_cache(&id);
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Read a resource's `transcript.json` (written by the desktop MCP
+/// `set_transcript` flow and synced down by `download_remote_transcripts`).
+/// Returns the raw JSON string for ArkTS to parse, or "" if not present yet
+/// (no transcript, or a sync hasn't fetched it). Best-effort, no error surface.
+#[shibei_napi]
+pub fn get_transcript(id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("get_transcript: not initialized: {e}");
+            return String::new();
+        }
+    };
+    let path = app
+        .data_dir
+        .join("storage")
+        .join(&id)
+        .join("transcript.json");
+    std::fs::read_to_string(&path).unwrap_or_default()
+}
+
 // ────────────────────────────────────────────────────────────
 // Capture / Ingest (mobile web capture)
 // ────────────────────────────────────────────────────────────

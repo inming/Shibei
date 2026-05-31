@@ -3,7 +3,9 @@ import { router } from '@kit.ArkUI';
 import { promptAction } from '@kit.ArkUI';
 import { common, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { pasteboard } from '@kit.BasicServicesKit';
+import { pasteboard, BusinessError } from '@kit.BasicServicesKit';
+import { media } from '@kit.MediaKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
 import { ShibeiService, Resource, Comment } from '../services/ShibeiService';
 import { AnnotationsService } from '../services/AnnotationsService';
 import {
@@ -48,6 +50,11 @@ const HL_COLORS: HlColor[] = [
   { value: '#f48fb1' },
 ];
 
+// Audio playback speeds. Limited to the AVPlayer PlaybackSpeed enum values
+// (no 1.5x — the enum jumps 1.25 → 1.75).
+const AUDIO_SPEEDS: number[] = [0.75, 1.0, 1.25, 1.75, 2.0];
+const AUDIO_SKIP_MS: number = 15000;
+
 // Header row shape for WebResourceResponse.setResponseHeader. ArkTS strict
 // mode rejects inline object-literal types, so we pin the shape here.
 interface WebHeader { headerKey: string; headerValue: string; }
@@ -85,6 +92,21 @@ struct Reader {
   // Debounce persistence of zoom changes — a rapid tap on +/- shouldn't
   // flush preferences N times. Same 500ms cadence as scroll save.
   private zoomSaveTimer: number = -1;
+
+  // Audio branch state (Phase C). audioReady flips true once the AVPlayer
+  // reaches 'prepared' and duration is known; the transport gates on it.
+  @State audioReady: boolean = false;
+  @State audioDownloading: boolean = false;
+  @State audioError: string = '';
+  @State isPlaying: boolean = false;
+  @State currentTimeMs: number = 0;
+  @State durationMs: number = 0;
+  @State playbackSpeed: number = 1.0;
+  private avPlayer: media.AVPlayer | null = null;
+  private audioFd: number = -1;
+  // True while the user is dragging the seek bar — suppresses timeUpdate so the
+  // thumb doesn't fight the finger.
+  private seeking: boolean = false;
 
   private webController: webview.WebviewController = new webview.WebviewController();
   private bridge: AnnotationBridge = new AnnotationBridge({
@@ -132,6 +154,9 @@ struct Reader {
       if (this.resource.resource_type === 'pdf') {
         this.loading = false;
         this.ensurePdfReady(id);
+      } else if (this.resource.resource_type === 'audio') {
+        this.loading = false;
+        this.ensureAudioReady(id);
       } else {
         this.ensureHtmlReady(id);
       }
@@ -170,6 +195,7 @@ struct Reader {
       this.zoomSaveTimer = -1;
       this.flushZoom();
     }
+    this.releaseAudio();
   }
 
   // System back / edge swipe: if the annotation panel is open, the first
@@ -308,8 +334,130 @@ struct Reader {
     }
   }
 
+  // ── Audio branch (Phase C) ──────────────────────────────────
+
+  // Ensure the audio file is on disk (download if missing), then start the
+  // AVPlayer from its file descriptor. Audio plays directly from the sandbox
+  // file — no bytes cross the NAPI boundary (unlike pdf/html).
+  private async ensureAudioReady(id: string): Promise<void> {
+    this.audioError = '';
+    this.audioDownloading = true;
+    try {
+      const path = await ShibeiService.instance.ensureAudioDownloaded(id);
+      this.audioDownloading = false;
+      await this.initAvPlayer(path);
+    } catch (err) {
+      this.audioDownloading = false;
+      this.audioError = (err as Error).message;
+      hilog.warn(0x0000, 'shibei', 'ensureAudioReady fail %{public}s: %{public}s',
+        id, this.audioError);
+    }
+  }
+
+  private async initAvPlayer(path: string): Promise<void> {
+    const player: media.AVPlayer = await media.createAVPlayer();
+    this.avPlayer = player;
+
+    player.on('stateChange', (state: media.AVPlayerState) => {
+      if (state === 'initialized') {
+        player.prepare();
+      } else if (state === 'prepared') {
+        this.durationMs = player.duration;
+        this.audioReady = true;
+      } else if (state === 'playing') {
+        this.isPlaying = true;
+      } else if (state === 'paused' || state === 'completed') {
+        this.isPlaying = false;
+      }
+    });
+    player.on('timeUpdate', (time: number) => {
+      if (!this.seeking) {
+        this.currentTimeMs = time;
+      }
+    });
+    player.on('durationUpdate', (d: number) => {
+      this.durationMs = d;
+    });
+    player.on('error', (err: BusinessError) => {
+      this.audioError = `error.audioPlayback:${err.code}`;
+      hilog.error(0x0000, 'shibei', 'AVPlayer error: %{public}d %{public}s',
+        err.code, err.message);
+    });
+
+    // Open the sandbox file read-only and hand AVPlayer the fd. Setting fdSrc
+    // drives the player to 'initialized' → prepare() → 'prepared'.
+    const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    this.audioFd = file.fd;
+    player.fdSrc = { fd: file.fd };
+  }
+
+  private togglePlay(): void {
+    const p = this.avPlayer;
+    if (!p || !this.audioReady) return;
+    if (this.isPlaying) {
+      p.pause();
+    } else {
+      p.play();
+    }
+  }
+
+  private seekTo(ms: number): void {
+    const p = this.avPlayer;
+    if (!p || !this.audioReady) return;
+    const clamped = Math.max(0, Math.min(ms, this.durationMs));
+    p.seek(clamped, media.SeekMode.SEEK_CLOSEST);
+    this.currentTimeMs = clamped;
+  }
+
+  private skipBy(deltaMs: number): void {
+    this.seekTo(this.currentTimeMs + deltaMs);
+  }
+
+  private applySpeed(speed: number): void {
+    const p = this.avPlayer;
+    if (!p || !this.audioReady) return;
+    this.playbackSpeed = speed;
+    p.setSpeed(this.speedEnum(speed));
+  }
+
+  private speedEnum(speed: number): media.PlaybackSpeed {
+    if (speed <= 0.75) return media.PlaybackSpeed.SPEED_FORWARD_0_75_X;
+    if (speed <= 1.0) return media.PlaybackSpeed.SPEED_FORWARD_1_00_X;
+    if (speed <= 1.25) return media.PlaybackSpeed.SPEED_FORWARD_1_25_X;
+    if (speed <= 1.75) return media.PlaybackSpeed.SPEED_FORWARD_1_75_X;
+    return media.PlaybackSpeed.SPEED_FORWARD_2_00_X;
+  }
+
+  private releaseAudio(): void {
+    const p = this.avPlayer;
+    this.avPlayer = null;
+    if (p) {
+      p.release().catch((err: Error) => {
+        hilog.warn(0x0000, 'shibei', 'AVPlayer release fail: %{public}s', err.message);
+      });
+    }
+    if (this.audioFd >= 0) {
+      try {
+        fs.closeSync(this.audioFd);
+      } catch (err) {
+        hilog.warn(0x0000, 'shibei', 'audio fd close fail: %{public}s', (err as Error).message);
+      }
+      this.audioFd = -1;
+    }
+  }
+
+  private formatMs(ms: number): string {
+    const totalSec = ms > 0 ? Math.floor(ms / 1000) : 0;
+    const s = totalSec % 60;
+    const m = Math.floor(totalSec / 60) % 60;
+    const h = Math.floor(totalSec / 3600);
+    const mm = m < 10 ? `0${m}` : `${m}`;
+    const ss = s < 10 ? `0${s}` : `${s}`;
+    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+
   private paintHighlights(): void {
-    if (!this.resource) {
+    if (!this.resource || this.resource.resource_type === 'audio') {
       return;
     }
     const json = JSON.stringify(this.bundle.highlights);
@@ -644,6 +792,8 @@ struct Reader {
           // download/error panel) differs.
           if (this.resource && this.resource.resource_type === 'pdf') {
             this.PdfContent();
+          } else if (this.resource && this.resource.resource_type === 'audio') {
+            this.AudioContent();
           } else {
             this.HtmlContent();
           }
@@ -952,6 +1102,92 @@ struct Reader {
       .layoutWeight(1).width('100%');
     }
     .width('100%').height('100%');
+  }
+
+  @Builder AudioContent() {
+    Column() {
+      this.TopBar();
+      if (this.audioDownloading) {
+        Column() {
+          Text(I18n.t($r('app.string.common_loading')))
+            .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
+        }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center);
+      } else if (this.audioError) {
+        Column() {
+          Text(I18n.t($r('app.string.common_load_failed'), I18n.translateError(this.audioError)))
+            .fontColor($r('sys.color.ohos_id_color_warning'))
+            .textAlign(TextAlign.Center).padding(16);
+          Button(I18n.t($r('app.string.common_retry'))).margin({ top: 12 })
+            .onClick(() => { if (this.resource) this.ensureAudioReady(this.resource.id); });
+        }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center);
+      } else {
+        Column() {
+          // Seek bar + current / total time
+          Row() {
+            Text(this.formatMs(this.currentTimeMs)).fontSize(13)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              .width(56).textAlign(TextAlign.Center);
+            Slider({
+              value: this.currentTimeMs,
+              min: 0,
+              max: this.durationMs > 0 ? this.durationMs : 1,
+              step: 1000,
+            })
+              .layoutWeight(1)
+              .enabled(this.audioReady)
+              .selectedColor($r('sys.color.ohos_id_color_emphasize'))
+              .onChange((value: number, mode: SliderChangeMode) => {
+                if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
+                  this.seeking = true;
+                  this.currentTimeMs = value;
+                } else if (mode === SliderChangeMode.End) {
+                  this.seeking = false;
+                  this.seekTo(value);
+                }
+              });
+            Text(this.formatMs(this.durationMs)).fontSize(13)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              .width(56).textAlign(TextAlign.Center);
+          }.width('100%').padding({ left: 12, right: 12 });
+
+          // Transport: -15s · play/pause · +15s
+          Row() {
+            Text('« 15').fontSize(16)
+              .fontColor($r('sys.color.ohos_id_color_text_primary'))
+              .width(64).height(48).textAlign(TextAlign.Center)
+              .onClick(() => this.skipBy(-AUDIO_SKIP_MS));
+            Button() {
+              Text(this.isPlaying ? '⏸' : '▶').fontSize(26).fontColor(Color.White);
+            }
+              .type(ButtonType.Circle).width(64).height(64)
+              .backgroundColor($r('sys.color.ohos_id_color_emphasize'))
+              .margin({ left: 24, right: 24 })
+              .enabled(this.audioReady)
+              .onClick(() => this.togglePlay());
+            Text('15 »').fontSize(16)
+              .fontColor($r('sys.color.ohos_id_color_text_primary'))
+              .width(64).height(48).textAlign(TextAlign.Center)
+              .onClick(() => this.skipBy(AUDIO_SKIP_MS));
+          }.width('100%').justifyContent(FlexAlign.Center).margin({ top: 28, bottom: 28 });
+
+          // Speed selector
+          Row() {
+            ForEach(AUDIO_SPEEDS, (sp: number) => {
+              Text(`${sp}×`).fontSize(13)
+                .fontColor(this.playbackSpeed === sp
+                  ? Color.White
+                  : $r('sys.color.ohos_id_color_text_secondary'))
+                .backgroundColor(this.playbackSpeed === sp
+                  ? $r('sys.color.ohos_id_color_emphasize')
+                  : $r('sys.color.ohos_id_color_component_normal'))
+                .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+                .borderRadius(12).margin({ left: 4, right: 4 })
+                .onClick(() => this.applySpeed(sp));
+            }, (sp: number) => sp.toString());
+          }.width('100%').justifyContent(FlexAlign.Center);
+        }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center);
+      }
+    }.width('100%').height('100%');
   }
 
   @Builder CommentSheet() {
