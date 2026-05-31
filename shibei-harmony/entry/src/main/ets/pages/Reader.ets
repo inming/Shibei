@@ -60,6 +60,9 @@ interface TranscriptSegment { start: number; end: number; text: string; }
 interface TranscriptDoc { version?: number; language?: string; segments?: TranscriptSegment[]; }
 // Just the fields we read off an audio highlight's opaque anchor.
 interface AudioAnchorLite { type?: string; start?: number; end?: number; }
+// Anchor written when marking a transcript segment (matches the desktop shape).
+interface AudioQuote { exact: string; prefix: string; suffix: string; }
+interface AudioAnchorOut { type: string; start: number; end: number; textQuote: AudioQuote; }
 
 // Header row shape for WebResourceResponse.setResponseHeader. ArkTS strict
 // mode rejects inline object-literal types, so we pin the shape here.
@@ -530,6 +533,25 @@ struct Reader {
       return Math.round(a.start * 1000);
     }
     return -1;
+  }
+
+  // Mark a whole transcript segment as a highlight (mobile has no free-text
+  // selection — the sentence is the unit, matching the desktop segment-grain).
+  // Syncs to desktop as a normal audio highlight.
+  private createHighlightForSegment(seg: TranscriptSegment, color: string): void {
+    if (!this.resource) return;
+    try {
+      const anchor: AudioAnchorOut = {
+        type: 'audio',
+        start: seg.start,
+        end: seg.end,
+        textQuote: { exact: seg.text, prefix: '', suffix: '' },
+      };
+      AnnotationsService.instance.createHighlight(this.resource.id, seg.text, anchor, color);
+      // Service notify → subscribe → bundle updates → the segment re-tints.
+    } catch (err) {
+      promptAction.showToast({ message: (err as Error).message });
+    }
   }
 
   private paintHighlights(): void {
@@ -1315,13 +1337,33 @@ struct Reader {
               width: { left: 3 },
               color: { left: i === this.activeSeg ? $r('sys.color.ohos_id_color_emphasize') : Color.Transparent },
             })
-            .onClick(() => this.seekTo(Math.round(seg.start * 1000)));
+            .onClick(() => this.seekTo(Math.round(seg.start * 1000)))
+            .bindContextMenu(this.SegmentMenu(seg), ResponseType.LongPress);
         }
       }, (seg: TranscriptSegment, i: number) => `${i}`);
     }
     .layoutWeight(1).width('100%')
     .padding({ left: 8, right: 8, bottom: 16 })
     .scrollBar(BarState.Auto);
+  }
+
+  // Long-press a transcript line → pick a color → mark that sentence.
+  @Builder SegmentMenu(seg: TranscriptSegment) {
+    Row() {
+      ForEach(HL_COLORS, (c: HlColor) => {
+        Stack() {
+          Text('')
+            .width(26).height(26)
+            .backgroundColor(c.value)
+            .borderRadius(13);
+        }
+        .width(44).height(44)
+        .onClick(() => this.createHighlightForSegment(seg, c.value));
+      }, (c: HlColor) => c.value);
+    }
+    .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+    .justifyContent(FlexAlign.SpaceAround)
+    .backgroundColor($r('sys.color.ohos_id_color_background'));
   }
 
   @Builder CommentSheet() {
