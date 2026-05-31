@@ -88,6 +88,20 @@ export interface AudioAnchor {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Anchor = HtmlAnchor | PdfAnchor | AudioAnchor | Record<string, any>;
 
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+// Audio transcript (transcript.json), written by an external agent via the MCP
+// set_transcript tool. Drives the reader's transcript view and full-text search.
+export interface Transcript {
+  version: number;
+  language?: string | null;
+  segments: TranscriptSegment[];
+}
+
 export interface Highlight {
   id: string;
   resource_id: string;

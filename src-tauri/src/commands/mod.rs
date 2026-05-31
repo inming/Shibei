@@ -1776,6 +1776,17 @@ pub async fn cmd_import_audio(
     Ok(resource)
 }
 
+/// Read a resource's audio transcript (`transcript.json`), or None if it has
+/// not been transcribed yet. Transcripts are written by an external agent via
+/// the MCP `set_transcript` tool.
+#[tauri::command]
+pub async fn cmd_get_transcript(
+    state: tauri::State<'_, Arc<AppState>>,
+    resource_id: String,
+) -> Result<Option<storage::transcript::Transcript>, CommandError> {
+    Ok(storage::transcript::load_transcript(&state.base_dir, &resource_id))
+}
+
 // ── Debug ──
 
 #[tauri::command]

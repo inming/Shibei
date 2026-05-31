@@ -21,8 +21,39 @@ export function registerResourceTools(server: McpServer, client: ShibeiClient) {
         `Tags: ${tagNames}`,
         data.description ? `Description: ${data.description}` : null,
         data.author ? `Author: ${data.author}` : null,
+        data.resource_type === "audio" && data.abs_path
+          ? `Audio file: ${data.abs_path}\n(Transcribe this file, then call set_transcript with the segments.)`
+          : null,
       ].filter(Boolean).join("\n");
       return { content: [{ type: "text" as const, text }] };
+    }
+  );
+
+  server.tool(
+    "set_transcript",
+    "Store a transcript for an audio resource. Writes per-segment timestamps and makes the audio full-text searchable. Workflow: call get_resource to get the audio file path, transcribe it with your own speech-to-text, then call this. Overwrites any existing transcript.",
+    {
+      resource_id: z.string().describe("The audio resource ID"),
+      text: z.string().optional().describe("Full transcript text. If omitted, derived by joining segment texts."),
+      language: z.string().optional().describe("BCP-47 language code, e.g. 'en' or 'zh'"),
+      segments: z
+        .array(
+          z.object({
+            start: z.number().describe("Segment start time in seconds"),
+            end: z.number().describe("Segment end time in seconds"),
+            text: z.string().describe("Segment text"),
+          })
+        )
+        .describe("Time-stamped transcript segments (in order)"),
+    },
+    async (params) => {
+      const res = await client.post<{ ok: boolean; segments: number }>(
+        `/api/resources/${encodeURIComponent(params.resource_id)}/transcript`,
+        { text: params.text, language: params.language, segments: params.segments }
+      );
+      return {
+        content: [{ type: "text" as const, text: `Transcript saved (${res.segments} segment(s)).` }],
+      };
     }
   );
 

@@ -1,6 +1,9 @@
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { Highlight, AudioAnchor } from "@/types";
+import { listen } from "@tauri-apps/api/event";
+import type { Highlight, AudioAnchor, Transcript } from "@/types";
+import * as cmd from "@/lib/commands";
+import { DataEvents, type ResourceChangedPayload } from "@/lib/events";
 import styles from "./AudioReader.module.css";
 
 // Tauri 2 protocol URLs differ per platform (see ReaderView).
@@ -49,6 +52,17 @@ function audioAnchorOf(h: Highlight): AudioAnchor | null {
   return a && a.type === "audio" && typeof a.start === "number" ? a : null;
 }
 
+/** Walk up the DOM from a selection node to the enclosing segment index. */
+function segIndexOf(node: Node | null): number {
+  let el: Element | null = node instanceof Element ? node : node?.parentElement ?? null;
+  while (el) {
+    const idx = (el as HTMLElement).dataset?.segIdx;
+    if (idx !== undefined) return Number(idx);
+    el = el.parentElement;
+  }
+  return -1;
+}
+
 export function AudioReader({
   resourceId,
   highlights,
@@ -63,13 +77,38 @@ export function AudioReader({
   const { t } = useTranslation("reader");
   const audioRef = useRef<HTMLAudioElement>(null);
   const markBtnRef = useRef<HTMLButtonElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const readyFired = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [rate, setRate] = useState(1);
+  const [transcript, setTranscript] = useState<Transcript | null>(null);
 
   const src = `${PROTOCOL_BASE}/resource/${resourceId}`;
+  const segments = transcript?.segments ?? [];
+  const hasTranscript = segments.length > 0;
+
+  // Load transcript on mount; reload when an agent writes one (resource-changed).
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      cmd
+        .getTranscript(resourceId)
+        .then((t) => {
+          if (!cancelled) setTranscript(t);
+        })
+        .catch(() => {});
+    };
+    load();
+    const un = listen<ResourceChangedPayload>(DataEvents.RESOURCE_CHANGED, (e) => {
+      if (e.payload.resource_id === resourceId) load();
+    });
+    return () => {
+      cancelled = true;
+      un.then((f) => f());
+    };
+  }, [resourceId]);
 
   const seek = useCallback((time: number) => {
     const el = audioRef.current;
@@ -128,12 +167,71 @@ export function AudioReader({
     onSelection({ text: formatTime(at), anchor, rect });
   }, [onSelection]);
 
-  const markers = highlights
-    .map((h) => ({ h, anchor: audioAnchorOf(h) }))
-    .filter((m): m is { h: Highlight; anchor: AudioAnchor } => m.anchor !== null);
+  // Create a highlight from a transcript text selection spanning segment(s).
+  const handleTranscriptMouseUp = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    const exact = sel.toString().trim();
+    if (!exact) return;
+    const range = sel.getRangeAt(0);
+    const a = segIndexOf(range.startContainer);
+    const b = segIndexOf(range.endContainer);
+    if (a < 0 || b < 0) return;
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    const anchor: AudioAnchor = {
+      type: "audio",
+      start: segments[lo].start,
+      end: segments[hi].end,
+      textQuote: { exact, prefix: "", suffix: "" },
+    };
+    const r = range.getBoundingClientRect();
+    onSelection({
+      text: exact,
+      anchor,
+      rect: { top: r.bottom + 6, left: r.left, width: 0, height: 0 },
+    });
+  }, [segments, onSelection]);
+
+  const markers = useMemo(
+    () =>
+      highlights
+        .map((h) => ({ h, anchor: audioAnchorOf(h) }))
+        .filter((m): m is { h: Highlight; anchor: AudioAnchor } => m.anchor !== null),
+    [highlights],
+  );
+
+  // The highlight (if any) whose time range overlaps a segment, for tinting.
+  const highlightForSegment = useCallback(
+    (segStart: number, segEnd: number): Highlight | null => {
+      for (const { h, anchor } of markers) {
+        if (anchor.start <= segEnd && anchor.end >= segStart) return h;
+      }
+      return null;
+    },
+    [markers],
+  );
+
+  // Active (currently playing) segment for karaoke follow.
+  const activeIdx = useMemo(() => {
+    for (let i = 0; i < segments.length; i++) {
+      if (currentTime >= segments[i].start && currentTime < segments[i].end) return i;
+    }
+    return -1;
+  }, [segments, currentTime]);
+
+  // Auto-scroll the active segment into view while playing.
+  useEffect(() => {
+    if (!isPlaying || activeIdx < 0 || !transcriptRef.current) return;
+    const el = transcriptRef.current.querySelector<HTMLElement>(`[data-seg-idx="${activeIdx}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx, isPlaying]);
 
   return (
-    <div className={styles.container} onClick={onClearSelection}>
+    <div
+      className={`${styles.container} ${hasTranscript ? styles.withTranscript : ""}`}
+      onMouseDown={onClearSelection}
+    >
       <audio
         ref={audioRef}
         src={src}
@@ -153,7 +251,7 @@ export function AudioReader({
         onEnded={() => setIsPlaying(false)}
       />
 
-      <div className={styles.player} onClick={(e) => e.stopPropagation()}>
+      <div className={styles.player} onMouseDown={(e) => e.stopPropagation()}>
         <div className={styles.controls}>
           <button
             className={styles.skipBtn}
@@ -240,6 +338,45 @@ export function AudioReader({
           </div>
         </div>
       </div>
+
+      {hasTranscript && (
+        <div
+          ref={transcriptRef}
+          className={styles.transcript}
+          onMouseUp={handleTranscriptMouseUp}
+        >
+          {segments.map((seg, i) => {
+            const hl = highlightForSegment(seg.start, seg.end);
+            return (
+              <span
+                key={i}
+                data-seg-idx={i}
+                className={`${styles.segment} ${i === activeIdx ? styles.segmentActive : ""} ${hl ? styles.segmentHighlighted : ""}`}
+                style={hl ? { backgroundColor: hl.color } : undefined}
+                title={formatTime(seg.start)}
+                onClick={() => {
+                  // Plain click (no text selected) → seek; selections create
+                  // highlights via the container's mouseup handler.
+                  const sel = window.getSelection();
+                  if (sel && !sel.isCollapsed) return;
+                  seek(seg.start);
+                  if (hl) onHighlightClick(hl.id);
+                }}
+                onContextMenu={
+                  hl
+                    ? (e) => {
+                        e.preventDefault();
+                        onHighlightContextMenu(hl.id, { top: e.clientY, left: e.clientX });
+                      }
+                    : undefined
+                }
+              >
+                {seg.text}{" "}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

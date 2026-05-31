@@ -16,6 +16,8 @@ export interface Resource {
 
 export interface ResourceWithTags extends Resource {
   tags: Tag[];
+  /** Absolute path to the snapshot file on disk (for audio: the file to transcribe). */
+  abs_path?: string;
 }
 
 export interface Tag {

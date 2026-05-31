@@ -378,6 +378,7 @@ pub fn run() {
             commands::cmd_read_pdf_bytes,
             commands::cmd_import_pdf,
             commands::cmd_import_audio,
+            commands::cmd_get_transcript,
             commands::cmd_backfill_plain_text,
             commands::cmd_get_mcp_entry_path,
             commands::cmd_read_external_file,

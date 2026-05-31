@@ -13,6 +13,8 @@ default = []
 # Enables the LRU snapshot cache index (used by the mobile build).
 # Desktop builds leave it off so all snapshot files stay on disk.
 mobile-cache = ["dep:serde", "dep:serde_json"]
+# Enables audio transcript persistence (transcript.json read/write).
+transcript = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 thiserror = "2"

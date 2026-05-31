@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, QuestionStatus, QuestionTargetType } from "@/types";
+import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, QuestionStatus, QuestionTargetType, Transcript } from "@/types";
 
 // ── Utility ──
 
@@ -434,6 +434,10 @@ export function importPdf(filePath: string, folderId: string): Promise<Resource>
 
 export function importAudio(filePath: string, folderId: string): Promise<Resource> {
   return invoke("cmd_import_audio", { filePath, folderId });
+}
+
+export function getTranscript(resourceId: string): Promise<Transcript | null> {
+  return invoke("cmd_get_transcript", { resourceId });
 }
 
 export function backfillPlainText(resourceId: string, text: string): Promise<void> {

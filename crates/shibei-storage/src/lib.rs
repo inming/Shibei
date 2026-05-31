@@ -2,6 +2,8 @@ pub mod plain_text;
 pub mod pdf_text;
 #[cfg(feature = "mobile-cache")]
 pub mod cache;
+#[cfg(feature = "transcript")]
+pub mod transcript;
 
 use std::fs;
 use std::path::{Path, PathBuf};

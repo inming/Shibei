@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { mockInvoke } from "@/test/tauriMock";
 import { AudioReader } from "./AudioReader";
 import type { AudioAnchor, Highlight } from "@/types";
 
@@ -71,6 +72,35 @@ describe("AudioReader", () => {
     const marker = container.querySelector('[title="marker"]') as HTMLElement;
     expect(marker).toBeTruthy();
     fireEvent.click(marker);
+    expect(onHighlightClick).toHaveBeenCalledWith("h1");
+  });
+
+  test("renders transcript segments and links highlighted ones", async () => {
+    const onHighlightClick = vi.fn();
+    mockInvoke((cmd) => {
+      if (cmd === "cmd_get_transcript") {
+        return {
+          version: 1,
+          segments: [
+            { start: 0, end: 2, text: "alpha" },
+            { start: 2, end: 4, text: "beta" },
+          ],
+        };
+      }
+      return undefined;
+    });
+    // Point marker at 2.5s overlaps the second segment [2,4).
+    render(
+      <AudioReader
+        {...baseProps}
+        highlights={[makeAudioHighlight("h1", 2.5)]}
+        onHighlightClick={onHighlightClick}
+      />,
+    );
+
+    expect(await screen.findByText(/alpha/)).toBeTruthy();
+    const beta = await screen.findByText(/beta/);
+    fireEvent.click(beta);
     expect(onHighlightClick).toHaveBeenCalledWith("h1");
   });
 });

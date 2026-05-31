@@ -96,6 +96,9 @@ struct ResourceWithTags {
     #[serde(flatten)]
     resource: resources::Resource,
     tags: Vec<tags::Tag>,
+    /// Absolute path to the resource's snapshot file on disk. Lets an external
+    /// agent (same machine) read the audio file to transcribe it.
+    abs_path: String,
 }
 
 #[derive(Serialize)]
@@ -212,6 +215,7 @@ pub async fn start_server(
         )
         .route("/api/resources/{id}/annotations", get(handle_get_annotations))
         .route("/api/resources/{id}/content", get(handle_get_content))
+        .route("/api/resources/{id}/transcript", post(handle_set_transcript))
         .route(
             "/api/resources/{id}/tags/{tag_id}",
             post(handle_add_tag_to_resource).delete(handle_remove_tag_from_resource),
@@ -852,10 +856,16 @@ async fn handle_get_resource(
 
     let resource = resources::get_resource(&conn, &id).map_err(map_db_error)?;
     let resource_tags = tags::get_tags_for_resource(&conn, &id).map_err(map_db_error)?;
+    let abs_path = state
+        .base_dir
+        .join(&resource.file_path)
+        .to_string_lossy()
+        .into_owned();
 
     Ok(Json(ResourceWithTags {
         resource,
         tags: resource_tags,
+        abs_path,
     }))
 }
 
@@ -932,6 +942,83 @@ async fn handle_get_content(
         total_length,
         has_more,
     }))
+}
+
+#[derive(Deserialize)]
+struct TranscriptSegmentInput {
+    start: f64,
+    end: f64,
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct SetTranscriptRequest {
+    /// Optional full text; if omitted, derived by joining segment texts.
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    language: Option<String>,
+    #[serde(default)]
+    segments: Vec<TranscriptSegmentInput>,
+}
+
+/// Store a transcript (produced by an external agent) for an audio resource:
+/// writes `transcript.json` and populates `plain_text` so the audio becomes
+/// full-text searchable. See audio-support-design §7.
+async fn handle_set_transcript(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Json(payload): Json<SetTranscriptRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+
+    // Resource must exist (404 otherwise).
+    let _ = resources::get_resource(&conn, &id).map_err(map_db_error)?;
+
+    let segments: Vec<storage::transcript::Segment> = payload
+        .segments
+        .into_iter()
+        .map(|s| storage::transcript::Segment {
+            start: s.start,
+            end: s.end,
+            text: s.text,
+        })
+        .collect();
+    let transcript = storage::transcript::Transcript::new(payload.language, segments);
+
+    storage::transcript::save_transcript(&state.base_dir, &id, &transcript).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("failed to write transcript: {}", e),
+            }),
+        )
+    })?;
+
+    // Populate plain_text (rebuilds FTS internally). Prefer the explicit full
+    // text, falling back to the concatenated segments.
+    let plain = payload
+        .text
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| transcript.to_plain_text());
+    if !plain.trim().is_empty() {
+        resources::set_plain_text(&conn, &id, &plain).map_err(map_db_error)?;
+    }
+
+    let _ = state.app_handle.emit(
+        events::DATA_RESOURCE_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "resource_id": id,
+        }),
+    );
+
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "segments": transcript.segments.len(),
+    })))
 }
 
 async fn handle_update_resource(
