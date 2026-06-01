@@ -33,6 +33,7 @@ function makeResource(overrides: Partial<Resource> = {}): Resource {
     created_at: new Date().toISOString(),
     captured_at: new Date().toISOString(),
     selection_meta: null,
+    content_time: null,
     ...overrides,
   };
 }

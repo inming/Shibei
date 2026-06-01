@@ -226,10 +226,22 @@ pub async fn cmd_update_resource(
     id: String,
     title: String,
     description: Option<String>,
+    url: String,
+    content_time: Option<String>,
 ) -> Result<(), CommandError> {
     let conn = state.conn()?;
     let sync_ctx = state.sync_context();
-    resources::update_resource(&conn, &id, &title, description.as_deref(), sync_ctx.as_ref())?;
+    // Empty content_time → None (the date field was cleared).
+    let content_time = content_time.filter(|s| !s.trim().is_empty());
+    resources::update_resource(
+        &conn,
+        &id,
+        &title,
+        description.as_deref(),
+        &url,
+        content_time.as_deref(),
+        sync_ctx.as_ref(),
+    )?;
     let _ = app.emit(events::DATA_RESOURCE_CHANGED, serde_json::json!({ "action": "updated", "resource_id": id }));
     Ok(())
 }
@@ -381,6 +393,7 @@ pub async fn cmd_search_resources(
     let sort_by_str = match sort_by.unwrap_or(resources::SortBy::CreatedAt) {
         resources::SortBy::CreatedAt => "created_at",
         resources::SortBy::AnnotatedAt => "annotated_at",
+        resources::SortBy::ContentTime => "content_time",
     };
     let sort_order_str = match sort_order.unwrap_or(resources::SortOrder::Desc) {
         resources::SortOrder::Asc => "asc",

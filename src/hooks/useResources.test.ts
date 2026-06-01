@@ -17,6 +17,7 @@ const makeResource = (id: string, folderId: string): Resource => ({
   created_at: "2026-01-01T00:00:00Z",
   captured_at: "2026-01-01T00:00:00Z",
   selection_meta: null,
+  content_time: null,
 });
 
 const makeTag = (id: string, name: string): Tag => ({

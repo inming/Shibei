@@ -26,6 +26,9 @@ export interface Resource {
   created_at: string;
   captured_at: string;
   selection_meta: string | null;
+  /** Timeliness of the content itself (e.g. publication date), as YYYY-MM-DD.
+   *  Null until backfilled via the edit dialog. Distinct from created_at. */
+  content_time: string | null;
 }
 
 export interface SearchResult extends Resource {

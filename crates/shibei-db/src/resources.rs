@@ -18,6 +18,10 @@ pub struct Resource {
     pub created_at: String,
     pub captured_at: String,
     pub selection_meta: Option<String>,
+    /// Timeliness of the content itself (e.g. an article's publication date),
+    /// distinct from created_at/captured_at. Stored as a plain `YYYY-MM-DD`
+    /// date. None until backfilled via the edit dialog.
+    pub content_time: Option<String>,
 }
 
 pub struct CreateResourceInput {
@@ -76,6 +80,7 @@ pub fn create_resource(
         created_at: now,
         captured_at: input.captured_at,
         selection_meta: input.selection_meta,
+        content_time: None,
     };
 
     if let Some(ctx) = sync_ctx {
@@ -116,7 +121,7 @@ fn build_resource_payload(resource: &Resource, tag_ids: &[String]) -> String {
 
 pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
     conn.query_row(
-        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
+        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, content_time
          FROM resources WHERE id = ?1 AND deleted_at IS NULL",
         params![id],
         |row| {
@@ -133,6 +138,7 @@ pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
                 selection_meta: row.get(11)?,
+                content_time: row.get(12)?,
             })
         },
     )
@@ -147,6 +153,7 @@ pub fn get_resource(conn: &Connection, id: &str) -> Result<Resource, DbError> {
 pub enum SortBy {
     CreatedAt,
     AnnotatedAt,
+    ContentTime,
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
@@ -219,13 +226,20 @@ pub fn list_resources_by_folder(
     let sql = match sort_by {
         SortBy::CreatedAt => format!(
             "SELECT id, title, url, domain, author, description, folder_id, \
-             resource_type, file_path, created_at, captured_at, selection_meta \
+             resource_type, file_path, created_at, captured_at, selection_meta, content_time \
              FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL{}{} ORDER BY created_at {}",
+            tag_filter, and_filter, order_dir
+        ),
+        SortBy::ContentTime => format!(
+            "SELECT id, title, url, domain, author, description, folder_id, \
+             resource_type, file_path, created_at, captured_at, selection_meta, content_time \
+             FROM resources WHERE folder_id = ?1 AND deleted_at IS NULL{}{} \
+             ORDER BY COALESCE(content_time, created_at) {}",
             tag_filter, and_filter, order_dir
         ),
         SortBy::AnnotatedAt => format!(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
-             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, r.content_time \
              FROM resources r LEFT JOIN (\
                SELECT resource_id, MAX(created_at) AS last_at FROM (\
                  SELECT resource_id, created_at FROM highlights WHERE deleted_at IS NULL \
@@ -258,6 +272,7 @@ pub fn list_resources_by_folder(
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
                 selection_meta: row.get(11)?,
+                content_time: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -323,13 +338,20 @@ pub fn list_all_resources(
     let sql = match sort_by {
         SortBy::CreatedAt => format!(
             "SELECT id, title, url, domain, author, description, folder_id, \
-             resource_type, file_path, created_at, captured_at, selection_meta \
+             resource_type, file_path, created_at, captured_at, selection_meta, content_time \
              FROM resources WHERE deleted_at IS NULL{}{} ORDER BY created_at {}",
+            tag_filter, and_filter, order_dir
+        ),
+        SortBy::ContentTime => format!(
+            "SELECT id, title, url, domain, author, description, folder_id, \
+             resource_type, file_path, created_at, captured_at, selection_meta, content_time \
+             FROM resources WHERE deleted_at IS NULL{}{} \
+             ORDER BY COALESCE(content_time, created_at) {}",
             tag_filter, and_filter, order_dir
         ),
         SortBy::AnnotatedAt => format!(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
-             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta \
+             r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, r.content_time \
              FROM resources r LEFT JOIN (\
                SELECT resource_id, MAX(created_at) AS last_at FROM (\
                  SELECT resource_id, created_at FROM highlights WHERE deleted_at IS NULL \
@@ -362,6 +384,7 @@ pub fn list_all_resources(
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
                 selection_meta: row.get(11)?,
+                content_time: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -406,12 +429,14 @@ pub fn update_resource(
     id: &str,
     title: &str,
     description: Option<&str>,
+    url: &str,
+    content_time: Option<&str>,
     sync_ctx: Option<&SyncContext>,
 ) -> Result<(), DbError> {
     let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
     let changed = conn.execute(
-        "UPDATE resources SET title = ?1, description = ?2, hlc = COALESCE(?3, hlc) WHERE id = ?4 AND deleted_at IS NULL",
-        params![title, description, hlc_str, id],
+        "UPDATE resources SET title = ?1, description = ?2, url = ?3, content_time = ?4, hlc = COALESCE(?5, hlc) WHERE id = ?6 AND deleted_at IS NULL",
+        params![title, description, url, content_time, hlc_str, id],
     )?;
     if changed == 0 {
         return Err(DbError::NotFound(format!("resource {id}")));
@@ -712,7 +737,7 @@ pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbErro
     };
 
     let mut stmt = conn.prepare(
-        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta
+        "SELECT id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, content_time
          FROM resources WHERE url LIKE ?1 AND deleted_at IS NULL",
     )?;
     let resources = stmt
@@ -730,6 +755,7 @@ pub fn find_by_url(conn: &Connection, url: &str) -> Result<Vec<Resource>, DbErro
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
                 selection_meta: row.get(11)?,
+                content_time: row.get(12)?,
             })
         })?
         .filter_map(|r| r.ok())
@@ -905,7 +931,16 @@ mod tests {
         let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &folder.id);
 
-        update_resource(&conn, &resource.id, "Updated Title", Some("A description"), None).unwrap();
+        update_resource(
+            &conn,
+            &resource.id,
+            "Updated Title",
+            Some("A description"),
+            "https://example.com/article",
+            None,
+            None,
+        )
+        .unwrap();
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
         assert_eq!(fetched.title, "Updated Title");
@@ -918,8 +953,8 @@ mod tests {
         let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
         let resource = create_test_resource(&conn, &folder.id);
 
-        update_resource(&conn, &resource.id, "Title", Some("desc"), None).unwrap();
-        update_resource(&conn, &resource.id, "Title", None, None).unwrap();
+        update_resource(&conn, &resource.id, "Title", Some("desc"), &resource.url, None, None).unwrap();
+        update_resource(&conn, &resource.id, "Title", None, &resource.url, None, None).unwrap();
 
         let fetched = get_resource(&conn, &resource.id).unwrap();
         assert_eq!(fetched.description, None);
@@ -928,8 +963,83 @@ mod tests {
     #[test]
     fn test_update_resource_not_found() {
         let conn = test_db();
-        let result = update_resource(&conn, "nonexistent", "Title", None, None);
+        let result = update_resource(&conn, "nonexistent", "Title", None, "https://x", None, None);
         assert!(matches!(result, Err(DbError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_update_resource_url_and_content_time() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        let resource = create_test_resource(&conn, &folder.id);
+
+        // content_time starts unset.
+        assert_eq!(resource.content_time, None);
+
+        update_resource(
+            &conn,
+            &resource.id,
+            "Title",
+            None,
+            "https://example.com/new-url",
+            Some("2024-03-15"),
+            None,
+        )
+        .unwrap();
+
+        let fetched = get_resource(&conn, &resource.id).unwrap();
+        assert_eq!(fetched.url, "https://example.com/new-url");
+        assert_eq!(fetched.content_time, Some("2024-03-15".to_string()));
+
+        // Backfilled date can later be cleared back to None.
+        update_resource(&conn, &resource.id, "Title", None, &fetched.url, None, None).unwrap();
+        let cleared = get_resource(&conn, &resource.id).unwrap();
+        assert_eq!(cleared.content_time, None);
+    }
+
+    #[test]
+    fn test_sort_by_content_time_falls_back_to_created_at() {
+        let conn = test_db();
+        let folder = folders::create_folder(&conn, "docs", "__root__", None).unwrap();
+        // Two resources; one gets an explicit (older) content_time, the other
+        // keeps NULL and must fall back to its (newer) created_at.
+        let with_time = create_test_resource(&conn, &folder.id);
+        let without_time = create_test_resource(&conn, &folder.id);
+        update_resource(
+            &conn,
+            &with_time.id,
+            &with_time.title,
+            None,
+            &with_time.url,
+            Some("2000-01-01"),
+            None,
+        )
+        .unwrap();
+
+        // DESC: the NULL one (created today) ranks above the year-2000 one.
+        let desc = list_resources_by_folder(
+            &conn,
+            &folder.id,
+            SortBy::ContentTime,
+            SortOrder::Desc,
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(desc[0].id, without_time.id);
+        assert_eq!(desc[1].id, with_time.id);
+
+        // ASC: the year-2000 content_time ranks first.
+        let asc = list_resources_by_folder(
+            &conn,
+            &folder.id,
+            SortBy::ContentTime,
+            SortOrder::Asc,
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(asc[0].id, with_time.id);
     }
 
     #[test]

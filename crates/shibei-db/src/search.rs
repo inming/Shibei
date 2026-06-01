@@ -328,7 +328,7 @@ pub fn search_resources(
         sql = String::from(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
              r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, \
-             si.highlights_text, si.comments_text, si.body_text \
+             si.highlights_text, si.comments_text, si.body_text, r.content_time \
              FROM resources r \
              JOIN search_index si ON r.id = si.resource_id \
              WHERE r.deleted_at IS NULL \
@@ -341,7 +341,7 @@ pub fn search_resources(
         sql = String::from(
             "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, \
              r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, \
-             si.highlights_text, si.comments_text, si.body_text \
+             si.highlights_text, si.comments_text, si.body_text, r.content_time \
              FROM resources r \
              JOIN search_index si ON r.id = si.resource_id \
              WHERE r.deleted_at IS NULL \
@@ -412,6 +412,10 @@ pub fn search_resources(
                )), r.created_at) {}",
             order_dir
         ),
+        "content_time" => format!(
+            " ORDER BY COALESCE(r.content_time, r.created_at) {}",
+            order_dir
+        ),
         _ => format!(" ORDER BY r.created_at {}", order_dir),
     };
     sql.push_str(&order_clause);
@@ -478,6 +482,7 @@ pub fn search_resources(
                     created_at: row.get(9)?,
                     captured_at: row.get(10)?,
                     selection_meta: row.get(11)?,
+                    content_time: row.get(15)?,
                 },
                 matched_body,
                 match_fields,

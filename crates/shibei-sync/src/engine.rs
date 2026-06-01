@@ -1411,10 +1411,11 @@ impl SyncEngine {
         let created_at = payload["created_at"].as_str().unwrap_or("");
         let captured_at = payload["captured_at"].as_str().unwrap_or("");
         let selection_meta = payload["selection_meta"].as_str();
+        let content_time = payload["content_time"].as_str();
 
         conn.execute(
-            "INSERT INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, hlc, deleted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, NULL)
+            "INSERT INTO resources (id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, content_time, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, NULL)
              ON CONFLICT(id) DO UPDATE SET
                title = excluded.title,
                url = excluded.url,
@@ -1425,10 +1426,11 @@ impl SyncEngine {
                resource_type = excluded.resource_type,
                file_path = excluded.file_path,
                selection_meta = excluded.selection_meta,
+               content_time = excluded.content_time,
                hlc = excluded.hlc,
                deleted_at = NULL
              WHERE excluded.hlc > COALESCE(resources.hlc, '')",
-            params![id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, hlc],
+            params![id, title, url, domain, author, description, folder_id, resource_type, file_path, created_at, captured_at, selection_meta, content_time, hlc],
         )?;
 
         // Handle tag_ids if present.

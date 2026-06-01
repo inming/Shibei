@@ -17,6 +17,9 @@ export function ResourceEditDialog({ resource, onSave, onClose }: ResourceEditDi
   const { t } = useTranslation('sidebar');
   const { tags } = useTags();
   const [title, setTitle] = useState(resource.title);
+  const [url, setUrl] = useState(resource.url);
+  // Stored as YYYY-MM-DD; maps directly to <input type="date">.
+  const [contentTime, setContentTime] = useState(resource.content_time ?? "");
   const [description, setDescription] = useState(resource.description ?? "");
   // Currently-assigned tag ids. Loaded once on open and mutated locally
   // until Save — we diff against the original on commit so users can cancel
@@ -52,7 +55,13 @@ export function ResourceEditDialog({ resource, onSave, onClose }: ResourceEditDi
     if (!trimmed) return;
     setSaving(true);
     try {
-      await cmd.updateResource(resource.id, trimmed, description.trim() || null);
+      await cmd.updateResource(
+        resource.id,
+        trimmed,
+        description.trim() || null,
+        url.trim(),
+        contentTime || null,
+      );
       // Diff against the snapshot we loaded on open, not the live useTags
       // list — fewer round trips and avoids stale-write races if a remote
       // sync added a tag while the dialog was open.
@@ -83,6 +92,23 @@ export function ResourceEditDialog({ resource, onSave, onClose }: ResourceEditDi
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             autoFocus
+          />
+        </label>
+        <label className={styles.label}>
+          {t('editUrl')}
+          <input
+            className={styles.input}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+        </label>
+        <label className={styles.label}>
+          {t('editContentTime')}
+          <input
+            className={styles.input}
+            type="date"
+            value={contentTime}
+            onChange={(e) => setContentTime(e.target.value)}
           />
         </label>
         <label className={styles.label}>

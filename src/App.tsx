@@ -16,6 +16,8 @@ import { ReaderView } from "@/components/ReaderView";
 import { SettingsView } from "@/components/SettingsView";
 import { LockScreen } from "@/components/LockScreen";
 import { QuestionDetailView } from "@/components/QuestionDetail/QuestionDetailView";
+import { ResourceContextMenu } from "@/components/Sidebar/ResourceContextMenu";
+import { ResourceEditDialog } from "@/components/Sidebar/ResourceEditDialog";
 import { useTheme } from "@/hooks/useTheme";
 import * as cmd from "@/lib/commands";
 import { parseShibeiDeepLink } from "@/lib/deepLink";
@@ -69,6 +71,9 @@ function App() {
   const lockTimeoutMinutesRef = useRef(10);
   const restoredRef = useRef(false);
   const deepLinkHandledRef = useRef(false);
+  // Right-click context menu on a reader tab (resource tabs only).
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; resourceId: string; folderId: string } | null>(null);
+  const [tabEditResource, setTabEditResource] = useState<Resource | null>(null);
 
   const openResource = useCallback((resource: Resource, highlightId?: string) => {
     setReaderTabs((prev) => {
@@ -549,6 +554,13 @@ function App() {
           saveSessionState({ activeTabId: id });
         }}
         onCloseTab={closeTab}
+        onTabContextMenu={(e, id) => {
+          // Only reader (resource) tabs get a context menu.
+          const tab = readerTabs.get(id);
+          if (!tab) return;
+          e.preventDefault();
+          setTabMenu({ x: e.clientX, y: e.clientY, resourceId: id, folderId: tab.resource.folder_id });
+        }}
       />
       <div className={styles.content}>
         <div className={`${styles.tabPane} ${activeTabId !== LIBRARY_TAB_ID ? styles.tabPaneHidden : ""}`}>
@@ -600,6 +612,61 @@ function App() {
           </div>
         )}
       </div>
+      {tabMenu && (
+        <ResourceContextMenu
+          x={tabMenu.x}
+          y={tabMenu.y}
+          resourceIds={[tabMenu.resourceId]}
+          currentFolderId={tabMenu.folderId}
+          isSingleSelect={true}
+          showDelete={false}
+          onEdit={() => {
+            const tab = readerTabs.get(tabMenu.resourceId);
+            setTabEditResource(tab?.resource ?? null);
+            setTabMenu(null);
+          }}
+          onMove={async (folderId) => {
+            const id = tabMenu.resourceId;
+            setTabMenu(null);
+            try {
+              await cmd.moveResource(id, folderId);
+              // Keep the open tab's folder context fresh for later menus.
+              setReaderTabs((prev) => {
+                const tab = prev.get(id);
+                if (!tab) return prev;
+                const next = new Map(prev);
+                next.set(id, { ...tab, resource: { ...tab.resource, folder_id: folderId } });
+                return next;
+              });
+            } catch {
+              /* moveResource surfaces errors via the resource-changed event flow */
+            }
+          }}
+          onTagsChanged={() => {}}
+          onClose={() => setTabMenu(null)}
+        />
+      )}
+      {tabEditResource && (
+        <ResourceEditDialog
+          resource={tabEditResource}
+          onSave={() => {
+            const id = tabEditResource.id;
+            // Refresh the open tab so its label/URL reflect the edit.
+            cmd.getResource(id)
+              .then((fresh) => {
+                setReaderTabs((prev) => {
+                  const tab = prev.get(id);
+                  if (!tab) return prev;
+                  const next = new Map(prev);
+                  next.set(id, { ...tab, resource: fresh });
+                  return next;
+                });
+              })
+              .catch(() => { /* ignore: stale label is harmless */ });
+          }}
+          onClose={() => setTabEditResource(null)}
+        />
+      )}
     </div>
   );
 }

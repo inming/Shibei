@@ -73,6 +73,14 @@ export function ResourceMeta({ resource, onNavigateToFolder }: ResourceMetaProps
               </div>
             </td>
           </tr>
+          {resource.content_time && (
+            <tr>
+              <td className={styles.label}>{t('metaContentTime')}</td>
+              <td className={styles.value}>
+                {new Date(`${resource.content_time}T00:00:00`).toLocaleDateString()}
+              </td>
+            </tr>
+          )}
           <tr>
             <td className={styles.label}>{t('metaSavedAt')}</td>
             <td className={styles.value}>

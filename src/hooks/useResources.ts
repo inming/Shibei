@@ -8,7 +8,7 @@ import { DataEvents } from "@/lib/events";
 
 export function useResources(
   folderId: string | null,
-  sortBy: "created_at" | "annotated_at" = "created_at",
+  sortBy: "created_at" | "annotated_at" | "content_time" = "created_at",
   sortOrder: "asc" | "desc" = "desc",
   searchQuery: string = "",
   filterTagIds: string[] = [],

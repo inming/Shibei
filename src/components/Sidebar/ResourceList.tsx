@@ -38,7 +38,7 @@ interface ResourceListProps {
   selectedResourceIds: Set<string>;
   filterTagIds: string[];
   onFilterTagsChange: (ids: string[]) => void;
-  sortBy: "created_at" | "annotated_at";
+  sortBy: "created_at" | "annotated_at" | "content_time";
   sortOrder: "asc" | "desc";
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -48,13 +48,13 @@ interface ResourceListProps {
   onOpenQuestion?: (question: Question) => void;
   /** Single-click on the chip: switch to questions mode + select for preview. */
   onSelectQuestion?: (question: Question) => void;
-  onSortByChange: (sortBy: "created_at" | "annotated_at") => void;
+  onSortByChange: (sortBy: "created_at" | "annotated_at" | "content_time") => void;
   onSortOrderChange: (sortOrder: "asc" | "desc") => void;
   initialScrollTop?: number;
   onScrollTopChange?: (scrollTop: number) => void;
 }
 
-function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, matchFields, tags, highlightCount, onClick, onDoubleClick, onContextMenu }: {
+function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, matchFields, tags, highlightCount, displayDate, onClick, onDoubleClick, onContextMenu }: {
   resource: Resource;
   isSelected: boolean;
   searchQuery: string;
@@ -62,6 +62,8 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
   matchFields: string[];
   tags: Tag[];
   highlightCount: number;
+  /** Pre-formatted date shown in the meta row (reflects the active sort). */
+  displayDate: string;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -113,7 +115,7 @@ function DraggableResourceItem({ resource, isSelected, searchQuery, snippet, mat
           {highlightCount > 0 && (
             <span className={styles.annotationCount}>{highlightCount}</span>
           )}
-          {new Date(resource.created_at).toLocaleDateString()}
+          {displayDate}
         </span>
       </div>
     </div>
@@ -390,9 +392,10 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
           <select
             className={styles.sortSelect}
             value={sortBy}
-            onChange={(e) => onSortByChange(e.target.value as "created_at" | "annotated_at")}
+            onChange={(e) => onSortByChange(e.target.value as "created_at" | "annotated_at" | "content_time")}
           >
             <option value="created_at">{t('sortByCreatedAt')}</option>
+            <option value="content_time">{t('sortByContentTime')}</option>
             <option value="annotated_at">{t('sortByAnnotatedAt')}</option>
           </select>
           <button
@@ -468,6 +471,11 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
               matchFields={matchFieldsMap[resource.id] ?? []}
               tags={resourceTags[resource.id] ?? []}
               highlightCount={annotationCounts[resource.id]?.highlights ?? 0}
+              displayDate={
+                sortBy === "content_time" && resource.content_time
+                  ? new Date(`${resource.content_time}T00:00:00`).toLocaleDateString()
+                  : new Date(resource.created_at).toLocaleDateString()
+              }
               onClick={(e) => onSelectResource(resource, filteredResources, { metaKey: e.metaKey, shiftKey: e.shiftKey })}
               onDoubleClick={() => onOpen(resource)}
               onContextMenu={(e) => handleContextMenu(e, resource)}

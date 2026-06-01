@@ -125,6 +125,8 @@ struct UpdateResourceRequest {
     title: Option<String>,
     description: Option<String>,
     folder_id: Option<String>,
+    url: Option<String>,
+    content_time: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -810,6 +812,7 @@ async fn handle_list_resources(
 
     let sort_by = match sort_by_str {
         "annotated_at" => resources::SortBy::AnnotatedAt,
+        "content_time" => resources::SortBy::ContentTime,
         _ => resources::SortBy::CreatedAt,
     };
     let sort_order = match sort_order_str {
@@ -1042,15 +1045,26 @@ async fn handle_update_resource(
     // Get current resource (404 if not found)
     let current = resources::get_resource(&conn, &id).map_err(map_db_error)?;
 
-    // Update title/description if provided
-    if payload.title.is_some() || payload.description.is_some() {
+    // Update title/description/url/content_time if any provided. Fields that
+    // are omitted keep their current value.
+    if payload.title.is_some()
+        || payload.description.is_some()
+        || payload.url.is_some()
+        || payload.content_time.is_some()
+    {
         let title = payload.title.as_deref().unwrap_or(&current.title);
         let description = if payload.description.is_some() {
             payload.description.as_deref()
         } else {
             current.description.as_deref()
         };
-        resources::update_resource(&conn, &id, title, description, sync_ctx.as_ref())
+        let url = payload.url.as_deref().unwrap_or(&current.url);
+        let content_time = if payload.content_time.is_some() {
+            payload.content_time.as_deref()
+        } else {
+            current.content_time.as_deref()
+        };
+        resources::update_resource(&conn, &id, title, description, url, content_time, sync_ctx.as_ref())
             .map_err(map_db_error)?;
     }
 

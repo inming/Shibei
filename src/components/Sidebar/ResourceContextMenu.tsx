@@ -14,10 +14,14 @@ interface ResourceContextMenuProps {
   currentFolderId: string;
   isSingleSelect: boolean;
   onEdit: () => void;
-  onDelete: () => void;
+  /** Delete handler. Omit together with showDelete=false to hide the action
+   *  (e.g. the tab context menu, which should not expose destructive ops). */
+  onDelete?: () => void;
   onMove: (folderId: string) => void;
   onTagsChanged: () => void;
   onClose: () => void;
+  /** Whether to render the Delete action. Defaults to true. */
+  showDelete?: boolean;
 }
 
 export function ResourceContextMenu({
@@ -31,6 +35,7 @@ export function ResourceContextMenu({
   onMove,
   onTagsChanged,
   onClose,
+  showDelete = true,
 }: ResourceContextMenuProps) {
   const { t } = useTranslation('sidebar');
   const { t: tq } = useTranslation('question');
@@ -160,10 +165,14 @@ export function ResourceContextMenu({
           </div>
         )}
       </div>
-      <div className={styles.separator} />
-      <button className={`${styles.item} ${styles.danger}`} onClick={onDelete}>
-        {isSingleSelect ? t('contextDelete') : t('contextDeleteMultiple', { count: resourceIds.length })}
-      </button>
+      {showDelete && onDelete && (
+        <>
+          <div className={styles.separator} />
+          <button className={`${styles.item} ${styles.danger}`} onClick={onDelete}>
+            {isSingleSelect ? t('contextDelete') : t('contextDeleteMultiple', { count: resourceIds.length })}
+          </button>
+        </>
+      )}
     </div>
   );
 }

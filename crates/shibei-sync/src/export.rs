@@ -70,7 +70,7 @@ pub fn export_full_state(conn: &Connection, device_id: &str) -> Result<FullSnaps
     let resources = export_table(
         conn,
         "SELECT id, title, url, domain, author, description, folder_id, resource_type,
-                file_path, created_at, captured_at, selection_meta, hlc, deleted_at
+                file_path, created_at, captured_at, selection_meta, content_time, hlc, deleted_at
          FROM resources",
         &[
             "id",
@@ -85,6 +85,7 @@ pub fn export_full_state(conn: &Connection, device_id: &str) -> Result<FullSnaps
             "created_at",
             "captured_at",
             "selection_meta",
+            "content_time",
             "hlc",
             "deleted_at",
         ],

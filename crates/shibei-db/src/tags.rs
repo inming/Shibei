@@ -324,7 +324,7 @@ pub fn get_resources_by_tag(
     tag_id: &str,
 ) -> Result<Vec<Resource>, DbError> {
     let mut stmt = conn.prepare(
-        "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta
+        "SELECT r.id, r.title, r.url, r.domain, r.author, r.description, r.folder_id, r.resource_type, r.file_path, r.created_at, r.captured_at, r.selection_meta, r.content_time
          FROM resources r
          JOIN resource_tags rt ON r.id = rt.resource_id
          WHERE rt.tag_id = ?1 AND r.deleted_at IS NULL AND rt.deleted_at IS NULL",
@@ -344,6 +344,7 @@ pub fn get_resources_by_tag(
                 created_at: row.get(9)?,
                 captured_at: row.get(10)?,
                 selection_meta: row.get(11)?,
+                content_time: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

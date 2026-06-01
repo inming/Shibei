@@ -66,7 +66,7 @@ export function LibraryView({ onOpenResource, onOpenQuestion, onOpenSettings, lo
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [filterTagIds, setFilterTagIds] = useState<string[]>(initialLibrary.filterTagIds ?? []);
   const listScrollTopRef = useRef<number>(initialLibrary.resourceListScrollTop ?? 0);
-  const [sortBy, setSortBy] = useState<"created_at" | "annotated_at">("created_at");
+  const [sortBy, setSortBy] = useState<"created_at" | "annotated_at" | "content_time">("created_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
   const [showTrash, setShowTrash] = useState(false);

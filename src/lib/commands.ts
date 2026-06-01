@@ -55,7 +55,7 @@ export function getFolderPath(folderId: string): Promise<Folder[]> {
 
 export function listResources(
   folderId: string,
-  sortBy?: "created_at" | "annotated_at",
+  sortBy?: "created_at" | "annotated_at" | "content_time",
   sortOrder?: "asc" | "desc",
   filterTagIds?: string[],
 ): Promise<Resource[]> {
@@ -68,7 +68,7 @@ export function listResources(
 }
 
 export function listAllResources(
-  sortBy?: "created_at" | "annotated_at",
+  sortBy?: "created_at" | "annotated_at" | "content_time",
   sortOrder?: "asc" | "desc",
   filterTagIds?: string[],
 ): Promise<Resource[]> {
@@ -83,7 +83,7 @@ export function searchResources(
   query: string,
   folderId: string | null,
   filterTagIds: string[],
-  sortBy?: "created_at" | "annotated_at",
+  sortBy?: "created_at" | "annotated_at" | "content_time",
   sortOrder?: "asc" | "desc",
 ): Promise<SearchResult[]> {
   return invoke("cmd_search_resources", {
@@ -118,8 +118,14 @@ export function moveResource(id: string, newFolderId: string): Promise<void> {
   return invoke("cmd_move_resource", { id, newFolderId });
 }
 
-export async function updateResource(id: string, title: string, description: string | null): Promise<void> {
-  return invoke("cmd_update_resource", { id, title, description });
+export async function updateResource(
+  id: string,
+  title: string,
+  description: string | null,
+  url: string,
+  contentTime: string | null,
+): Promise<void> {
+  return invoke("cmd_update_resource", { id, title, description, url, contentTime });
 }
 
 // ── Tags ──
