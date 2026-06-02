@@ -343,3 +343,50 @@
   background: var(--color-accent, #4caf50);
   flex-shrink: 0;
 }
+
+/* When a hit carries a snippet (matched in notes/description), the chip grows
+   into a small left-aligned card: title row on top, snippet below. */
+.matchedQuestionChipExpanded {
+  flex-direction: column;
+  align-items: flex-start;
+  white-space: normal;
+  max-width: 280px;
+  border-radius: 8px;
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.matchedQuestionTitleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.matchedQuestionTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matchedQuestionField {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--color-accent-light, #e8f0fe);
+  color: var(--color-accent, #1a73e8);
+  flex-shrink: 0;
+}
+
+.matchedQuestionSnippet {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

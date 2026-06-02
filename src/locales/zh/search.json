@@ -4,5 +4,7 @@
   "bodyMatch": "正文匹配",
   "highlightsMatch": "标注匹配",
   "commentsMatch": "评论匹配",
+  "descriptionMatch": "描述匹配",
+  "notesMatch": "笔记匹配",
   "matchedQuestions": "相关问题"
 }

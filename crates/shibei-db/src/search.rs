@@ -13,6 +13,22 @@ pub struct SearchResult {
     pub snippet: Option<String>,
 }
 
+/// A question search hit with which field(s) matched and a context snippet, so
+/// the UI can show *why* a question surfaced (esp. when the match is in its
+/// description or research notes rather than the visible title). `match_fields`
+/// ⊆ {"title","description","notes"}; `snippet` is context from the matched
+/// notes (priority) or description, and `None` when only the title matched
+/// (the title is already shown). JSON flattens the question fields, so older
+/// consumers that expect a bare `Question` still parse it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestionSearchResult {
+    #[serde(flatten)]
+    pub question: super::questions::Question,
+    pub match_fields: Vec<String>,
+    pub snippet: Option<String>,
+}
+
 /// Extract a text snippet around the first occurrence of `query` (case-insensitive).
 /// Returns None if query is not found. `context_chars` = chars to include before/after.
 fn extract_snippet(text: &str, query: &str, context_chars: usize) -> Option<String> {
@@ -246,7 +262,7 @@ pub fn mark_question_fts_initialized(conn: &Connection) -> Result<(), DbError> {
 pub fn search_questions(
     conn: &Connection,
     query: &str,
-) -> Result<Vec<super::questions::Question>, DbError> {
+) -> Result<Vec<QuestionSearchResult>, DbError> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Ok(vec![]);
@@ -254,16 +270,18 @@ pub fn search_questions(
 
     let use_fts = trimmed.chars().count() >= 3;
 
+    // notes_text comes from the FTS row so we can flag a notes match + snippet
+    // without a second per-question fetch.
     let sql = if use_fts {
         "SELECT q.id, q.title, q.description, q.status, q.archived_at,
-                q.created_at, q.updated_at
+                q.created_at, q.updated_at, qi.notes_text
          FROM questions q
          JOIN question_index qi ON q.id = qi.question_id
          WHERE q.deleted_at IS NULL AND question_index MATCH ?1
          ORDER BY q.status ASC, q.updated_at DESC"
     } else {
         "SELECT q.id, q.title, q.description, q.status, q.archived_at,
-                q.created_at, q.updated_at
+                q.created_at, q.updated_at, qi.notes_text
          FROM questions q
          JOIN question_index qi ON q.id = qi.question_id
          WHERE q.deleted_at IS NULL
@@ -277,9 +295,10 @@ pub fn search_questions(
     } else {
         format!("%{}%", trimmed)
     };
+    let query_lower = trimmed.to_lowercase();
     let rows = stmt
         .query_map(params![param], |row| {
-            Ok(super::questions::Question {
+            let question = super::questions::Question {
                 id: row.get(0)?,
                 title: row.get(1)?,
                 description: row.get(2)?,
@@ -287,6 +306,43 @@ pub fn search_questions(
                 archived_at: row.get(4)?,
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
+            };
+            let notes_text: String = row.get(7)?;
+
+            let mut match_fields = Vec::new();
+            if question.title.to_lowercase().contains(&query_lower) {
+                match_fields.push("title".to_string());
+            }
+            let desc_match = question
+                .description
+                .as_deref()
+                .map(|d| d.to_lowercase().contains(&query_lower))
+                .unwrap_or(false);
+            if desc_match {
+                match_fields.push("description".to_string());
+            }
+            let notes_match = notes_text.to_lowercase().contains(&query_lower);
+            if notes_match {
+                match_fields.push("notes".to_string());
+            }
+
+            // Snippet only when the match is outside the (already-visible)
+            // title — notes take priority over description.
+            let snippet = if notes_match {
+                extract_snippet(&notes_text, trimmed, 20)
+            } else if desc_match {
+                question
+                    .description
+                    .as_deref()
+                    .and_then(|d| extract_snippet(d, trimmed, 20))
+            } else {
+                None
+            };
+
+            Ok(QuestionSearchResult {
+                question,
+                match_fields,
+                snippet,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -960,7 +1016,8 @@ mod tests {
 
         let results = search_questions(&conn, "可观测").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].title, "可观测性体系");
+        assert_eq!(results[0].question.title, "可观测性体系");
+        assert!(results[0].match_fields.contains(&"title".to_string()));
     }
 
     #[test]
@@ -984,7 +1041,7 @@ mod tests {
         crate::questions::archive_question(&conn, &q.id, None).unwrap();
         let results = search_questions(&conn, "可观测").unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].status, "archived");
+        assert_eq!(results[0].question.status, "archived");
     }
 
     #[test]
@@ -1034,7 +1091,13 @@ mod tests {
             .unwrap();
         let results = search_questions(&conn, "新质生产力").unwrap();
         assert_eq!(results.len(), 1, "should find a question by its note content");
-        assert_eq!(results[0].id, q.id);
+        assert_eq!(results[0].question.id, q.id);
+        assert!(results[0].match_fields.contains(&"notes".to_string()));
+        // A note match must carry a snippet so the UI can show why it matched.
+        assert!(
+            results[0].snippet.as_deref().map(|s| s.contains("新质生产力")).unwrap_or(false),
+            "note match should yield a snippet containing the query",
+        );
     }
 
     #[test]

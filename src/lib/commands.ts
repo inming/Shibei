@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, QuestionNote, ResolvedQuestionLink, QuestionStatus, QuestionTargetType, Transcript } from "@/types";
+import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, QuestionNote, QuestionSearchResult, ResolvedQuestionLink, QuestionStatus, QuestionTargetType, Transcript } from "@/types";
 
 // ── Utility ──
 
@@ -511,7 +511,7 @@ export function listQuestions(status?: QuestionStatus): Promise<Question[]> {
   return invoke("cmd_list_questions", { status: status ?? null });
 }
 
-export function searchQuestions(query: string): Promise<Question[]> {
+export function searchQuestions(query: string): Promise<QuestionSearchResult[]> {
   return invoke("cmd_search_questions", { query });
 }
 

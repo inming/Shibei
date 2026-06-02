@@ -37,6 +37,15 @@ export interface SearchResult extends Resource {
   snippet: string | null;
 }
 
+/** A question search hit: the question plus which field(s) matched and a
+ *  context snippet (from notes / description) so the UI can show *why* it
+ *  surfaced. `matchFields` ⊆ {"title","description","notes"}; `snippet` is
+ *  null when only the (already-visible) title matched. */
+export interface QuestionSearchResult extends Question {
+  matchFields: string[];
+  snippet: string | null;
+}
+
 export interface Tag {
   id: string;
   name: string;

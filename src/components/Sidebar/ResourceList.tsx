@@ -3,7 +3,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { useTranslation } from "react-i18next";
 import { useResources } from "@/hooks/useResources";
 import * as cmd from "@/lib/commands";
-import type { Resource, Tag, Question } from "@/types";
+import type { Resource, Tag, Question, QuestionSearchResult } from "@/types";
 import { ALL_RESOURCES_ID } from "@/types";
 import { listen } from "@tauri-apps/api/event";
 import { DataEvents } from "@/lib/events";
@@ -186,7 +186,7 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
   // Sibling search: questions matching the same query. Surfaces above the
   // resource list as a chip row so users can pivot to a question without
   // leaving the search context.
-  const [matchedQuestions, setMatchedQuestions] = useState<Question[]>([]);
+  const [matchedQuestions, setMatchedQuestions] = useState<QuestionSearchResult[]>([]);
   useEffect(() => {
     let cancelled = false;
     if (searchQuery.length < MIN_SEARCH_CHARS) {
@@ -414,24 +414,43 @@ export function ResourceList({ folderId, selectedResourceIds, filterTagIds, onFi
               {tSearch('matchedQuestions', { defaultValue: '问题' })}:
             </span>
             <div className={styles.matchedQuestionsChips}>
-              {matchedQuestions.map((q) => (
-                <button
-                  key={q.id}
-                  className={`${styles.matchedQuestionChip} ${q.status === 'archived' ? styles.matchedQuestionChipArchived : ''}`}
-                  // Single click → switch to questions mode + select for preview.
-                  // Double click → open Tab (deep-link parity).
-                  // Tooltip explains the affordance to discover the dual interaction.
-                  onClick={() => {
-                    if (onSelectQuestion) onSelectQuestion(q);
-                    else if (onOpenQuestion) onOpenQuestion(q);
-                  }}
-                  onDoubleClick={() => onOpenQuestion?.(q)}
-                  title={tQuestion('chipHint')}
-                >
-                  <span className={styles.matchedQuestionDot} />
-                  <span>{q.title}</span>
-                </button>
-              ))}
+              {matchedQuestions.map((q) => {
+                // Show *why* it matched when the hit is outside the visible
+                // title — notes take priority over description.
+                const fieldTag = q.matchFields.includes('notes')
+                  ? tSearch('notesMatch')
+                  : q.matchFields.includes('description')
+                    ? tSearch('descriptionMatch')
+                    : null;
+                return (
+                  <button
+                    key={q.id}
+                    className={`${styles.matchedQuestionChip} ${q.status === 'archived' ? styles.matchedQuestionChipArchived : ''} ${q.snippet ? styles.matchedQuestionChipExpanded : ''}`}
+                    // Single click → switch to questions mode + select for preview.
+                    // Double click → open Tab (deep-link parity).
+                    // Tooltip explains the affordance to discover the dual interaction.
+                    onClick={() => {
+                      if (onSelectQuestion) onSelectQuestion(q);
+                      else if (onOpenQuestion) onOpenQuestion(q);
+                    }}
+                    onDoubleClick={() => onOpenQuestion?.(q)}
+                    title={tQuestion('chipHint')}
+                  >
+                    <span className={styles.matchedQuestionTitleRow}>
+                      <span className={styles.matchedQuestionDot} />
+                      <span className={styles.matchedQuestionTitle}>
+                        {highlightMatch(q.title, searchQuery)}
+                      </span>
+                      {fieldTag && <span className={styles.matchedQuestionField}>{fieldTag}</span>}
+                    </span>
+                    {q.snippet && (
+                      <span className={styles.matchedQuestionSnippet}>
+                        {highlightMatch(q.snippet, searchQuery)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

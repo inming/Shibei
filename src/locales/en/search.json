@@ -4,5 +4,7 @@
   "bodyMatch": "Body match",
   "highlightsMatch": "Highlights match",
   "commentsMatch": "Comments match",
+  "descriptionMatch": "Description match",
+  "notesMatch": "Notes match",
   "matchedQuestions": "Questions"
 }

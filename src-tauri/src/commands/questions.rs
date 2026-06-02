@@ -52,7 +52,7 @@ pub async fn cmd_list_questions(
 pub async fn cmd_search_questions(
     state: tauri::State<'_, Arc<AppState>>,
     query: String,
-) -> Result<Vec<questions::Question>, CommandError> {
+) -> Result<Vec<search::QuestionSearchResult>, CommandError> {
     let conn = state.conn()?;
     search::search_questions(&conn, &query).map_err(Into::into)
 }
