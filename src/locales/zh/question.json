@@ -57,5 +57,14 @@
     "emptyAll": "暂无问题",
     "emptySearch": "无搜索结果"
   },
-  "chipHint": "单击预览，双击在 Tab 中打开"
+  "chipHint": "单击预览，双击在 Tab 中打开",
+  "notesHeader": "研究笔记",
+  "addNote": "新建研究笔记",
+  "editNote": "编辑笔记",
+  "deleteNote": "删除笔记",
+  "deleteNoteConfirm": "删除这条研究笔记？此操作不可撤销。",
+  "notePlaceholder": "记录针对这个问题的思考与阶段总结（支持 Markdown）",
+  "emptyNotes": "还没有研究笔记。积累资料后，在这里沉淀你的思考。",
+  "notePreviewToggle": "预览",
+  "noteEditToggle": "编辑"
 }

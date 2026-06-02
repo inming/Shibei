@@ -65,6 +65,21 @@ pub struct ForTargetQuery {
     pub target_id: String,
 }
 
+#[derive(Deserialize)]
+pub struct CreateNoteRequest {
+    pub content: String,
+}
+
+#[derive(Serialize)]
+pub struct CreateNoteResponse {
+    pub note_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateNoteRequest {
+    pub content: String,
+}
+
 fn db_err(e: impl std::fmt::Display) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -333,4 +348,89 @@ pub async fn handle_questions_for_target(
             crate::db::DbError::InvalidOperation(msg) => bad_request(msg),
             other => db_err(other),
         })
+}
+
+// ─── question_notes ──────────────────────────────────────────────────────────
+
+pub async fn handle_list_question_notes(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<questions::QuestionNote>>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    questions::list_question_notes(&conn, &id)
+        .map(Json)
+        .map_err(db_err)
+}
+
+pub async fn handle_create_question_note(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<CreateNoteRequest>,
+) -> Result<Json<CreateNoteResponse>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+    let note = questions::create_question_note(&conn, &id, &body.content, sync_ctx.as_ref())
+        .map_err(|e| match e {
+            crate::db::DbError::NotFound(_) => not_found(e.to_string()),
+            other => db_err(other),
+        })?;
+    let _ = state.app_handle.emit(
+        events::DATA_QUESTION_NOTE_CHANGED,
+        serde_json::json!({ "action": "created", "question_id": id, "note_id": note.id }),
+    );
+    Ok(Json(CreateNoteResponse { note_id: note.id }))
+}
+
+pub async fn handle_update_question_note(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(note_id): Path<String>,
+    Json(body): Json<UpdateNoteRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+    let note_before = questions::get_question_note(&conn, &note_id).map_err(|e| match e {
+        crate::db::DbError::NotFound(_) => not_found(e.to_string()),
+        other => db_err(other),
+    })?;
+    questions::update_question_note(&conn, &note_id, &body.content, sync_ctx.as_ref())
+        .map_err(db_err)?;
+    let _ = state.app_handle.emit(
+        events::DATA_QUESTION_NOTE_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "question_id": note_before.question_id,
+            "note_id": note_id,
+        }),
+    );
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn handle_delete_question_note(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(note_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    let sync_ctx = state.sync_context();
+    let note_before = questions::get_question_note(&conn, &note_id).map_err(|e| match e {
+        crate::db::DbError::NotFound(_) => not_found(e.to_string()),
+        other => db_err(other),
+    })?;
+    questions::delete_question_note(&conn, &note_id, sync_ctx.as_ref()).map_err(db_err)?;
+    let _ = state.app_handle.emit(
+        events::DATA_QUESTION_NOTE_CHANGED,
+        serde_json::json!({
+            "action": "deleted",
+            "question_id": note_before.question_id,
+            "note_id": note_id,
+        }),
+    );
+    Ok(StatusCode::NO_CONTENT)
 }

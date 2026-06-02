@@ -526,6 +526,7 @@ impl SyncEngine {
             "resource_tags",
             "questions",
             "question_links",
+            "question_notes",
         ] {
             conn.execute(
                 &format!(
@@ -894,6 +895,16 @@ impl SyncEngine {
             let hlc = link["hlc"].as_str().unwrap_or("");
             let id = link["id"].as_str().unwrap_or_default();
             self.upsert_entity(conn, "question_link", id, link, hlc)?;
+            imported += 1;
+        }
+
+        // Notes also depend on their question being present (question_id), so
+        // they follow the questions loop above.
+        for note in &snapshot.question_notes {
+            if !note["deleted_at"].is_null() { continue; }
+            let hlc = note["hlc"].as_str().unwrap_or("");
+            let id = note["id"].as_str().unwrap_or_default();
+            self.upsert_entity(conn, "question_note", id, note, hlc)?;
             imported += 1;
         }
 
@@ -1278,6 +1289,7 @@ impl SyncEngine {
             "comment" => self.upsert_comment(conn, entity_id, payload, hlc),
             "question" => self.upsert_question(conn, entity_id, payload, hlc),
             "question_link" => self.upsert_question_link(conn, entity_id, payload, hlc),
+            "question_note" => self.upsert_question_note(conn, entity_id, payload, hlc),
             _ => Ok(()), // Unknown entity type, skip
         }
     }
@@ -1681,6 +1693,42 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// Upsert a question_note. Simpler than question_link: there is no UNIQUE
+    /// constraint (a question may hold any number of notes), so this is a
+    /// straight id-based HLC LWW exactly like `upsert_question`.
+    fn upsert_question_note(
+        &self,
+        conn: &rusqlite::Connection,
+        id: &str,
+        payload: &serde_json::Value,
+        hlc: &str,
+    ) -> Result<(), SyncError> {
+        let question_id = payload["question_id"].as_str().unwrap_or("");
+        let content = payload["content"].as_str().unwrap_or("");
+        let created_at = payload["created_at"].as_str().unwrap_or("");
+        let updated_at = payload["updated_at"].as_str().unwrap_or("");
+
+        if question_id.is_empty() {
+            // Malformed payload — skip.
+            return Ok(());
+        }
+
+        conn.execute(
+            "INSERT INTO question_notes
+                (id, question_id, content, created_at, updated_at, hlc, deleted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               question_id = excluded.question_id,
+               content = excluded.content,
+               updated_at = excluded.updated_at,
+               hlc = excluded.hlc,
+               deleted_at = NULL
+             WHERE excluded.hlc > COALESCE(question_notes.hlc, '')",
+            params![id, question_id, content, created_at, updated_at, hlc],
+        )?;
+        Ok(())
+    }
+
     /// Soft-delete an entity if it hasn't been deleted yet.
     fn soft_delete_entity(
         &self,
@@ -1698,6 +1746,7 @@ impl SyncEngine {
             "comment" => "comments",
             "question" => "questions",
             "question_link" => "question_links",
+            "question_note" => "question_notes",
             _ => return Ok(()),
         };
 
@@ -1860,6 +1909,10 @@ impl SyncEngine {
                     params![entity_id],
                 )?;
                 conn.execute(
+                    "DELETE FROM question_notes WHERE question_id = ?1",
+                    params![entity_id],
+                )?;
+                conn.execute(
                     "DELETE FROM questions WHERE id = ?1 AND deleted_at IS NOT NULL",
                     params![entity_id],
                 )?;
@@ -1867,6 +1920,12 @@ impl SyncEngine {
             "question_link" => {
                 conn.execute(
                     "DELETE FROM question_links WHERE id = ?1 AND deleted_at IS NOT NULL",
+                    params![entity_id],
+                )?;
+            }
+            "question_note" => {
+                conn.execute(
+                    "DELETE FROM question_notes WHERE id = ?1 AND deleted_at IS NOT NULL",
                     params![entity_id],
                 )?;
             }
@@ -2306,17 +2365,20 @@ fn topo_order(operation: &str, entity_type: &str) -> u8 {
             // question must precede question_link (FK-like dependency: link
             // references question_id). question_link must follow all possible
             // target types (resource / highlight / comment) so target_id
-            // resolves to a row already present locally.
+            // resolves to a row already present locally. question_note also
+            // references question_id, so it likewise follows question.
             "question" => 5,
             "question_link" => 6,
+            "question_note" => 7,
             _ => 7,
         },
         "DELETE" => match entity_type {
             "comment" => 8,
             "highlight" => 9,
             "resource" => 10,
-            // Delete links before their question, mirroring the INSERT order.
+            // Delete links / notes before their question, mirroring INSERT order.
             "question_link" => 11,
+            "question_note" => 11,
             "question" => 12,
             "tag" => 13,
             "folder" => 14,
@@ -2328,6 +2390,7 @@ fn topo_order(operation: &str, entity_type: &str) -> u8 {
             "highlight" => 17,
             "resource" => 18,
             "question_link" => 19,
+            "question_note" => 19,
             "question" => 20,
             "tag" => 21,
             "folder" => 22,
@@ -2351,6 +2414,7 @@ fn get_entity_hlc(
         "comment" => "comments",
         "question" => "questions",
         "question_link" => "question_links",
+        "question_note" => "question_notes",
         _ => return Ok(None),
     };
 
@@ -3008,6 +3072,91 @@ mod tests {
 
         // All INSERT/UPDATE before DELETE
         assert!(topo_order("INSERT", "comment") < topo_order("DELETE", "comment"));
+
+        // question_note depends on question (question_id), so it must follow
+        // question on INSERT and precede it on DELETE — same as question_link.
+        assert!(topo_order("INSERT", "question") < topo_order("INSERT", "question_note"));
+        assert!(topo_order("DELETE", "question_note") < topo_order("DELETE", "question"));
+        assert!(topo_order("INSERT", "question_note") < topo_order("DELETE", "question_note"));
+    }
+
+    #[tokio::test]
+    async fn test_question_note_two_device_sync() {
+        let backend = Arc::new(MockBackend::new());
+
+        // Device A: create a question and a research note, then sync (upload).
+        let (_dir_a, pool_a) = test_pool();
+        mark_synced(&pool_a);
+        let engine_a =
+            make_engine(pool_a.clone(), backend.clone(), "dev-a", _dir_a.path().to_path_buf());
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let q = serde_json::json!({
+                "id": "q1", "title": "Observability", "description": null,
+                "status": "active", "archived_at": null,
+                "created_at": "2026-06-01T00:00:00Z", "updated_at": "2026-06-01T00:00:00Z"
+            });
+            sync_log::append(&conn, "question", "q1", "INSERT", &q.to_string(),
+                "1717200000000-0000-dev-a", "dev-a").unwrap();
+            let n = serde_json::json!({
+                "id": "n1", "question_id": "q1", "content": "My stage summary",
+                "created_at": "2026-06-02T00:00:00Z", "updated_at": "2026-06-02T00:00:00Z"
+            });
+            sync_log::append(&conn, "question_note", "n1", "INSERT", &n.to_string(),
+                "1717286400000-0000-dev-a", "dev-a").unwrap();
+        }
+        match engine_a.sync(None).await.unwrap() {
+            SyncResult::Success { uploaded, .. } => assert_eq!(uploaded, 2),
+            _ => panic!("expected Success"),
+        }
+
+        // Device B: sync (download + apply).
+        let (_dir_b, pool_b) = test_pool();
+        let engine_b =
+            make_engine(pool_b.clone(), backend.clone(), "dev-b", _dir_b.path().to_path_buf());
+        match engine_b.sync(None).await.unwrap() {
+            SyncResult::Success { applied, .. } => assert_eq!(applied, 2),
+            _ => panic!("expected Success"),
+        }
+
+        // The note landed on B with the right parent + content.
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            let (qid, content): (String, String) = conn
+                .query_row(
+                    "SELECT question_id, content FROM question_notes
+                     WHERE id = 'n1' AND deleted_at IS NULL",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(qid, "q1");
+            assert_eq!(content, "My stage summary");
+        }
+
+        // Device A edits the note, syncs; B picks up the newer content (LWW).
+        {
+            let conn = pool_a.read().unwrap().get().unwrap();
+            let n = serde_json::json!({
+                "id": "n1", "question_id": "q1", "content": "Revised summary",
+                "created_at": "2026-06-02T00:00:00Z", "updated_at": "2026-06-03T00:00:00Z"
+            });
+            sync_log::append(&conn, "question_note", "n1", "UPDATE", &n.to_string(),
+                "1717372800000-0000-dev-a", "dev-a").unwrap();
+        }
+        engine_a.sync(None).await.unwrap();
+        engine_b.sync(None).await.unwrap();
+        {
+            let conn = pool_b.read().unwrap().get().unwrap();
+            let content: String = conn
+                .query_row(
+                    "SELECT content FROM question_notes WHERE id = 'n1' AND deleted_at IS NULL",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(content, "Revised summary");
+        }
     }
 
     #[tokio::test]

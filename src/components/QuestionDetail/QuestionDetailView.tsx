@@ -9,8 +9,10 @@ import { DataEvents, type QuestionChangedPayload } from "@/lib/events";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { QuestionEditDialog } from "@/components/Sidebar/QuestionEditDialog";
 import { useResolvedQuestionLinks } from "@/hooks/useResolvedQuestionLinks";
+import { useCollapsible } from "@/hooks/useCollapsible";
 import { buildQuestionDeepLink } from "@/lib/deepLink";
 import { ResourceLinkGroup } from "./ResourceLinkGroup";
+import { QuestionNotesSection } from "./QuestionNotesSection";
 import styles from "./QuestionDetailView.module.css";
 
 interface QuestionDetailViewProps {
@@ -51,6 +53,7 @@ export function QuestionDetailView({
     question.id,
   );
   const [editorOpen, setEditorOpen] = useState(false);
+  const [linksCollapsed, setLinksCollapsed] = useCollapsible("question-links");
 
   // The initialQuestion prop changes only when the parent receives a fresher
   // snapshot (sidebar re-fetch on QUESTION_CHANGED, etc). Mirror it.
@@ -180,24 +183,48 @@ export function QuestionDetailView({
           )}
         </div>
 
+        <QuestionNotesSection questionId={question.id} />
+
         <div className={styles.linksSection}>
-          <div className={styles.linksHeader}>
-            {t("linksHeader")}
-            {totalLinks > 0 && <span className={styles.linksSummary}> ({summaryParts.join(" · ")})</span>}
+          <div
+            className={styles.linksHeader}
+            role="button"
+            tabIndex={0}
+            aria-expanded={!linksCollapsed}
+            onClick={() => setLinksCollapsed(!linksCollapsed)}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                setLinksCollapsed(!linksCollapsed);
+              }
+            }}
+          >
+            <span
+              className={`${styles.chevron} ${linksCollapsed ? styles.chevronCollapsed : ""}`}
+            >
+              ▾
+            </span>
+            <span className={styles.linksHeaderLabel}>
+              {t("linksHeader")}
+              {totalLinks > 0 && (
+                <span className={styles.linksSummary}> ({summaryParts.join(" · ")})</span>
+              )}
+            </span>
           </div>
-          {totalLinks === 0 ? (
-            <div className={styles.empty}>{loading ? "" : t("emptyLinks")}</div>
-          ) : (
-            <div className={styles.groupList}>
-              {groups.map((group) => (
-                <ResourceLinkGroup
-                  key={group.key}
-                  group={group}
-                  onOpenResource={onOpenResource}
-                />
-              ))}
-            </div>
-          )}
+          {!linksCollapsed &&
+            (totalLinks === 0 ? (
+              <div className={styles.empty}>{loading ? "" : t("emptyLinks")}</div>
+            ) : (
+              <div className={styles.groupList}>
+                {groups.map((group) => (
+                  <ResourceLinkGroup
+                    key={group.key}
+                    group={group}
+                    onOpenResource={onOpenResource}
+                  />
+                ))}
+              </div>
+            ))}
         </div>
       </div>
 

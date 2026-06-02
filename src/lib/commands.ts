@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, ResolvedQuestionLink, QuestionStatus, QuestionTargetType, Transcript } from "@/types";
+import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, QuestionNote, ResolvedQuestionLink, QuestionStatus, QuestionTargetType, Transcript } from "@/types";
 
 // ── Utility ──
 
@@ -582,4 +582,22 @@ export function updateLinkReason(linkId: string, reason: string | null): Promise
 
 export function unlinkQuestion(linkId: string): Promise<void> {
   return invoke("cmd_unlink", { linkId });
+}
+
+// ── Question research notes ──
+
+export function listQuestionNotes(questionId: string): Promise<QuestionNote[]> {
+  return invoke("cmd_list_question_notes", { questionId });
+}
+
+export function createQuestionNote(questionId: string, content: string): Promise<QuestionNote> {
+  return invoke("cmd_create_question_note", { questionId, content });
+}
+
+export function updateQuestionNote(noteId: string, content: string): Promise<void> {
+  return invoke("cmd_update_question_note", { noteId, content });
+}
+
+export function deleteQuestionNote(noteId: string): Promise<void> {
+  return invoke("cmd_delete_question_note", { noteId });
 }

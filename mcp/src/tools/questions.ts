@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ShibeiClient } from "../client.js";
-import type { Question, ResolvedQuestionLink } from "../types.js";
+import type { Question, QuestionNote, ResolvedQuestionLink } from "../types.js";
 import { formatLinkedEvidence } from "./questionsFormat.js";
 
 /**
@@ -67,6 +67,23 @@ export function registerQuestionTools(server: McpServer, client: ShibeiClient) {
       if (question.description) {
         lines.push("");
         lines.push(question.description);
+      }
+
+      // Research notes: the user's (and prior AI runs') synthesized thinking on
+      // this question. Always included — it's high-signal context for a new
+      // stage summary, and lets the AI build on / revise existing notes rather
+      // than duplicate them. Newest first, matching the backend ordering.
+      const notes = await client.get<QuestionNote[]>(
+        `/api/questions/${encodeURIComponent(params.id)}/notes`,
+      );
+      if (notes.length > 0) {
+        lines.push("");
+        lines.push(`## Research notes (${notes.length})`);
+        for (const n of notes) {
+          lines.push("");
+          lines.push(`### ${n.created_at} (note id: ${n.id})`);
+          lines.push(n.content);
+        }
       }
 
       if (params.include_linked) {
@@ -191,6 +208,79 @@ export function registerQuestionTools(server: McpServer, client: ShibeiClient) {
     async (params) => {
       await client.delete(`/api/question-links/${encodeURIComponent(params.link_id)}`);
       return { content: [{ type: "text" as const, text: "Link removed." }] };
+    },
+  );
+
+  server.tool(
+    "manage_question_notes",
+    "Create, update, or delete a research note on a question. Research notes are the deposit for synthesized thinking and STAGE SUMMARIES: after reading a question and all its evidence via get_question(include_linked=true), write your synthesis as a new note here so it persists for the user to refine. Multiple notes accumulate per question as a timestamped log (newest first) — prefer adding a fresh note for a new stage over overwriting an existing one.",
+    {
+      action: z.enum(["create", "update", "delete"]).describe("Operation to perform."),
+      question_id: z
+        .string()
+        .optional()
+        .describe("Question ID the note belongs to (required for create)."),
+      note_id: z
+        .string()
+        .optional()
+        .describe("Research note ID (required for update / delete)."),
+      content: z
+        .string()
+        .optional()
+        .describe("Markdown note body (required for create / update)."),
+    },
+    async (params) => {
+      switch (params.action) {
+        case "create": {
+          if (!params.question_id) {
+            return {
+              content: [{ type: "text" as const, text: "Error: question_id is required for create." }],
+              isError: true,
+            };
+          }
+          if (params.content === undefined) {
+            return {
+              content: [{ type: "text" as const, text: "Error: content is required for create." }],
+              isError: true,
+            };
+          }
+          const created = await client.post<{ note_id: string }>(
+            `/api/questions/${encodeURIComponent(params.question_id)}/notes`,
+            { content: params.content },
+          );
+          return {
+            content: [{ type: "text" as const, text: `Research note created (id: ${created.note_id}).` }],
+          };
+        }
+        case "update": {
+          if (!params.note_id) {
+            return {
+              content: [{ type: "text" as const, text: "Error: note_id is required for update." }],
+              isError: true,
+            };
+          }
+          if (params.content === undefined) {
+            return {
+              content: [{ type: "text" as const, text: "Error: content is required for update." }],
+              isError: true,
+            };
+          }
+          await client.put(`/api/question-notes/${encodeURIComponent(params.note_id)}`, {
+            content: params.content,
+          });
+          return { content: [{ type: "text" as const, text: "Research note updated." }] };
+        }
+        case "delete": {
+          if (!params.note_id) {
+            return {
+              content: [{ type: "text" as const, text: "Error: note_id is required for delete." }],
+              isError: true,
+            };
+          }
+          await client.delete(`/api/question-notes/${encodeURIComponent(params.note_id)}`);
+          return { content: [{ type: "text" as const, text: "Research note deleted." }] };
+        }
+      }
     },
   );
 }

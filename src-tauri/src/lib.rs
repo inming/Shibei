@@ -401,6 +401,10 @@ pub fn run() {
             commands::cmd_link_to_question,
             commands::cmd_update_link_reason,
             commands::cmd_unlink,
+            commands::cmd_list_question_notes,
+            commands::cmd_create_question_note,
+            commands::cmd_update_question_note,
+            commands::cmd_delete_question_note,
         ])
         .register_asynchronous_uri_scheme_protocol("shibei", move |_ctx, request, responder| {
             // Serve snapshots off the WebView's main thread. A synchronous

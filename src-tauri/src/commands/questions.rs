@@ -161,6 +161,83 @@ pub async fn cmd_delete_question(
     Ok(())
 }
 
+// ─── question_notes: CRUD ────────────────────────────────────────────────────
+// Research notes: multiple timestamped markdown notes per question where the
+// user (or an MCP-delegated AI agent) deposits synthesized thinking / stage
+// summaries. Independent of the question row, so edits never clobber title /
+// status. Each mutation emits DATA_QUESTION_NOTE_CHANGED (scoped event so the
+// sidebar question list does not refresh on note edits).
+
+#[tauri::command]
+pub async fn cmd_list_question_notes(
+    state: tauri::State<'_, Arc<AppState>>,
+    question_id: String,
+) -> Result<Vec<questions::QuestionNote>, CommandError> {
+    let conn = state.conn()?;
+    questions::list_question_notes(&conn, &question_id).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn cmd_create_question_note(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    question_id: String,
+    content: String,
+) -> Result<questions::QuestionNote, CommandError> {
+    let conn = state.conn()?;
+    let sync_ctx = state.sync_context();
+    let note = questions::create_question_note(&conn, &question_id, &content, sync_ctx.as_ref())?;
+    let _ = app.emit(
+        events::DATA_QUESTION_NOTE_CHANGED,
+        serde_json::json!({ "action": "created", "question_id": question_id, "note_id": note.id }),
+    );
+    Ok(note)
+}
+
+#[tauri::command]
+pub async fn cmd_update_question_note(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    note_id: String,
+    content: String,
+) -> Result<(), CommandError> {
+    let conn = state.conn()?;
+    let sync_ctx = state.sync_context();
+    // Fetch first so the event payload carries the parent question_id.
+    let note_before = questions::get_question_note(&conn, &note_id)?;
+    questions::update_question_note(&conn, &note_id, &content, sync_ctx.as_ref())?;
+    let _ = app.emit(
+        events::DATA_QUESTION_NOTE_CHANGED,
+        serde_json::json!({
+            "action": "updated",
+            "question_id": note_before.question_id,
+            "note_id": note_id,
+        }),
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cmd_delete_question_note(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+    note_id: String,
+) -> Result<(), CommandError> {
+    let conn = state.conn()?;
+    let sync_ctx = state.sync_context();
+    let note_before = questions::get_question_note(&conn, &note_id)?;
+    questions::delete_question_note(&conn, &note_id, sync_ctx.as_ref())?;
+    let _ = app.emit(
+        events::DATA_QUESTION_NOTE_CHANGED,
+        serde_json::json!({
+            "action": "deleted",
+            "question_id": note_before.question_id,
+            "note_id": note_id,
+        }),
+    );
+    Ok(())
+}
+
 // ─── question_links: CRUD ────────────────────────────────────────────────────
 
 #[tauri::command]

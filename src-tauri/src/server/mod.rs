@@ -251,6 +251,16 @@ pub async fn start_server(
             put(questions::handle_update_link).delete(questions::handle_delete_link),
         )
         .route(
+            "/api/questions/{id}/notes",
+            get(questions::handle_list_question_notes)
+                .post(questions::handle_create_question_note),
+        )
+        .route(
+            "/api/question-notes/{note_id}",
+            put(questions::handle_update_question_note)
+                .delete(questions::handle_delete_question_note),
+        )
+        .route(
             "/api/questions-for-target",
             get(questions::handle_questions_for_target),
         )

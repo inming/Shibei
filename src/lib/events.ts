@@ -12,6 +12,7 @@ export const DataEvents = {
   ANNOTATION_CHANGED: "data:annotation-changed",
   QUESTION_CHANGED: "data:question-changed",
   QUESTION_LINK_CHANGED: "data:question-link-changed",
+  QUESTION_NOTE_CHANGED: "data:question-note-changed",
   SYNC_COMPLETED: "data:sync-completed",
   CONFIG_CHANGED: "data:config-changed",
 } as const;
@@ -58,6 +59,12 @@ export interface QuestionLinkChangedPayload {
   /** Absent when the event was emitted from a question-level cascade (e.g. delete_question). */
   target_type?: "resource" | "highlight" | "comment";
   target_id?: string;
+}
+
+export interface QuestionNoteChangedPayload {
+  action: "created" | "updated" | "deleted";
+  question_id: string;
+  note_id?: string;
 }
 
 export interface ConfigChangedPayload {

@@ -46,6 +46,21 @@ pub struct QuestionLink {
     pub updated_at: String,
 }
 
+/// A free-form Markdown research note attached to a question. Multiple notes
+/// accumulate per question as a timestamped thinking log; the user (or an
+/// MCP-delegated AI agent) deposits synthesized thinking and stage summaries
+/// here, built from the question's accumulated materials. Independent sync
+/// entity (id-based HLC LWW), mirroring `QuestionLink` but with no UNIQUE
+/// constraint — a question may hold any number of notes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionNote {
+    pub id: String,
+    pub question_id: String,
+    pub content: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// A link with its polymorphic target pre-resolved to a parent resource (+ a
 /// snippet / anchor for highlights and comments). Lets the desktop detail view
 /// and the MCP stage-summary fetch everything in one round-trip instead of an
@@ -350,6 +365,47 @@ pub fn delete_question(
                 "DELETE",
                 &payload,
                 link_hlc.as_deref(),
+            )?;
+        }
+    }
+
+    // Cascade soft-delete to all alive notes under this question (same pattern
+    // as the link cascade above: one sync_log DELETE per note for sync
+    // correctness). Notes have no UNIQUE constraint, so this is straightforward.
+    let note_ids: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM question_notes
+             WHERE question_id = ?1 AND deleted_at IS NULL",
+        )?;
+        let collected = stmt
+            .query_map(params![id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        collected
+    };
+
+    for note_id in &note_ids {
+        let note_before = if sync_ctx.is_some() {
+            get_question_note(conn, note_id).ok()
+        } else {
+            None
+        };
+        let note_hlc = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+        conn.execute(
+            "UPDATE question_notes SET deleted_at = ?1, hlc = COALESCE(?2, hlc)
+             WHERE id = ?3 AND deleted_at IS NULL",
+            params![now, note_hlc, note_id],
+        )?;
+        if let Some(note) = note_before {
+            let payload = serde_json::to_string(&note)
+                .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+            write_sync_log(
+                conn,
+                sync_ctx,
+                "question_note",
+                note_id,
+                "DELETE",
+                &payload,
+                note_hlc.as_deref(),
             )?;
         }
     }
@@ -819,6 +875,193 @@ pub fn list_questions_for_resources(
         map.entry(target_id).or_default().push(q);
     }
     Ok(map)
+}
+
+// ─── question_notes: CRUD ────────────────────────────────────────────────────
+
+pub fn create_question_note(
+    conn: &Connection,
+    question_id: &str,
+    content: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<QuestionNote, DbError> {
+    // Verify the question is alive (notes on deleted questions are nonsense).
+    let q_alive: bool = conn
+        .query_row(
+            "SELECT 1 FROM questions WHERE id = ?1 AND deleted_at IS NULL",
+            params![question_id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    if !q_alive {
+        return Err(DbError::NotFound(format!("question {}", question_id)));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+
+    conn.execute(
+        "INSERT INTO question_notes
+            (id, question_id, content, created_at, updated_at, hlc)
+         VALUES (?1, ?2, ?3, ?4, ?4, ?5)",
+        params![id, question_id, content, now, hlc_str],
+    )?;
+
+    let note = QuestionNote {
+        id,
+        question_id: question_id.to_string(),
+        content: content.to_string(),
+        created_at: now.clone(),
+        updated_at: now,
+    };
+
+    if sync_ctx.is_some() {
+        let payload = serde_json::to_string(&note)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        write_sync_log(
+            conn,
+            sync_ctx,
+            "question_note",
+            &note.id,
+            "INSERT",
+            &payload,
+            hlc_str.as_deref(),
+        )?;
+    }
+
+    // Search readiness: rebuild the question's FTS row. In Phase 1 the index
+    // only covers title+description (this is idempotent); once notes are folded
+    // into the index this call needs no change — only what it reads changes.
+    let _ = super::search::rebuild_question_search_index(conn, question_id);
+
+    Ok(note)
+}
+
+pub fn update_question_note(
+    conn: &Connection,
+    note_id: &str,
+    content: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<(), DbError> {
+    let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+    let changed = conn.execute(
+        "UPDATE question_notes
+         SET content = ?1, updated_at = ?2, hlc = COALESCE(?3, hlc)
+         WHERE id = ?4 AND deleted_at IS NULL",
+        params![content, now, hlc_str, note_id],
+    )?;
+    if changed == 0 {
+        return Err(DbError::NotFound(format!("question_note {}", note_id)));
+    }
+
+    let note = get_question_note(conn, note_id)?;
+    if sync_ctx.is_some() {
+        let payload = serde_json::to_string(&note)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        write_sync_log(
+            conn,
+            sync_ctx,
+            "question_note",
+            note_id,
+            "UPDATE",
+            &payload,
+            hlc_str.as_deref(),
+        )?;
+    }
+
+    let _ = super::search::rebuild_question_search_index(conn, &note.question_id);
+
+    Ok(())
+}
+
+pub fn delete_question_note(
+    conn: &Connection,
+    note_id: &str,
+    sync_ctx: Option<&SyncContext>,
+) -> Result<(), DbError> {
+    // Capture before soft-delete: need question_id for the FTS rebuild + the
+    // full snapshot for the sync_log DELETE payload.
+    let note_before = get_question_note(conn, note_id)?;
+
+    let now = now_iso8601();
+    let hlc_str = sync_ctx.map(|ctx| ctx.clock.tick().to_string());
+    let changed = conn.execute(
+        "UPDATE question_notes SET deleted_at = ?1, hlc = COALESCE(?2, hlc)
+         WHERE id = ?3 AND deleted_at IS NULL",
+        params![now, hlc_str, note_id],
+    )?;
+    if changed == 0 {
+        return Err(DbError::NotFound(format!("question_note {}", note_id)));
+    }
+
+    if sync_ctx.is_some() {
+        let payload = serde_json::to_string(&note_before)
+            .map_err(|e| DbError::InvalidOperation(e.to_string()))?;
+        write_sync_log(
+            conn,
+            sync_ctx,
+            "question_note",
+            note_id,
+            "DELETE",
+            &payload,
+            hlc_str.as_deref(),
+        )?;
+    }
+
+    let _ = super::search::rebuild_question_search_index(conn, &note_before.question_id);
+
+    Ok(())
+}
+
+pub fn get_question_note(conn: &Connection, note_id: &str) -> Result<QuestionNote, DbError> {
+    conn.query_row(
+        "SELECT id, question_id, content, created_at, updated_at
+         FROM question_notes WHERE id = ?1 AND deleted_at IS NULL",
+        params![note_id],
+        |row| {
+            Ok(QuestionNote {
+                id: row.get(0)?,
+                question_id: row.get(1)?,
+                content: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        },
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => {
+            DbError::NotFound(format!("question_note {}", note_id))
+        }
+        other => DbError::Sqlite(other),
+    })
+}
+
+/// All alive notes for a question, newest first (`created_at` desc). Editing an
+/// existing note does not reorder it (we sort by `created_at`, not `updated_at`).
+pub fn list_question_notes(
+    conn: &Connection,
+    question_id: &str,
+) -> Result<Vec<QuestionNote>, DbError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, question_id, content, created_at, updated_at
+         FROM question_notes
+         WHERE question_id = ?1 AND deleted_at IS NULL
+         ORDER BY created_at DESC",
+    )?;
+    let rows = stmt
+        .query_map(params![question_id], |row| {
+            Ok(QuestionNote {
+                id: row.get(0)?,
+                question_id: row.get(1)?,
+                content: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 // ─── cascade (called by resources / highlights / comments on soft-delete) ────
@@ -1319,5 +1562,130 @@ mod tests {
         for w in hlcs.windows(2) {
             assert!(w[0] < w[1], "HLC must be strictly increasing: {:?}", w);
         }
+    }
+
+    // ─── question_notes ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_and_list_question_notes_newest_first() {
+        let conn = test_db();
+        let q = create_question(&conn, "Q", None, None).unwrap();
+
+        let n1 = create_question_note(&conn, &q.id, "first thought", None).unwrap();
+        let n2 = create_question_note(&conn, &q.id, "second thought", None).unwrap();
+        let n3 = create_question_note(&conn, &q.id, "third thought", None).unwrap();
+
+        // Force distinct, controlled created_at so ordering is deterministic
+        // regardless of clock resolution.
+        for (id, ts) in [
+            (&n1.id, "2026-01-01T00:00:00Z"),
+            (&n2.id, "2026-01-02T00:00:00Z"),
+            (&n3.id, "2026-01-03T00:00:00Z"),
+        ] {
+            conn.execute(
+                "UPDATE question_notes SET created_at = ?1 WHERE id = ?2",
+                params![ts, id],
+            )
+            .unwrap();
+        }
+
+        let notes = list_question_notes(&conn, &q.id).unwrap();
+        assert_eq!(notes.len(), 3);
+        assert_eq!(notes[0].content, "third thought", "newest first");
+        assert_eq!(notes[1].content, "second thought");
+        assert_eq!(notes[2].content, "first thought");
+    }
+
+    #[test]
+    fn test_update_question_note() {
+        let conn = test_db();
+        let q = create_question(&conn, "Q", None, None).unwrap();
+        let n = create_question_note(&conn, &q.id, "draft", None).unwrap();
+
+        update_question_note(&conn, &n.id, "revised summary", None).unwrap();
+        let fetched = get_question_note(&conn, &n.id).unwrap();
+        assert_eq!(fetched.content, "revised summary");
+        assert_eq!(fetched.question_id, q.id);
+    }
+
+    #[test]
+    fn test_delete_question_note() {
+        let conn = test_db();
+        let q = create_question(&conn, "Q", None, None).unwrap();
+        let n = create_question_note(&conn, &q.id, "x", None).unwrap();
+
+        delete_question_note(&conn, &n.id, None).unwrap();
+        assert!(list_question_notes(&conn, &q.id).unwrap().is_empty());
+        assert!(get_question_note(&conn, &n.id).is_err());
+    }
+
+    #[test]
+    fn test_create_note_on_missing_question_rejected() {
+        let conn = test_db();
+        let err = create_question_note(&conn, "no-such-q", "x", None).unwrap_err();
+        matches!(err, DbError::NotFound(_));
+    }
+
+    #[test]
+    fn test_delete_question_cascades_notes() {
+        let conn = test_db();
+        let q = create_question(&conn, "Q", None, None).unwrap();
+        create_question_note(&conn, &q.id, "a", None).unwrap();
+        create_question_note(&conn, &q.id, "b", None).unwrap();
+
+        delete_question(&conn, &q.id, None).unwrap();
+        assert!(list_question_notes(&conn, &q.id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_archive_does_not_cascade_notes() {
+        let conn = test_db();
+        let q = create_question(&conn, "Q", None, None).unwrap();
+        create_question_note(&conn, &q.id, "keep me", None).unwrap();
+
+        archive_question(&conn, &q.id, None).unwrap();
+        let notes = list_question_notes(&conn, &q.id).unwrap();
+        assert_eq!(notes.len(), 1, "archive must not touch notes");
+    }
+
+    #[test]
+    fn test_question_note_sync_log_emissions() {
+        let conn = test_db();
+        let (clock, device_id) = ctx_for_device("dev-A");
+        let ctx = SyncContext { clock: &clock, device_id };
+
+        let q = create_question(&conn, "Q", None, Some(&ctx)).unwrap();
+        let n = create_question_note(&conn, &q.id, "draft", Some(&ctx)).unwrap();
+        update_question_note(&conn, &n.id, "revised", Some(&ctx)).unwrap();
+        delete_question_note(&conn, &n.id, Some(&ctx)).unwrap();
+
+        let pending = sync_log::get_pending(&conn).unwrap();
+        let kinds: Vec<(String, String)> = pending
+            .iter()
+            .map(|e| (e.entity_type.clone(), e.operation.clone()))
+            .collect();
+        assert!(kinds.contains(&("question_note".to_string(), "INSERT".to_string())));
+        assert!(kinds.contains(&("question_note".to_string(), "UPDATE".to_string())));
+        assert!(kinds.contains(&("question_note".to_string(), "DELETE".to_string())));
+    }
+
+    #[test]
+    fn test_delete_question_emits_note_delete_logs() {
+        let conn = test_db();
+        let (clock, device_id) = ctx_for_device("dev-A");
+        let ctx = SyncContext { clock: &clock, device_id };
+
+        let q = create_question(&conn, "Q", None, Some(&ctx)).unwrap();
+        create_question_note(&conn, &q.id, "a", Some(&ctx)).unwrap();
+        create_question_note(&conn, &q.id, "b", Some(&ctx)).unwrap();
+
+        delete_question(&conn, &q.id, Some(&ctx)).unwrap();
+
+        let pending = sync_log::get_pending(&conn).unwrap();
+        let note_deletes = pending
+            .iter()
+            .filter(|e| e.entity_type == "question_note" && e.operation == "DELETE")
+            .count();
+        assert_eq!(note_deletes, 2, "one DELETE log per cascaded note");
     }
 }

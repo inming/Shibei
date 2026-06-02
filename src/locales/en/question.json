@@ -59,5 +59,14 @@
     "emptyAll": "No questions yet",
     "emptySearch": "No results"
   },
-  "chipHint": "Click to preview, double-click to open in tab"
+  "chipHint": "Click to preview, double-click to open in tab",
+  "notesHeader": "Research notes",
+  "addNote": "New note",
+  "editNote": "Edit note",
+  "deleteNote": "Delete note",
+  "deleteNoteConfirm": "Delete this research note? This cannot be undone.",
+  "notePlaceholder": "Capture your thinking and stage summaries for this question (Markdown supported)",
+  "emptyNotes": "No research notes yet. As you gather materials, deposit your thinking here.",
+  "notePreviewToggle": "Preview",
+  "noteEditToggle": "Edit"
 }

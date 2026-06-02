@@ -113,11 +113,39 @@
 }
 
 .linksHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
   border-bottom: 1px solid var(--color-border);
   padding-bottom: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.linksHeader:focus-visible {
+  outline: 2px solid var(--color-accent, #4caf50);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.linksHeaderLabel {
+  flex: 1;
+}
+
+.chevron {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  transition: transform 0.12s ease;
+  transform: rotate(0deg);
+}
+
+.chevronCollapsed {
+  transform: rotate(-90deg);
 }
 
 .linksSummary {

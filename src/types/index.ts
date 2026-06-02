@@ -191,6 +191,17 @@ export interface QuestionLink {
   updated_at: string;
 }
 
+/** A free-form Markdown research note on a question — the user's (and
+ *  MCP-delegated AI's) synthesized thinking / stage summaries. Multiple notes
+ *  accumulate per question as a timestamped log (newest first). */
+export interface QuestionNote {
+  id: string;
+  question_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** A question link with its target pre-resolved by the backend
  *  (`cmd_list_resolved_question_links`): parent resource + snippet + anchor in
  *  one round-trip, no client-side fetch waterfall. */

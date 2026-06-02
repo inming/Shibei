@@ -20,6 +20,9 @@ pub struct FullSnapshot {
     pub questions: Vec<serde_json::Value>,
     #[serde(default)]
     pub question_links: Vec<serde_json::Value>,
+    // v2026-06-02: question research notes. Same forward-compat treatment.
+    #[serde(default)]
+    pub question_notes: Vec<serde_json::Value>,
 }
 
 fn export_table(
@@ -169,6 +172,21 @@ pub fn export_full_state(conn: &Connection, device_id: &str) -> Result<FullSnaps
         ],
     )?;
 
+    let question_notes = export_table(
+        conn,
+        "SELECT id, question_id, content, created_at, updated_at, hlc, deleted_at
+         FROM question_notes",
+        &[
+            "id",
+            "question_id",
+            "content",
+            "created_at",
+            "updated_at",
+            "hlc",
+            "deleted_at",
+        ],
+    )?;
+
     Ok(FullSnapshot {
         timestamp,
         device_id: device_id.to_string(),
@@ -180,6 +198,7 @@ pub fn export_full_state(conn: &Connection, device_id: &str) -> Result<FullSnaps
         comments,
         questions,
         question_links,
+        question_notes,
     })
 }
 
@@ -222,5 +241,21 @@ mod tests {
         assert_eq!(snapshot.folders.len(), 1);
         let f = &snapshot.folders[0];
         assert!(f["deleted_at"] != serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_export_includes_question_notes() {
+        use shibei_db::questions;
+        let conn = test_db();
+        let q = questions::create_question(&conn, "Q", None, None).unwrap();
+        let note = questions::create_question_note(&conn, &q.id, "synthesized thinking", None)
+            .unwrap();
+
+        let snapshot = export_full_state(&conn, "test-device").unwrap();
+        assert_eq!(snapshot.question_notes.len(), 1);
+        let n = &snapshot.question_notes[0];
+        assert_eq!(n["id"].as_str(), Some(note.id.as_str()));
+        assert_eq!(n["question_id"].as_str(), Some(q.id.as_str()));
+        assert_eq!(n["content"].as_str(), Some("synthesized thinking"));
     }
 }

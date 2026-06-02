@@ -80,6 +80,17 @@ export interface QuestionLink {
   updated_at: string;
 }
 
+/** A free-form Markdown research note attached to a question. Multiple notes
+ *  accumulate per question as a timestamped thinking log; the AI deposits stage
+ *  summaries here via manage_question_notes. Matches `/api/questions/{id}/notes`. */
+export interface QuestionNote {
+  id: string;
+  question_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** A link with its target pre-resolved to the parent resource + a snippet, so
  *  the stage-summary gets everything in one round-trip. Matches the backend's
  *  `/api/questions/{id}/links/resolved`. */
