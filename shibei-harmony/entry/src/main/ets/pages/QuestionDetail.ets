@@ -12,6 +12,7 @@ import {
   ShibeiError,
   Question,
   QuestionLink,
+  QuestionNote,
   ResolvedQuestionLink,
 } from '../services/ShibeiService';
 import { QuestionService } from '../services/QuestionService';
@@ -71,11 +72,13 @@ struct QuestionDetail {
   @State groups: ResourceGroup[] = [];
   @State totalLinks: number = 0;
   @State expandedNotes: string[] = [];
+  @State notes: QuestionNote[] = [];
   @State loading: boolean = true;
   @State error: string = '';
   private questionId: string = '';
   private unsubLinks?: () => void;
   private unsubList?: () => void;
+  private unsubNotes?: () => void;
 
   aboutToAppear(): void {
     const params = router.getParams() as QuestionDetailParams;
@@ -103,6 +106,12 @@ struct QuestionDetail {
         router.back();
       }
     });
+    this.unsubNotes = QuestionService.instance.subscribeNotes(
+      this.questionId,
+      (notes: QuestionNote[]) => {
+        this.notes = notes;
+      },
+    );
   }
 
   onPageShow(): void {
@@ -112,6 +121,7 @@ struct QuestionDetail {
   aboutToDisappear(): void {
     if (this.unsubLinks) this.unsubLinks();
     if (this.unsubList) this.unsubList();
+    if (this.unsubNotes) this.unsubNotes();
   }
 
   private async loadAll(): Promise<void> {
@@ -122,6 +132,7 @@ struct QuestionDetail {
       const links = await QuestionService.instance.loadResolvedLinks(this.questionId);
       this.resolved = links;
       this.rebuild();
+      this.notes = await QuestionService.instance.loadNotes(this.questionId);
       this.error = '';
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
@@ -340,6 +351,73 @@ struct QuestionDetail {
     });
   }
 
+  // ── research notes ──
+
+  /** "2026-06-02 14:30" from an RFC3339 created_at, no Date/locale dependency. */
+  private noteTs(note: QuestionNote): string {
+    const s = note.created_at;
+    if (s.length >= 16) return `${s.slice(0, 10)} ${s.slice(11, 16)}`;
+    return s;
+  }
+
+  private gotoNoteCreate(): void {
+    router.pushUrl({
+      url: 'pages/QuestionNoteEdit',
+      params: { questionId: this.questionId },
+    }).catch((err: Error) => {
+      hilog.error(0x0000, 'shibei', 'QuestionNoteEdit push fail: %{public}s', err.message);
+    });
+  }
+
+  private gotoNoteEdit(note: QuestionNote): void {
+    router.pushUrl({
+      url: 'pages/QuestionNoteEdit',
+      params: { questionId: this.questionId, noteId: note.id, content: note.content },
+    }).catch((err: Error) => {
+      hilog.error(0x0000, 'shibei', 'QuestionNoteEdit push fail: %{public}s', err.message);
+    });
+  }
+
+  private confirmDeleteNote(note: QuestionNote): void {
+    promptAction.showDialog({
+      title: I18n.t($r('app.string.question_delete_note')),
+      message: I18n.t($r('app.string.question_delete_note_confirm')),
+      buttons: [
+        { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+        { text: I18n.t($r('app.string.question_delete_note')), color: $r('app.color.accent_danger') },
+      ],
+    }).then((r) => {
+      if (r.index !== 1) return;
+      try {
+        QuestionService.instance.deleteQuestionNote(this.questionId, note.id);
+      } catch (err) {
+        const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
+        hilog.warn(0x0000, 'shibei', 'deleteQuestionNote fail: %{public}s', code);
+        promptAction.showToast({ message: I18n.t($r('app.string.question_operation_failed')) });
+      }
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'delete note dialog dismissed: %{public}s', err.message);
+    });
+  }
+
+  private showNoteActions(note: QuestionNote): void {
+    interface ActionButton { text: string; color: ResourceStr; }
+    const buttons: ActionButton[] = [
+      { text: I18n.t($r('app.string.question_edit_note')), color: $r('app.color.accent_primary') },
+      { text: I18n.t($r('app.string.question_delete_note')), color: $r('app.color.accent_danger') },
+      { text: I18n.t($r('app.string.common_cancel')), color: $r('app.color.text_secondary') },
+    ];
+    promptAction.showDialog({
+      title: this.noteTs(note),
+      buttons,
+    }).then((r) => {
+      if (r.index === 0) this.gotoNoteEdit(note);
+      else if (r.index === 1) this.confirmDeleteNote(note);
+    }).catch((err: Error) => {
+      hilog.warn(0x0000, 'shibei', 'note action dialog dismissed: %{public}s', err.message);
+    });
+  }
+
   // ── builders ──
 
   @Builder
@@ -461,6 +539,34 @@ struct QuestionDetail {
     .alignItems(HorizontalAlign.Start).width('100%');
   }
 
+  @Builder
+  NoteCard(note: QuestionNote) {
+    Column() {
+      Row() {
+        Text(this.noteTs(note))
+          .fontSize(11)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .layoutWeight(1);
+        Text('⋯').fontSize(18)
+          .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+          .width(32).height(28).textAlign(TextAlign.Center)
+          .onClick(() => this.showNoteActions(note));
+      }.width('100%').alignItems(VerticalAlign.Center);
+      Column() {
+        MarkdownText({ content: note.content, baseFontSize: 13 });
+      }.width('100%').margin({ top: 2 });
+    }
+    .alignItems(HorizontalAlign.Start).width('100%')
+    .padding({ left: 12, right: 4, top: 8, bottom: 10 })
+    .margin({ top: 8 })
+    .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .borderRadius(8)
+    .borderWidth(1)
+    .borderColor($r('sys.color.ohos_id_color_list_separator'))
+    .onClick(() => this.gotoNoteEdit(note))
+    .stateStyles({ pressed: pressedRowStyle, normal: normalRowStyle });
+  }
+
   build() {
     Column() {
       // Top bar
@@ -518,6 +624,38 @@ struct QuestionDetail {
               .fontSize(13).fontStyle(FontStyle.Italic)
               .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
               .padding({ left: 16, right: 16, top: 12 });
+          }
+
+          // Research notes section: synthesized thinking / stage summaries,
+          // newest first. Tap a card to edit; ⋯ for edit/delete; + to add.
+          if (this.question) {
+            Row() {
+              Text(`${I18n.t($r('app.string.question_notes_header'))} (${this.notes.length})`)
+                .fontSize(14).fontWeight(FontWeight.Medium)
+                .fontColor($r('sys.color.ohos_id_color_text_primary'))
+                .layoutWeight(1);
+              Text('+').fontSize(22)
+                .fontColor($r('app.color.accent_primary'))
+                .width(36).height(36).textAlign(TextAlign.Center)
+                .onClick(() => this.gotoNoteCreate());
+            }
+            .width('100%').alignItems(VerticalAlign.Center)
+            .padding({ left: 16, right: 8, top: 20, bottom: 4 });
+            Divider().color($r('sys.color.ohos_id_color_list_separator'));
+
+            if (this.notes.length === 0) {
+              Text(this.loading ? '' : I18n.t($r('app.string.question_empty_notes')))
+                .fontSize(13).fontStyle(FontStyle.Italic)
+                .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+                .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+                .width('100%');
+            } else {
+              Column() {
+                ForEach(this.notes, (n: QuestionNote) => {
+                  this.NoteCard(n);
+                }, (n: QuestionNote) => n.id);
+              }.width('100%').padding({ left: 12, right: 12 });
+            }
           }
 
           // Links section

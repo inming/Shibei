@@ -2348,3 +2348,66 @@ pub fn search_questions(query: String) -> String {
         Err(e) => format!(r#"{{"error":"{e}"}}"#),
     }
 }
+
+// ── question research notes ──────────────────────────────────────────────────
+
+/// All alive research notes for a question, newest first. JSON array of
+/// `QuestionNote`.
+#[shibei_napi]
+pub fn list_question_notes(question_id: String) -> String {
+    let result = with_conn(|conn| {
+        shibei_db::questions::list_question_notes(conn, &question_id)
+    });
+    match result {
+        Ok(notes) => to_json(&notes),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn create_question_note(question_id: String, content: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::create_question_note(conn, &question_id, &content, Some(&ctx))
+    });
+    match result {
+        Ok(note) => format!(r#"{{"note":{}}}"#, to_json(&note)),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn update_question_note(note_id: String, content: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::update_question_note(conn, &note_id, &content, Some(&ctx))
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
+#[shibei_napi]
+pub fn delete_question_note(note_id: String) -> String {
+    let app = match state::get() {
+        Ok(a) => a,
+        Err(e) => return format!(r#"{{"error":"{e}"}}"#),
+    };
+    let ctx = app.make_sync_context();
+    let result = with_conn(|conn| {
+        shibei_db::questions::delete_question_note(conn, &note_id, Some(&ctx))
+    });
+    match result {
+        Ok(()) => r#"{"ok":true}"#.to_string(),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}

@@ -100,6 +100,10 @@ import {
   updateLinkReason as napiUpdateLinkReason,
   unlinkQuestion as napiUnlinkQuestion,
   searchQuestions as napiSearchQuestions,
+  listQuestionNotes as napiListQuestionNotes,
+  createQuestionNote as napiCreateQuestionNote,
+  updateQuestionNote as napiUpdateQuestionNote,
+  deleteQuestionNote as napiDeleteQuestionNote,
 } from 'libshibei_core.so';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -940,6 +944,34 @@ export class ShibeiService {
   searchQuestions(query: string): Question[] {
     return parseListOrThrow<Question>(napiSearchQuestions(query), 'searchQuestions');
   }
+
+  // ── question research notes ──
+
+  listQuestionNotes(questionId: string): QuestionNote[] {
+    return parseListOrThrow<QuestionNote>(
+      napiListQuestionNotes(questionId),
+      'listQuestionNotes',
+    );
+  }
+
+  createQuestionNote(questionId: string, content: string): QuestionNote {
+    const env = parseSingleOrThrow<NoteEnvelope>(
+      napiCreateQuestionNote(questionId, content),
+      'createQuestionNote',
+    );
+    return env.note;
+  }
+
+  updateQuestionNote(noteId: string, content: string): void {
+    parseSingleOrThrow<OkEnvelope>(
+      napiUpdateQuestionNote(noteId, content),
+      'updateQuestionNote',
+    );
+  }
+
+  deleteQuestionNote(noteId: string): void {
+    parseSingleOrThrow<OkEnvelope>(napiDeleteQuestionNote(noteId), 'deleteQuestionNote');
+  }
 }
 
 // ── Types mirrored from shibei-db (kept narrow — only fields UI reads) ─
@@ -1014,6 +1046,16 @@ export interface QuestionLink {
   updated_at: string;
 }
 
+/** A free-form Markdown research note on a question. Multiple notes accumulate
+ *  per question (newest first). Matches Rust `QuestionNote`. */
+export interface QuestionNote {
+  id: string;
+  question_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** A link with its target pre-resolved to a parent resource (+ snippet/anchor)
  *  by the backend, so the detail view renders in one round-trip instead of
  *  scanning every resource. Matches Rust `ResolvedQuestionLink`. */
@@ -1045,6 +1087,10 @@ interface LinkInput {
 
 interface LinkEnvelope {
   link: QuestionLink;
+}
+
+interface NoteEnvelope {
+  note: QuestionNote;
 }
 
 interface OkEnvelope {

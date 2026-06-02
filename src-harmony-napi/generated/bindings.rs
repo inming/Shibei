@@ -843,3 +843,27 @@ pub unsafe extern "C" fn shibei_ffi_search_questions(query: *const c_char) -> *m
     leak_cstring(s)
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_question_notes(question_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_question_notes(cstr_to_string(question_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_create_question_note(question_id: *const c_char, content: *const c_char) -> *mut c_char {
+    let s = crate::commands::create_question_note(cstr_to_string(question_id), cstr_to_string(content));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_update_question_note(note_id: *const c_char, content: *const c_char) -> *mut c_char {
+    let s = crate::commands::update_question_note(cstr_to_string(note_id), cstr_to_string(content));
+    leak_cstring(s)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_delete_question_note(note_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::delete_question_note(cstr_to_string(note_id));
+    leak_cstring(s)
+}
+

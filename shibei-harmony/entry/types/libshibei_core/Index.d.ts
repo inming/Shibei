@@ -97,3 +97,7 @@ export const linkToQuestion: (inputJson: string) => string;
 export const updateLinkReason: (linkId: string, reason: string) => string;
 export const unlinkQuestion: (linkId: string) => string;
 export const searchQuestions: (query: string) => string;
+export const listQuestionNotes: (questionId: string) => string;
+export const createQuestionNote: (questionId: string, content: string) => string;
+export const updateQuestionNote: (noteId: string, content: string) => string;
+export const deleteQuestionNote: (noteId: string) => string;

@@ -7,6 +7,7 @@ import {
   ShibeiService,
   Question,
   QuestionLink,
+  QuestionNote,
   ResolvedQuestionLink,
   QuestionStatus,
   QuestionTargetType,
@@ -15,6 +16,7 @@ import {
 type ListListener = (snapshot: QuestionListSnapshot) => void;
 type ResolvedLinkListener = (links: ResolvedQuestionLink[]) => void;
 type TargetListener = (questions: Question[]) => void;
+type NotesListener = (notes: QuestionNote[]) => void;
 
 /** Snapshot delivered to list subscribers. Both lists are always present
  *  (possibly empty) so consumers don't need null-checks. */
@@ -51,11 +53,13 @@ export class QuestionService {
   private listCache: QuestionListSnapshot = EMPTY_SNAPSHOT;
   private resolvedCache: Map<string, ResolvedQuestionLink[]> = new Map();
   private targetCache: Map<string, Question[]> = new Map();
+  private notesCache: Map<string, QuestionNote[]> = new Map();
 
   // ── listeners ──
   private listListeners: ListListener[] = [];
   private resolvedListeners: Map<string, ResolvedLinkListener[]> = new Map();
   private targetListeners: Map<string, TargetListener[]> = new Map();
+  private notesListeners: Map<string, NotesListener[]> = new Map();
 
   // ─── list (sidebar) ─────────────────────────────────────────────
 
@@ -188,6 +192,69 @@ export class QuestionService {
     }
   }
 
+  // ─── per-question research notes (detail view) ─────────────────
+  // Multiple markdown notes per question, newest first. Independent of links;
+  // synced as their own entities (id-based LWW), so editing a note never
+  // collides with a question title/status edit.
+
+  subscribeNotes(questionId: string, fn: NotesListener): () => void {
+    const list = this.notesListeners.get(questionId) ?? [];
+    list.push(fn);
+    this.notesListeners.set(questionId, list);
+    return () => {
+      const cur = this.notesListeners.get(questionId) ?? [];
+      this.notesListeners.set(questionId, cur.filter(x => x !== fn));
+    };
+  }
+
+  getNotes(questionId: string): QuestionNote[] {
+    return this.notesCache.get(questionId) ?? [];
+  }
+
+  async loadNotes(questionId: string): Promise<QuestionNote[]> {
+    const notes = ShibeiService.instance.listQuestionNotes(questionId);
+    this.notesCache.set(questionId, notes);
+    this.notifyNotes(questionId);
+    return notes;
+  }
+
+  private notifyNotes(questionId: string): void {
+    const notes = this.getNotes(questionId);
+    const subs = this.notesListeners.get(questionId) ?? [];
+    for (const fn of subs.slice()) fn(notes);
+  }
+
+  /** Re-fetch a question's notes and notify subscribers. Skips the roundtrip
+   *  when nobody is watching. Used after note mutations and remote sync. */
+  private refreshNotes(questionId: string): void {
+    const watched = (this.notesListeners.get(questionId)?.length ?? 0) > 0
+      || this.notesCache.has(questionId);
+    if (!watched) return;
+    try {
+      const notes = ShibeiService.instance.listQuestionNotes(questionId);
+      this.notesCache.set(questionId, notes);
+      this.notifyNotes(questionId);
+    } catch {
+      // ignore — a later load will repopulate
+    }
+  }
+
+  createQuestionNote(questionId: string, content: string): QuestionNote {
+    const note = ShibeiService.instance.createQuestionNote(questionId, content);
+    this.refreshNotes(questionId);
+    return note;
+  }
+
+  updateQuestionNote(questionId: string, noteId: string, content: string): void {
+    ShibeiService.instance.updateQuestionNote(noteId, content);
+    this.refreshNotes(questionId);
+  }
+
+  deleteQuestionNote(questionId: string, noteId: string): void {
+    ShibeiService.instance.deleteQuestionNote(noteId);
+    this.refreshNotes(questionId);
+  }
+
   // ─── mutations ───────────────────────────────────────────────────
 
   createQuestion(title: string, description: string | null = null): Question {
@@ -261,9 +328,11 @@ export class QuestionService {
       archived: this.listCache.archived.filter(q => q.id !== id),
     };
     this.resolvedCache.delete(id);
+    this.notesCache.delete(id);
     this.notifyList();
     // Detail view subscribers on the deleted question get an empty list.
     this.notifyResolved(id);
+    this.notifyNotes(id);
     // Every reverse-lookup that included this question must drop it.
     this.refreshAllTargets();
   }
@@ -322,6 +391,9 @@ export class QuestionService {
     }
     for (const qid of Array.from(this.resolvedCache.keys())) {
       try { await this.loadResolvedLinks(qid); } catch { /* ignore */ }
+    }
+    for (const qid of Array.from(this.notesCache.keys())) {
+      try { await this.loadNotes(qid); } catch { /* ignore */ }
     }
     this.refreshAllTargets();
   }

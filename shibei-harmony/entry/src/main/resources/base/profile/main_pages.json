@@ -16,6 +16,7 @@
     "pages/settings/TrashSettings",
     "pages/settings/AboutSettings",
     "pages/QuestionDetail",
-    "pages/QuestionEdit"
+    "pages/QuestionEdit",
+    "pages/QuestionNoteEdit"
   ]
 }
