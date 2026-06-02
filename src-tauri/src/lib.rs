@@ -402,33 +402,16 @@ pub fn run() {
             commands::cmd_update_link_reason,
             commands::cmd_unlink,
         ])
-        .register_uri_scheme_protocol("shibei", move |_ctx, request| {
-            let path = request.uri().path();
-            let parts: Vec<&str> = path.trim_start_matches('/').splitn(2, '/').collect();
-
-            if parts.is_empty() || parts[0] != "resource" || parts.len() < 2 {
-                return not_found("unknown route");
-            }
-
-            let resource_id = parts[1];
-
-            // HTML snapshot: inject annotator and serve as a document.
-            if let Some(html) = load_resource_html(&protocol_base_dir, resource_id) {
-                let with_annotator = inject_annotator_script(&html);
-                return tauri::http::Response::builder()
-                    .header("Content-Type", "text/html; charset=utf-8")
-                    .body(with_annotator.into_bytes())
-                    .unwrap();
-            }
-
-            // Audio snapshot: serve raw bytes with HTTP Range support so the
-            // WebView's <audio> element can stream and seek without loading the
-            // whole file (see audio-support-design §3).
-            if let Some(audio_path) = find_audio_snapshot(&protocol_base_dir, resource_id) {
-                return serve_file_with_range(&audio_path, request.headers().get("Range"));
-            }
-
-            not_found(&format!("resource not found: {}", resource_id))
+        .register_asynchronous_uri_scheme_protocol("shibei", move |_ctx, request, responder| {
+            // Serve snapshots off the WebView's main thread. A synchronous
+            // handler blocks the UI thread on every resource open while the
+            // (possibly multi-MB) snapshot is read from disk and the annotator
+            // is injected — freezing the entire window on Windows/WebView2.
+            // Spawning a worker thread keeps the app interactive during the load.
+            let base_dir = protocol_base_dir.clone();
+            std::thread::spawn(move || {
+                responder.respond(build_resource_response(&base_dir, &request));
+            });
         })
         .setup(move |app| {
             // If launched by the OS autostart mechanism, hide the window
@@ -620,6 +603,45 @@ fn not_found(msg: &str) -> tauri::http::Response<Vec<u8>> {
         .header("Content-Type", "text/plain")
         .body(msg.as_bytes().to_vec())
         .unwrap()
+}
+
+/// Build the `shibei://resource/{id}` response. This is pure disk I/O plus
+/// whole-document string work (read `snapshot.html`, strip page scripts, inject
+/// the annotator), so the async protocol registration runs it on a worker
+/// thread — keeping the WebView's main thread, and therefore the whole window,
+/// responsive while a large snapshot loads. This matters most on
+/// Windows/WebView2, where a synchronous handler blocks input for the entire
+/// window until the snapshot finishes loading.
+fn build_resource_response(
+    base_dir: &std::path::Path,
+    request: &tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<Vec<u8>> {
+    let path = request.uri().path();
+    let parts: Vec<&str> = path.trim_start_matches('/').splitn(2, '/').collect();
+
+    if parts.is_empty() || parts[0] != "resource" || parts.len() < 2 {
+        return not_found("unknown route");
+    }
+
+    let resource_id = parts[1];
+
+    // HTML snapshot: inject annotator and serve as a document.
+    if let Some(html) = load_resource_html(base_dir, resource_id) {
+        let with_annotator = inject_annotator_script(&html);
+        return tauri::http::Response::builder()
+            .header("Content-Type", "text/html; charset=utf-8")
+            .body(with_annotator.into_bytes())
+            .unwrap();
+    }
+
+    // Audio snapshot: serve raw bytes with HTTP Range support so the
+    // WebView's <audio> element can stream and seek without loading the
+    // whole file (see audio-support-design §3).
+    if let Some(audio_path) = find_audio_snapshot(base_dir, resource_id) {
+        return serve_file_with_range(&audio_path, request.headers().get("Range"));
+    }
+
+    not_found(&format!("resource not found: {}", resource_id))
 }
 
 /// Audio container extensions served over the `shibei://` protocol. Mirrors
