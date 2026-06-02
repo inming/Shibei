@@ -14,7 +14,7 @@
 import { router, promptAction } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { pasteboard } from '@kit.BasicServicesKit';
-import { ShibeiService, ShibeiError, Question } from '../services/ShibeiService';
+import { ShibeiService, ShibeiError, Question, QuestionSearchResult } from '../services/ShibeiService';
 import {
   QuestionService,
   QuestionListSnapshot,
@@ -40,7 +40,7 @@ export struct QuestionListView {
   @State searchInput: string = '';
   /** Debounced query that actually drives the FTS call. */
   @State debouncedQuery: string = '';
-  @State searchHits: Question[] = [];
+  @State searchHits: QuestionSearchResult[] = [];
   @State loading: boolean = true;
   private unsub?: () => void;
   private searchTimer: number = -1;
@@ -126,6 +126,38 @@ export struct QuestionListView {
     if (filter === 'active') return this.active.length;
     if (filter === 'archived') return this.archived.length;
     return this.active.length + this.archived.length;
+  }
+
+  // ── search-hit match info (plain methods; @Builder can't hold const) ──
+
+  private isSearching(): boolean {
+    return this.debouncedQuery.length >= MIN_SEARCH_CHARS;
+  }
+
+  private hitFor(id: string): QuestionSearchResult | undefined {
+    for (let i = 0; i < this.searchHits.length; i++) {
+      if (this.searchHits[i].id === id) return this.searchHits[i];
+    }
+    return undefined;
+  }
+
+  /** "笔记匹配" / "描述匹配" when the hit matched outside the visible title
+   *  (notes take priority); '' otherwise so the row falls back to description. */
+  private matchLabelFor(id: string): string {
+    const hit = this.hitFor(id);
+    if (!hit) return '';
+    if (hit.matchFields.includes('notes')) {
+      return I18n.t($r('app.string.question_notes_match'));
+    }
+    if (hit.matchFields.includes('description')) {
+      return I18n.t($r('app.string.question_description_match'));
+    }
+    return '';
+  }
+
+  private snippetFor(id: string): string {
+    const hit = this.hitFor(id);
+    return hit && hit.snippet ? hit.snippet : '';
   }
 
   private gotoDetail(q: Question): void {
@@ -310,7 +342,23 @@ export struct QuestionListView {
         Text(q.title).fontSize(15)
           .fontColor($r('sys.color.ohos_id_color_text_primary'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
-        if (q.description) {
+        if (this.isSearching() && this.matchLabelFor(q.id).length > 0) {
+          // Matched in notes/description — show *why* + a context snippet.
+          Row() {
+            Text(this.matchLabelFor(q.id))
+              .fontSize(10)
+              .fontColor($r('app.color.accent_primary'))
+              .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+              .borderRadius(3)
+              .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+              .margin({ right: 6 });
+            Text(this.snippetFor(q.id))
+              .fontSize(12)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1);
+          }.width('100%').alignItems(VerticalAlign.Top).margin({ top: 2 });
+        } else if (q.description) {
           Text(q.description.split('\n')[0])
             .fontSize(12)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))

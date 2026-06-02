@@ -396,6 +396,8 @@
     { "name": "question_delete_note_confirm", "value": "Delete this research note? This cannot be undone." },
     { "name": "question_note_placeholder", "value": "Capture your thinking and stage summaries for this question (Markdown supported)" },
     { "name": "question_empty_notes", "value": "No research notes yet. As you gather materials, deposit your thinking here." },
+    { "name": "question_notes_match", "value": "Notes match" },
+    { "name": "question_description_match", "value": "Description match" },
     { "name": "question_save", "value": "Save" },
     { "name": "question_related_count", "value": "Related questions (%1$d)" },
     { "name": "question_edit_reason", "value": "Edit reason" },

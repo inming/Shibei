@@ -401,6 +401,8 @@
     { "name": "question_delete_note_confirm", "value": "删除这条研究笔记？此操作不可撤销。" },
     { "name": "question_note_placeholder", "value": "记录针对这个问题的思考与阶段总结（支持 Markdown）" },
     { "name": "question_empty_notes", "value": "还没有研究笔记。积累资料后，在这里沉淀你的思考。" },
+    { "name": "question_notes_match", "value": "笔记匹配" },
+    { "name": "question_description_match", "value": "描述匹配" },
     { "name": "question_save", "value": "保存" },
     { "name": "question_related_count", "value": "相关问题 (%1$d)" },
     { "name": "question_edit_reason", "value": "编辑理由" },

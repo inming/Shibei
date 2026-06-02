@@ -941,8 +941,8 @@ export class ShibeiService {
     parseSingleOrThrow<OkEnvelope>(napiUnlinkQuestion(linkId), 'unlinkQuestion');
   }
 
-  searchQuestions(query: string): Question[] {
-    return parseListOrThrow<Question>(napiSearchQuestions(query), 'searchQuestions');
+  searchQuestions(query: string): QuestionSearchResult[] {
+    return parseListOrThrow<QuestionSearchResult>(napiSearchQuestions(query), 'searchQuestions');
   }
 
   // ── question research notes ──
@@ -1054,6 +1054,21 @@ export interface QuestionNote {
   content: string;
   created_at: string;
   updated_at: string;
+}
+
+/** A question search hit: the question plus which field(s) matched and a
+ *  context snippet (notes / description) so the list can show *why* it
+ *  surfaced. Matches Rust `QuestionSearchResult` (flattened Question). */
+export interface QuestionSearchResult {
+  id: string;
+  title: string;
+  description: string | null;
+  status: QuestionStatus;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  matchFields: string[];
+  snippet: string | null;
 }
 
 /** A link with its target pre-resolved to a parent resource (+ snippet/anchor)
