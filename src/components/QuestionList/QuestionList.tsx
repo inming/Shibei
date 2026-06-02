@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import type { Question } from "@/types";
+import type { Question, QuestionSearchResult } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents } from "@/lib/events";
 import type { QuestionFilter } from "@/lib/sessionState";
@@ -59,7 +59,7 @@ export function QuestionList({
   const { active, archived, loading } = useQuestions();
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [searchHits, setSearchHits] = useState<Question[]>([]);
+  const [searchHits, setSearchHits] = useState<QuestionSearchResult[]>([]);
   const [editorOpen, setEditorOpen] = useState<"create" | Question | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScrollAppliedRef = useRef(false);
@@ -124,6 +124,13 @@ export function QuestionList({
     const allowed = new Set(candidates.map((q) => q.id));
     return searchHits.filter((q) => allowed.has(q.id));
   }, [filter, active, archived, debouncedQuery, searchHits]);
+
+  // Per-question match info (matchFields / snippet) keyed by id, so each row
+  // can show *why* it surfaced. Only populated while searching.
+  const hitMap = useMemo(
+    () => new Map(searchHits.map((h) => [h.id, h])),
+    [searchHits],
+  );
 
   const counts = useMemo(
     () => ({ active: active.length, archived: archived.length, all: active.length + archived.length }),
@@ -190,17 +197,23 @@ export function QuestionList({
         {displayed.length === 0 ? (
           <div className={styles.empty}>{loading && !isSearching ? "" : emptyMessage}</div>
         ) : (
-          displayed.map((q) => (
-            <QuestionListItem
-              key={q.id}
-              question={q}
-              selected={q.id === selectedQuestionId}
-              onClick={onSelect}
-              onDoubleClick={onOpenInTab}
-              onOpenInTab={onOpenInTab}
-              onEdit={handleEdit}
-            />
-          ))
+          displayed.map((q) => {
+            const hit = isSearching ? hitMap.get(q.id) : undefined;
+            return (
+              <QuestionListItem
+                key={q.id}
+                question={q}
+                selected={q.id === selectedQuestionId}
+                onClick={onSelect}
+                onDoubleClick={onOpenInTab}
+                onOpenInTab={onOpenInTab}
+                onEdit={handleEdit}
+                searchQuery={isSearching ? debouncedQuery : ""}
+                matchFields={hit?.matchFields}
+                snippet={hit?.snippet ?? null}
+              />
+            );
+          })
         )}
       </div>
 

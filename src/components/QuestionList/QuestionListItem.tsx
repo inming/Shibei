@@ -6,6 +6,7 @@ import type { Question } from "@/types";
 import * as cmd from "@/lib/commands";
 import { ContextMenu, type MenuItem } from "@/components/ContextMenu";
 import { buildQuestionDeepLink } from "@/lib/deepLink";
+import { highlightMatch } from "@/lib/highlightMatch";
 import styles from "./QuestionListItem.module.css";
 
 interface QuestionListItemProps {
@@ -19,6 +20,12 @@ interface QuestionListItemProps {
   onOpenInTab: (question: Question) => void;
   /** Right-click "Edit" surfaces the edit dialog from a higher level. */
   onEdit: (question: Question) => void;
+  /** Active search query — drives title highlight + snippet display. Empty when not searching. */
+  searchQuery?: string;
+  /** Which fields matched (title/description/notes); used to label why the row surfaced. */
+  matchFields?: string[];
+  /** Context snippet from the matched notes/description (null for title-only matches). */
+  snippet?: string | null;
 }
 
 /**
@@ -35,8 +42,12 @@ export function QuestionListItem({
   onDoubleClick,
   onOpenInTab,
   onEdit,
+  searchQuery = "",
+  matchFields,
+  snippet,
 }: QuestionListItemProps) {
   const { t } = useTranslation("question");
+  const { t: tSearch } = useTranslation("search");
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const itemRef = useRef<HTMLButtonElement>(null);
 
@@ -97,6 +108,13 @@ export function QuestionListItem({
   ];
 
   const archived = question.status === "archived";
+  // Show *why* the row surfaced when the match is outside the visible title —
+  // notes take priority over description.
+  const fieldTag = matchFields?.includes("notes")
+    ? tSearch("notesMatch")
+    : matchFields?.includes("description")
+      ? tSearch("descriptionMatch")
+      : null;
 
   return (
     <>
@@ -108,10 +126,18 @@ export function QuestionListItem({
         onContextMenu={handleContextMenu}
         title={question.description ?? undefined}
       >
-        <span className={`${styles.dot} ${archived ? styles.dotArchived : ""}`} />
-        <span className={`${styles.title} ${archived ? styles.titleArchived : ""}`}>
-          {question.title}
+        <span className={styles.titleRow}>
+          <span className={`${styles.dot} ${archived ? styles.dotArchived : ""}`} />
+          <span className={`${styles.title} ${archived ? styles.titleArchived : ""}`}>
+            {searchQuery ? highlightMatch(question.title, searchQuery, styles.highlight) : question.title}
+          </span>
+          {fieldTag && <span className={styles.matchTag}>{fieldTag}</span>}
         </span>
+        {snippet && (
+          <span className={styles.snippet}>
+            {highlightMatch(snippet, searchQuery, styles.highlight)}
+          </span>
+        )}
       </button>
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
