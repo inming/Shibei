@@ -452,7 +452,7 @@ pub fn search_resources(
     // AND filter: resource must have ALL filter_tag_ids (INTERSECT)
     if !filter_tag_ids.is_empty() {
         let mut parts: Vec<String> = Vec::with_capacity(filter_tag_ids.len());
-        for (_i, _) in filter_tag_ids.iter().enumerate() {
+        for _ in filter_tag_ids.iter() {
             let ph = format!("?{}", param_index);
             param_index += 1;
             parts.push(format!(

@@ -906,7 +906,7 @@ pub async fn cmd_restore_keyring(
     })?;
 
     // Wrap the existing MK into a fresh keyring envelope.
-    let keyring = Keyring::wrap_existing_mk(&*mk, &password)
+    let keyring = Keyring::wrap_existing_mk(&mk, &password)
         .map_err(|e| CommandError { message: format!("error.keyGenFailed: {}", e) })?;
 
     let backend = build_raw_s3_backend(&state)?;
