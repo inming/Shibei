@@ -330,7 +330,7 @@ src/
 
 ### Phase 3 才做的改动（届时）
 
-- migration 012：FTS5 无法 `ALTER ADD COLUMN`，故 **DROP + 重建 `question_index`** 增加 `notes_text` 列；`DELETE FROM sync_state WHERE key='config:question_fts_initialized'` 触发 boot 全量重建（沿用 009 的 boot pass 模式）。
+- migration 012：FTS5 无法 `ALTER ADD COLUMN`，故 **DROP + 重建 `question_index`** 增加 `notes_text` 列。**as-built 偏差**：不走「重置 `config:question_fts_initialized` + boot pass」——因为**鸿蒙端没有 question-FTS boot pass**（只有 resource-FTS 的），重置 flag 会让鸿蒙索引空掉。改为**在迁移内 SQL 回填**（`INSERT INTO question_index SELECT q.id, q.title, …, group_concat(笔记.content) …`），平台无关、原子重建两端索引，且不动 flag。
 - `rebuild_question_search_index`：聚合 title + description + 该问题所有 alive 笔记 content 进 `notes_text`。
 - **同步 FTS 触发补一处**：`engine.rs` 的 `affected_question_ids`（~1188 行）目前只对 `entity_type == "question"` 收集 id；Phase 3 追加：`"question_note"` 时把 `payload["question_id"]` 也塞进 `affected_question_ids`（payload 自带 question_id，2 行改动）。
 - 前端搜索结果对 question 命中已有展示，notes_text 命中复用同一路径，无新 UI。

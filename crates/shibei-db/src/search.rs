@@ -168,14 +168,28 @@ pub fn rebuild_question_search_index(
             other => DbError::Sqlite(other),
         })?;
 
+    // Aggregate every alive note's content so a search can hit a question by
+    // the thinking deposited in its research notes (order is irrelevant for
+    // trigram matching).
+    let notes_text: String = {
+        let mut stmt = conn.prepare(
+            "SELECT content FROM question_notes
+             WHERE question_id = ?1 AND deleted_at IS NULL",
+        )?;
+        let parts = stmt
+            .query_map(params![question_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        parts.join("\n")
+    };
+
     conn.execute(
         "DELETE FROM question_index WHERE question_id = ?1",
         params![question_id],
     )?;
     conn.execute(
-        "INSERT INTO question_index (question_id, title, description)
-         VALUES (?1, ?2, ?3)",
-        params![question_id, title, description.unwrap_or_default()],
+        "INSERT INTO question_index (question_id, title, description, notes_text)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![question_id, title, description.unwrap_or_default(), notes_text],
     )?;
 
     Ok(())
@@ -253,7 +267,7 @@ pub fn search_questions(
          FROM questions q
          JOIN question_index qi ON q.id = qi.question_id
          WHERE q.deleted_at IS NULL
-           AND (qi.title LIKE ?1 OR qi.description LIKE ?1)
+           AND (qi.title LIKE ?1 OR qi.description LIKE ?1 OR qi.notes_text LIKE ?1)
          ORDER BY q.status ASC, q.updated_at DESC"
     };
 
@@ -1009,6 +1023,30 @@ mod tests {
         crate::questions::create_question(&conn, "Q", None, None).unwrap();
         assert!(search_questions(&conn, "").unwrap().is_empty());
         assert!(search_questions(&conn, "   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_search_questions_by_note_content() {
+        let conn = test_db();
+        // A keyword that appears ONLY in a research note, not in title/desc.
+        let q = crate::questions::create_question(&conn, "投资方向", None, None).unwrap();
+        crate::questions::create_question_note(&conn, &q.id, "阶段结论：新质生产力是核心抓手", None)
+            .unwrap();
+        let results = search_questions(&conn, "新质生产力").unwrap();
+        assert_eq!(results.len(), 1, "should find a question by its note content");
+        assert_eq!(results[0].id, q.id);
+    }
+
+    #[test]
+    fn test_search_questions_note_delete_updates_index() {
+        let conn = test_db();
+        let q = crate::questions::create_question(&conn, "题目", None, None).unwrap();
+        let n = crate::questions::create_question_note(&conn, &q.id, "关键词阿尔法测试内容", None)
+            .unwrap();
+        assert_eq!(search_questions(&conn, "阿尔法测试").unwrap().len(), 1);
+        // Deleting the note must drop its text from the question's FTS row.
+        crate::questions::delete_question_note(&conn, &n.id, None).unwrap();
+        assert!(search_questions(&conn, "阿尔法测试").unwrap().is_empty());
     }
 
     #[test]

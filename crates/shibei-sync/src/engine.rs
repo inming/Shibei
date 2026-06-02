@@ -1197,6 +1197,13 @@ impl SyncEngine {
                             }
                         }
                         "question" => { affected_question_ids.insert(entry.entity_id.clone()); }
+                        "question_note" => {
+                            // Note content is folded into its question's FTS row;
+                            // rebuild the parent question so search stays current.
+                            if let Some(qid) = payload["question_id"].as_str() {
+                                affected_question_ids.insert(qid.to_string());
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1215,6 +1222,13 @@ impl SyncEngine {
                             }
                         }
                         "question" => { affected_question_ids.insert(entry.entity_id.clone()); }
+                        "question_note" => {
+                            // Note content is folded into its question's FTS row;
+                            // rebuild the parent question so search stays current.
+                            if let Some(qid) = payload["question_id"].as_str() {
+                                affected_question_ids.insert(qid.to_string());
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1226,6 +1240,13 @@ impl SyncEngine {
                     match entry.entity_type.as_str() {
                         "resource" => { affected_resource_ids.insert(entry.entity_id.clone()); }
                         "question" => { affected_question_ids.insert(entry.entity_id.clone()); }
+                        "question_note" => {
+                            // Note content is folded into its question's FTS row;
+                            // rebuild the parent question so search stays current.
+                            if let Some(qid) = payload["question_id"].as_str() {
+                                affected_question_ids.insert(qid.to_string());
+                            }
+                        }
                         _ => {}
                     }
                 }
