@@ -46,6 +46,30 @@ pub struct QuestionLink {
     pub updated_at: String,
 }
 
+/// A link with its polymorphic target pre-resolved to a parent resource (+ a
+/// snippet / anchor for highlights and comments). Lets the desktop detail view
+/// and the MCP stage-summary fetch everything in one round-trip instead of an
+/// N+1 fetch waterfall. Unresolvable targets come back with `resource: None`
+/// and an empty snippet so callers can render an "unavailable" placeholder.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedQuestionLink {
+    /// The underlying link row (id / reason / target / timestamps).
+    pub link: QuestionLink,
+    /// Parent resource: the target itself for `resource` links, the highlight's
+    /// or comment's resource otherwise.
+    pub resource: Option<super::resources::Resource>,
+    /// Highlight `text_content` or comment `content`; `None` for resource links.
+    pub snippet: Option<String>,
+    /// Highlight to jump to in the reader (the highlight itself, or a comment's
+    /// parent highlight). `None` when not applicable.
+    pub highlight_id: Option<String>,
+    /// Highlight color, for the evidence accent. `None` for non-highlights.
+    pub highlight_color: Option<String>,
+    /// Raw highlight anchor JSON, so the client can order evidence by document
+    /// position without a second fetch. `None` for non-highlights.
+    pub anchor: Option<serde_json::Value>,
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 fn validate_target_type(t: &str) -> Result<(), DbError> {
@@ -646,6 +670,70 @@ pub fn list_links_for_question(
     Ok(rows)
 }
 
+/// Cached resource fetch: many highlights under one question often share the
+/// same article, so resolve each resource at most once.
+fn cached_resource(
+    conn: &Connection,
+    cache: &mut std::collections::HashMap<String, Option<super::resources::Resource>>,
+    id: &str,
+) -> Option<super::resources::Resource> {
+    if let Some(hit) = cache.get(id) {
+        return hit.clone();
+    }
+    let resource = super::resources::get_resource(conn, id).ok();
+    cache.insert(id.to_string(), resource.clone());
+    resource
+}
+
+/// All alive links for a question, each resolved to its parent resource plus a
+/// snippet/anchor. One round-trip replacement for the per-link
+/// `get_highlight` / `get_comment` / `get_resource` waterfall. Order matches
+/// `list_links_for_question` (creation order); grouping is left to the caller.
+pub fn list_resolved_links_for_question(
+    conn: &Connection,
+    question_id: &str,
+) -> Result<Vec<ResolvedQuestionLink>, DbError> {
+    let links = list_links_for_question(conn, question_id)?;
+    let mut cache: std::collections::HashMap<String, Option<super::resources::Resource>> =
+        std::collections::HashMap::new();
+    let mut out = Vec::with_capacity(links.len());
+
+    for link in links {
+        let mut resolved = ResolvedQuestionLink {
+            link: link.clone(),
+            resource: None,
+            snippet: None,
+            highlight_id: None,
+            highlight_color: None,
+            anchor: None,
+        };
+        match link.target_type.as_str() {
+            TARGET_RESOURCE => {
+                resolved.resource = cached_resource(conn, &mut cache, &link.target_id);
+            }
+            TARGET_HIGHLIGHT => {
+                if let Ok(hl) = super::highlights::get_highlight_by_id(conn, &link.target_id) {
+                    resolved.resource = cached_resource(conn, &mut cache, &hl.resource_id);
+                    resolved.snippet = Some(hl.text_content);
+                    resolved.highlight_color = Some(hl.color);
+                    resolved.anchor = Some(hl.anchor);
+                    resolved.highlight_id = Some(hl.id);
+                }
+            }
+            TARGET_COMMENT => {
+                if let Ok(c) = super::comments::get_comment_by_id(conn, &link.target_id) {
+                    resolved.resource = cached_resource(conn, &mut cache, &c.resource_id);
+                    resolved.snippet = Some(c.content);
+                    resolved.highlight_id = c.highlight_id;
+                }
+            }
+            _ => {}
+        }
+        out.push(resolved);
+    }
+    Ok(out)
+}
+
 /// Reverse lookup: which alive questions reference this target?
 /// Only questions still alive are returned; status (active/archived) is
 /// preserved in the result so callers can filter.
@@ -1011,6 +1099,60 @@ mod tests {
         let remaining = list_links_for_question(&conn, &q.id).unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].target_type, TARGET_RESOURCE);
+    }
+
+    #[test]
+    fn test_resolved_links_carry_resource_and_snippet() {
+        let conn = test_db();
+        let resource = setup_resource(&conn);
+        let hl = make_highlight(&conn, &resource.id);
+        let comment =
+            comments::create_comment(&conn, &resource.id, None, "a note", None).unwrap();
+        let q = create_question(&conn, "Q", None, None).unwrap();
+        link(&conn, &q.id, TARGET_RESOURCE, &resource.id, None, None).unwrap();
+        link(&conn, &q.id, TARGET_HIGHLIGHT, &hl.id, None, None).unwrap();
+        link(&conn, &q.id, TARGET_COMMENT, &comment.id, None, None).unwrap();
+
+        let resolved = list_resolved_links_for_question(&conn, &q.id).unwrap();
+        assert_eq!(resolved.len(), 3);
+
+        let res_link = resolved
+            .iter()
+            .find(|r| r.link.target_type == TARGET_RESOURCE)
+            .unwrap();
+        assert_eq!(res_link.resource.as_ref().unwrap().id, resource.id);
+        assert!(res_link.snippet.is_none());
+
+        let hl_link = resolved
+            .iter()
+            .find(|r| r.link.target_type == TARGET_HIGHLIGHT)
+            .unwrap();
+        assert_eq!(hl_link.resource.as_ref().unwrap().id, resource.id);
+        assert_eq!(hl_link.snippet.as_deref(), Some("hello"));
+        assert_eq!(hl_link.highlight_id.as_deref(), Some(hl.id.as_str()));
+        assert_eq!(hl_link.highlight_color.as_deref(), Some("#FFFF00"));
+        assert!(hl_link.anchor.is_some(), "highlight anchor must be carried for ordering");
+
+        let cm_link = resolved
+            .iter()
+            .find(|r| r.link.target_type == TARGET_COMMENT)
+            .unwrap();
+        assert_eq!(cm_link.resource.as_ref().unwrap().id, resource.id);
+        assert_eq!(cm_link.snippet.as_deref(), Some("a note"));
+    }
+
+    #[test]
+    fn test_resolved_links_missing_target_is_graceful() {
+        let conn = test_db();
+        let q = create_question(&conn, "Q", None, None).unwrap();
+        // Link to a highlight id that doesn't exist (link() doesn't verify the
+        // target exists). Resolution must not error, just yield no resource.
+        link(&conn, &q.id, TARGET_HIGHLIGHT, "no-such-hl", None, None).unwrap();
+
+        let resolved = list_resolved_links_for_question(&conn, &q.id).unwrap();
+        assert_eq!(resolved.len(), 1);
+        assert!(resolved[0].resource.is_none());
+        assert!(resolved[0].snippet.is_none());
     }
 
     #[test]

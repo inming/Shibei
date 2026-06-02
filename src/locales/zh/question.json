@@ -19,6 +19,11 @@
     "comment": "评论"
   },
   "linksHeader": "关联",
+  "summaryResources": "{{count}} 份资料",
+  "summaryAnnotations": "{{count}} 处标注",
+  "linkedViaAnnotations": "经标注关联",
+  "expand": "展开",
+  "collapse": "收起",
   "reasonPlaceholder": "为什么相关？（可选，支持 Markdown）",
   "linkToQuestion": "关联到问题…",
   "linked": "已关联",

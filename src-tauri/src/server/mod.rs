@@ -243,6 +243,10 @@ pub async fn start_server(
             get(questions::handle_list_question_links).post(questions::handle_create_link),
         )
         .route(
+            "/api/questions/{id}/links/resolved",
+            get(questions::handle_list_resolved_question_links),
+        )
+        .route(
             "/api/question-links/{link_id}",
             put(questions::handle_update_link).delete(questions::handle_delete_link),
         )

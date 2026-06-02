@@ -19,6 +19,13 @@
     "comment": "Comments"
   },
   "linksHeader": "Links",
+  "summaryResources_one": "{{count}} source",
+  "summaryResources_other": "{{count}} sources",
+  "summaryAnnotations_one": "{{count}} annotation",
+  "summaryAnnotations_other": "{{count}} annotations",
+  "linkedViaAnnotations": "via annotations",
+  "expand": "Show more",
+  "collapse": "Show less",
   "reasonPlaceholder": "Why is this relevant? (optional, Markdown)",
   "linkToQuestion": "Link to question…",
   "linked": "Linked",

@@ -395,6 +395,7 @@ pub fn run() {
             commands::cmd_unarchive_question,
             commands::cmd_delete_question,
             commands::cmd_list_question_links,
+            commands::cmd_list_resolved_question_links,
             commands::cmd_list_questions_for_target,
             commands::cmd_list_questions_for_resources,
             commands::cmd_link_to_question,

@@ -103,6 +103,7 @@ extern char* shibei_ffi_archive_question(const char* id);
 extern char* shibei_ffi_unarchive_question(const char* id);
 extern char* shibei_ffi_delete_question(const char* id);
 extern char* shibei_ffi_list_question_links(const char* question_id);
+extern char* shibei_ffi_list_resolved_question_links(const char* question_id);
 extern char* shibei_ffi_list_questions_for_target(const char* target_type, const char* target_id);
 extern char* shibei_ffi_link_to_question(const char* input_json);
 extern char* shibei_ffi_update_link_reason(const char* link_id, const char* reason);
@@ -2308,6 +2309,30 @@ static napi_value list_question_links_wrap(napi_env env, napi_callback_info info
     return result;
 }
 
+static napi_value list_resolved_question_links_wrap(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {0};
+    napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+    char* buf_question_id = NULL;
+    if (0 < argc) {
+        size_t need = 0;
+        napi_get_value_string_utf8(env, args[0], NULL, 0, &need);
+        buf_question_id = (char*)malloc(need + 1);
+        if (buf_question_id) {
+            size_t got = 0;
+            napi_get_value_string_utf8(env, args[0], buf_question_id, need + 1, &got);
+            buf_question_id[got] = 0;
+        }
+    }
+    if (!buf_question_id) { buf_question_id = (char*)malloc(1); if (buf_question_id) buf_question_id[0] = 0; }
+    napi_value result = NULL;
+    char* ret = shibei_ffi_list_resolved_question_links(buf_question_id);
+    napi_create_string_utf8(env, ret ? ret : "", NAPI_AUTO_LENGTH, &result);
+    if (ret) shibei_ffi_free_cstring(ret);
+    free(buf_question_id);
+    return result;
+}
+
 static napi_value list_questions_for_target_wrap(napi_env env, napi_callback_info info) {
     size_t argc = 2;
     napi_value args[2] = {0};
@@ -2547,6 +2572,7 @@ static napi_value shibei_register_exports(napi_env env, napi_value exports) {
         {"unarchiveQuestion", NULL, unarchive_question_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"deleteQuestion", NULL, delete_question_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listQuestionLinks", NULL, list_question_links_wrap, NULL, NULL, NULL, napi_default, NULL},
+        {"listResolvedQuestionLinks", NULL, list_resolved_question_links_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"listQuestionsForTarget", NULL, list_questions_for_target_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"linkToQuestion", NULL, link_to_question_wrap, NULL, NULL, NULL, napi_default, NULL},
         {"updateLinkReason", NULL, update_link_reason_wrap, NULL, NULL, NULL, napi_default, NULL},

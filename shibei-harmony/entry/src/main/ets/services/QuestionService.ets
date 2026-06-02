@@ -7,12 +7,13 @@ import {
   ShibeiService,
   Question,
   QuestionLink,
+  ResolvedQuestionLink,
   QuestionStatus,
   QuestionTargetType,
 } from './ShibeiService';
 
 type ListListener = (snapshot: QuestionListSnapshot) => void;
-type LinkListener = (links: QuestionLink[]) => void;
+type ResolvedLinkListener = (links: ResolvedQuestionLink[]) => void;
 type TargetListener = (questions: Question[]) => void;
 
 /** Snapshot delivered to list subscribers. Both lists are always present
@@ -48,12 +49,12 @@ export class QuestionService {
 
   // ── caches ──
   private listCache: QuestionListSnapshot = EMPTY_SNAPSHOT;
-  private linkCache: Map<string, QuestionLink[]> = new Map();
+  private resolvedCache: Map<string, ResolvedQuestionLink[]> = new Map();
   private targetCache: Map<string, Question[]> = new Map();
 
   // ── listeners ──
   private listListeners: ListListener[] = [];
-  private linkListeners: Map<string, LinkListener[]> = new Map();
+  private resolvedListeners: Map<string, ResolvedLinkListener[]> = new Map();
   private targetListeners: Map<string, TargetListener[]> = new Map();
 
   // ─── list (sidebar) ─────────────────────────────────────────────
@@ -82,32 +83,50 @@ export class QuestionService {
   }
 
   // ─── per-question links (detail view) ──────────────────────────
+  // Resolved up front by the backend (parent resource + snippet + anchor) so
+  // the detail view never has to scan resources to render a link.
 
-  subscribeLinks(questionId: string, fn: LinkListener): () => void {
-    const list = this.linkListeners.get(questionId) ?? [];
+  subscribeResolvedLinks(questionId: string, fn: ResolvedLinkListener): () => void {
+    const list = this.resolvedListeners.get(questionId) ?? [];
     list.push(fn);
-    this.linkListeners.set(questionId, list);
+    this.resolvedListeners.set(questionId, list);
     return () => {
-      const cur = this.linkListeners.get(questionId) ?? [];
-      this.linkListeners.set(questionId, cur.filter(x => x !== fn));
+      const cur = this.resolvedListeners.get(questionId) ?? [];
+      this.resolvedListeners.set(questionId, cur.filter(x => x !== fn));
     };
   }
 
-  getLinks(questionId: string): QuestionLink[] {
-    return this.linkCache.get(questionId) ?? [];
+  getResolvedLinks(questionId: string): ResolvedQuestionLink[] {
+    return this.resolvedCache.get(questionId) ?? [];
   }
 
-  async loadLinks(questionId: string): Promise<QuestionLink[]> {
-    const links = ShibeiService.instance.listQuestionLinks(questionId);
-    this.linkCache.set(questionId, links);
-    this.notifyLinks(questionId);
+  async loadResolvedLinks(questionId: string): Promise<ResolvedQuestionLink[]> {
+    const links = ShibeiService.instance.listResolvedQuestionLinks(questionId);
+    this.resolvedCache.set(questionId, links);
+    this.notifyResolved(questionId);
     return links;
   }
 
-  private notifyLinks(questionId: string): void {
-    const links = this.getLinks(questionId);
-    const subs = this.linkListeners.get(questionId) ?? [];
+  private notifyResolved(questionId: string): void {
+    const links = this.getResolvedLinks(questionId);
+    const subs = this.resolvedListeners.get(questionId) ?? [];
     for (const fn of subs.slice()) fn(links);
+  }
+
+  /** Re-fetch a question's resolved links from the DB and notify subscribers.
+   *  Skips the roundtrip when nobody is watching that question. Used after
+   *  link mutations and remote sync. */
+  private refreshResolved(questionId: string): void {
+    const watched = (this.resolvedListeners.get(questionId)?.length ?? 0) > 0
+      || this.resolvedCache.has(questionId);
+    if (!watched) return;
+    try {
+      const links = ShibeiService.instance.listResolvedQuestionLinks(questionId);
+      this.resolvedCache.set(questionId, links);
+      this.notifyResolved(questionId);
+    } catch {
+      // ignore — a later load will repopulate
+    }
   }
 
   // ─── reverse-lookup (per resource/highlight/comment) ────────────
@@ -241,10 +260,10 @@ export class QuestionService {
       active: this.listCache.active.filter(q => q.id !== id),
       archived: this.listCache.archived.filter(q => q.id !== id),
     };
-    this.linkCache.delete(id);
+    this.resolvedCache.delete(id);
     this.notifyList();
     // Detail view subscribers on the deleted question get an empty list.
-    this.notifyLinks(id);
+    this.notifyResolved(id);
     // Every reverse-lookup that included this question must drop it.
     this.refreshAllTargets();
   }
@@ -256,12 +275,8 @@ export class QuestionService {
     reason: string | null = null,
   ): QuestionLink {
     const link = ShibeiService.instance.linkToQuestion(questionId, targetType, targetId, reason);
-    const cur = this.linkCache.get(questionId) ?? [];
-    // Avoid duplicates (link is idempotent server-side).
-    if (!cur.some(l => l.id === link.id)) {
-      this.linkCache.set(questionId, cur.concat([link]));
-      this.notifyLinks(questionId);
-    }
+    // Re-resolve so the new link arrives with its parent resource + snippet.
+    this.refreshResolved(questionId);
     // Reverse-lookup for this target must include the new question.
     this.refreshTarget(targetType, targetId);
     return link;
@@ -269,30 +284,13 @@ export class QuestionService {
 
   updateLinkReason(questionId: string, linkId: string, reason: string | null): void {
     ShibeiService.instance.updateLinkReason(linkId, reason);
-    const cur = this.linkCache.get(questionId) ?? [];
-    const next = cur.map(l =>
-      l.id === linkId
-        ? {
-            id: l.id,
-            question_id: l.question_id,
-            target_type: l.target_type,
-            target_id: l.target_id,
-            reason,
-            created_at: l.created_at,
-            updated_at: new Date().toISOString(),
-          } as QuestionLink
-        : l,
-    );
-    this.linkCache.set(questionId, next);
-    this.notifyLinks(questionId);
+    this.refreshResolved(questionId);
   }
 
   unlinkQuestion(questionId: string, linkId: string): void {
-    const cur = this.linkCache.get(questionId) ?? [];
-    const removed = cur.find(l => l.id === linkId);
+    const removed = this.resolvedCache.get(questionId)?.find(r => r.link.id === linkId)?.link;
     ShibeiService.instance.unlinkQuestion(linkId);
-    this.linkCache.set(questionId, cur.filter(l => l.id !== linkId));
-    this.notifyLinks(questionId);
+    this.refreshResolved(questionId);
     if (removed) {
       this.refreshTarget(removed.target_type, removed.target_id);
     }
@@ -322,8 +320,8 @@ export class QuestionService {
     if (this.listListeners.length > 0) {
       try { await this.loadList(); } catch { /* ignore */ }
     }
-    for (const qid of Array.from(this.linkCache.keys())) {
-      try { await this.loadLinks(qid); } catch { /* ignore */ }
+    for (const qid of Array.from(this.resolvedCache.keys())) {
+      try { await this.loadResolvedLinks(qid); } catch { /* ignore */ }
     }
     this.refreshAllTargets();
   }

@@ -91,6 +91,7 @@ export const archiveQuestion: (id: string) => string;
 export const unarchiveQuestion: (id: string) => string;
 export const deleteQuestion: (id: string) => string;
 export const listQuestionLinks: (questionId: string) => string;
+export const listResolvedQuestionLinks: (questionId: string) => string;
 export const listQuestionsForTarget: (targetType: string, targetId: string) => string;
 export const linkToQuestion: (inputJson: string) => string;
 export const updateLinkReason: (linkId: string, reason: string) => string;

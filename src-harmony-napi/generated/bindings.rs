@@ -808,6 +808,12 @@ pub unsafe extern "C" fn shibei_ffi_list_question_links(question_id: *const c_ch
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn shibei_ffi_list_resolved_question_links(question_id: *const c_char) -> *mut c_char {
+    let s = crate::commands::list_resolved_question_links(cstr_to_string(question_id));
+    leak_cstring(s)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn shibei_ffi_list_questions_for_target(target_type: *const c_char, target_id: *const c_char) -> *mut c_char {
     let s = crate::commands::list_questions_for_target(cstr_to_string(target_type), cstr_to_string(target_id));
     leak_cstring(s)

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, QuestionStatus, QuestionTargetType, Transcript } from "@/types";
+import type { Folder, Resource, Tag, TagWithCount, Highlight, Comment, Anchor, SyncConfig, EncryptionStatus, AutoUnlockResult, DeletedResource, DeletedFolder, SearchResult, AnnotationCounts, Question, QuestionLink, ResolvedQuestionLink, QuestionStatus, QuestionTargetType, Transcript } from "@/types";
 
 // ── Utility ──
 
@@ -541,6 +541,12 @@ export function deleteQuestion(id: string): Promise<void> {
 
 export function listQuestionLinks(questionId: string): Promise<QuestionLink[]> {
   return invoke("cmd_list_question_links", { questionId });
+}
+
+export function listResolvedQuestionLinks(
+  questionId: string,
+): Promise<ResolvedQuestionLink[]> {
+  return invoke("cmd_list_resolved_question_links", { questionId });
 }
 
 export function listQuestionsForTarget(

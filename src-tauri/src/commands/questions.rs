@@ -172,6 +172,18 @@ pub async fn cmd_list_question_links(
     questions::list_links_for_question(&conn, &question_id).map_err(Into::into)
 }
 
+/// Like `cmd_list_question_links`, but each link is resolved to its parent
+/// resource (+ snippet / anchor for highlights and comments) so the detail view
+/// renders in one round-trip instead of an N+1 fetch waterfall.
+#[tauri::command]
+pub async fn cmd_list_resolved_question_links(
+    state: tauri::State<'_, Arc<AppState>>,
+    question_id: String,
+) -> Result<Vec<questions::ResolvedQuestionLink>, CommandError> {
+    let conn = state.conn()?;
+    questions::list_resolved_links_for_question(&conn, &question_id).map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn cmd_list_questions_for_target(
     state: tauri::State<'_, Arc<AppState>>,

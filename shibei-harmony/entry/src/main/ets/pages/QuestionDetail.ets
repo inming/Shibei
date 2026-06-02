@@ -1,7 +1,8 @@
-// Question detail page (Phase H4). Shows the question's metadata + all
-// alive links grouped by target type. Tapping a resource link routes to
-// Reader; tapping a highlight / comment link does the same (and the
-// highlight id is passed so the reader scrolls to it).
+// Question detail page (Phase H4 → resource-grouped). Shows the question's
+// metadata + all alive links grouped by their parent resource: each source
+// appears once, with its highlights / notes nested underneath (mirrors the
+// desktop ResourceLinkGroup). Links arrive pre-resolved from the backend
+// (`listResolvedQuestionLinks`) — no more O(N) resource scan to find snippets.
 
 import { router, promptAction } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -11,10 +12,7 @@ import {
   ShibeiError,
   Question,
   QuestionLink,
-  QuestionTargetType,
-  Resource,
-  Highlight,
-  Comment,
+  ResolvedQuestionLink,
 } from '../services/ShibeiService';
 import { QuestionService } from '../services/QuestionService';
 import { I18n } from '../services/I18n';
@@ -24,23 +22,55 @@ interface QuestionDetailParams {
   id: string;
 }
 
-interface ResolvedLink {
-  link: QuestionLink;
-  resourceTitle: string | null;
-  /** When the link targets a highlight / comment, snippet shown below the title. */
-  snippet: string | null;
-  /** highlight id to pass when opening Reader so it scrolls there. */
-  highlightId: string | null;
-  /** resource id used to navigate. */
+interface ReaderParams {
+  resourceId: string;
+  highlightId?: string;
+}
+
+/** One resource and every link that points into it. */
+interface ResourceGroup {
+  key: string;
   resourceId: string | null;
+  resourceTitle: string | null;
+  /** The whole-article link, when the resource itself was linked. */
+  resourceLink: ResolvedQuestionLink | null;
+  /** highlight + comment links, sorted by document position. */
+  evidence: ResolvedQuestionLink[];
+}
+
+interface GroupIdx {
+  g: ResourceGroup;
+  i: number;
+}
+
+/** Loose view over a highlight anchor for ordering evidence by position. */
+interface AnchorLite {
+  type?: string;
+  page?: number;
+  charIndex?: number;
+  start?: number;
+  text_position?: AnchorPos;
+}
+interface AnchorPos {
+  start?: number;
+}
+
+// Press-feedback styles for tappable rows (mirrors QuestionLinkSheet).
+@Styles function pressedRowStyle() {
+  .backgroundColor($r('app.color.bg_secondary'))
+}
+@Styles function normalRowStyle() {
+  .backgroundColor(Color.Transparent)
 }
 
 @Entry
 @Component
 struct QuestionDetail {
   @State question: Question | null = null;
-  @State links: QuestionLink[] = [];
-  @State resolved: Map<string, ResolvedLink> = new Map();
+  @State resolved: ResolvedQuestionLink[] = [];
+  @State groups: ResourceGroup[] = [];
+  @State totalLinks: number = 0;
+  @State expandedNotes: string[] = [];
   @State loading: boolean = true;
   @State error: string = '';
   private questionId: string = '';
@@ -56,11 +86,11 @@ struct QuestionDetail {
     }
     this.questionId = params.id;
     this.loadAll();
-    this.unsubLinks = QuestionService.instance.subscribeLinks(
+    this.unsubLinks = QuestionService.instance.subscribeResolvedLinks(
       this.questionId,
-      (links: QuestionLink[]) => {
-        this.links = links;
-        this.resolveAll();
+      (links: ResolvedQuestionLink[]) => {
+        this.resolved = links;
+        this.rebuild();
       },
     );
     // Listen to list-level snapshot so archive/unarchive/title edits on the
@@ -89,9 +119,9 @@ struct QuestionDetail {
     try {
       this.loading = true;
       this.question = ShibeiService.instance.getQuestion(this.questionId);
-      const links = await QuestionService.instance.loadLinks(this.questionId);
-      this.links = links;
-      await this.resolveAll();
+      const links = await QuestionService.instance.loadResolvedLinks(this.questionId);
+      this.resolved = links;
+      this.rebuild();
       this.error = '';
     } catch (err) {
       const code: string = err instanceof ShibeiError ? err.code : (err as Error).message;
@@ -102,138 +132,118 @@ struct QuestionDetail {
     }
   }
 
-  /** Walk every link and resolve the target row so the UI can show a real
-   *  title / snippet. Failures collapse to a "(source unavailable)" line. */
-  private async resolveAll(): Promise<void> {
-    const next = new Map<string, ResolvedLink>();
-    for (const link of this.links) {
-      next.set(link.id, this.resolveOne(link));
-    }
-    this.resolved = next;
-  }
+  // ── grouping (port of desktop groupResolvedLinks) ──
 
-  private resolveOne(link: QuestionLink): ResolvedLink {
-    try {
-      if (link.target_type === 'resource') {
-        const r: Resource | null = ShibeiService.instance.getResource(link.target_id);
-        if (!r) {
-          return { link, resourceTitle: null, snippet: null, highlightId: null, resourceId: null };
-        }
-        return {
-          link,
-          resourceTitle: r.title,
-          snippet: null,
-          highlightId: null,
-          resourceId: r.id,
+  private rebuild(): void {
+    this.totalLinks = this.resolved.length;
+    const map = new Map<string, ResourceGroup>();
+    const order: string[] = [];
+    for (const r of this.resolved) {
+      const rid: string | null = r.resource ? r.resource.id : null;
+      const key: string = rid ? rid : `__unresolved__:${r.link.id}`;
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          key,
+          resourceId: rid,
+          resourceTitle: r.resource ? r.resource.title : null,
+          resourceLink: null,
+          evidence: [],
         };
+        map.set(key, g);
+        order.push(key);
       }
-      if (link.target_type === 'highlight') {
-        // No standalone getHighlight on mobile (yet); look it up via the
-        // resource's annotations. We don't know the resource_id ahead of
-        // time, so we walk question-target reverse-lookups via the link's
-        // own target_id by scanning resources lazily. For Phase 1 we
-        // accept the limitation and show the link with no snippet — the
-        // user can still tap to open the parent resource via question
-        // detail's reverse pathway. As a fallback we read the highlight
-        // from the DB by searching its parent.
-        // Cheaper fallback: use ShibeiService.listAnnotations on each
-        // candidate resource is O(N); instead, just attempt to resolve
-        // via list_annotations once we know the resource. Since we don't
-        // know it, we surface the link id and let the user navigate.
-        return this.resolveHighlightFallback(link);
+      if (!g.resourceTitle && r.resource) {
+        g.resourceTitle = r.resource.title;
+        g.resourceId = r.resource.id;
       }
-      if (link.target_type === 'comment') {
-        return this.resolveCommentFallback(link);
+      if (r.link.target_type === 'resource') {
+        g.resourceLink = r;
+      } else {
+        g.evidence.push(r);
       }
-    } catch {
-      // fall through
     }
-    return {
-      link,
-      resourceTitle: null,
-      snippet: null,
-      highlightId: null,
-      resourceId: null,
-    };
+    const groups: ResourceGroup[] = order.map((k: string) => map.get(k) as ResourceGroup);
+    for (const g of groups) {
+      g.evidence.sort((a: ResolvedQuestionLink, b: ResolvedQuestionLink) =>
+        this.sortKey(a) - this.sortKey(b));
+    }
+    // Directly-linked resources first, then original first-seen order.
+    const indexed: GroupIdx[] = groups.map((g: ResourceGroup, i: number) => {
+      const x: GroupIdx = { g, i };
+      return x;
+    });
+    indexed.sort((a: GroupIdx, b: GroupIdx) => {
+      const ad: number = a.g.resourceLink ? 0 : 1;
+      const bd: number = b.g.resourceLink ? 0 : 1;
+      if (ad !== bd) return ad - bd;
+      return a.i - b.i;
+    });
+    this.groups = indexed.map((x: GroupIdx) => x.g);
   }
 
-  /** Walk every alive resource to find which one owns this highlight.
-   *  Mobile datasets are small enough that an O(N) scan is acceptable; if
-   *  it gets slow we can add a dedicated NAPI command later. */
-  private resolveHighlightFallback(link: QuestionLink): ResolvedLink {
-    try {
-      // Use listResources on __all__ then check annotations per resource.
-      // Optimized: only check resources whose annotation set contains the
-      // target highlight id. We bail at the first match.
-      const resources = ShibeiService.instance.listResources('__all__');
-      for (const r of resources) {
-        const bundle = ShibeiService.instance.listAnnotations(r.id);
-        const hl: Highlight | undefined = bundle.highlights.find(
-          (h: Highlight) => h.id === link.target_id,
-        );
-        if (hl) {
-          return {
-            link,
-            resourceTitle: r.title,
-            snippet: hl.text_content,
-            highlightId: hl.id,
-            resourceId: r.id,
-          };
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return {
-      link,
-      resourceTitle: null,
-      snippet: null,
-      highlightId: null,
-      resourceId: null,
-    };
+  private sortKey(r: ResolvedQuestionLink): number {
+    if (r.link.target_type === 'comment') return Number.MAX_SAFE_INTEGER;
+    if (r.link.target_type !== 'highlight') return -1;
+    return this.anchorSortKey(r.anchor);
   }
 
-  private resolveCommentFallback(link: QuestionLink): ResolvedLink {
-    try {
-      const resources = ShibeiService.instance.listResources('__all__');
-      for (const r of resources) {
-        const bundle = ShibeiService.instance.listAnnotations(r.id);
-        const cm: Comment | undefined = bundle.comments.find(
-          (c: Comment) => c.id === link.target_id,
-        );
-        if (cm) {
-          return {
-            link,
-            resourceTitle: r.title,
-            snippet: cm.content,
-            highlightId: cm.highlight_id,
-            resourceId: r.id,
-          };
-        }
-      }
-    } catch {
-      // ignore
+  private anchorSortKey(anchor: Object | null): number {
+    if (!anchor) return 0;
+    const a = anchor as AnchorLite;
+    if (a.type === 'pdf') {
+      const page: number = typeof a.page === 'number' ? a.page : 0;
+      const ci: number = typeof a.charIndex === 'number' ? a.charIndex : 0;
+      return page * 10000000 + ci;
     }
-    return {
-      link,
-      resourceTitle: null,
-      snippet: null,
-      highlightId: null,
-      resourceId: null,
-    };
+    if (a.type === 'audio') {
+      return typeof a.start === 'number' ? a.start : 0;
+    }
+    if (a.text_position && typeof a.text_position.start === 'number') {
+      return a.text_position.start;
+    }
+    return 0;
   }
 
-  private openLink(r: ResolvedLink): void {
-    if (!r.resourceId) {
+  // ── @Builder accessors (no const / return allowed in builder bodies) ──
+
+  private groupBadge(g: ResourceGroup): string {
+    const parts: string[] = [];
+    const h: number = g.evidence.filter((e: ResolvedQuestionLink) =>
+      e.link.target_type === 'highlight').length;
+    const c: number = g.evidence.filter((e: ResolvedQuestionLink) =>
+      e.link.target_type === 'comment').length;
+    if (h > 0) parts.push(`${h} ${I18n.t($r('app.string.question_links_highlight'))}`);
+    if (c > 0) parts.push(`${c} ${I18n.t($r('app.string.question_links_comment'))}`);
+    return parts.join(' · ');
+  }
+
+  private noteNeedsFold(e: ResolvedQuestionLink): boolean {
+    return !!e.snippet && e.snippet.length > 140;
+  }
+  private isNoteExpanded(linkId: string): boolean {
+    return this.expandedNotes.includes(linkId);
+  }
+  private toggleNote(linkId: string): void {
+    this.expandedNotes = this.isNoteExpanded(linkId)
+      ? this.expandedNotes.filter((x: string) => x !== linkId)
+      : this.expandedNotes.concat([linkId]);
+  }
+
+  // ── navigation / mutations ──
+
+  private openResolved(r: ResolvedQuestionLink): void {
+    const rid: string | null = r.resource ? r.resource.id : null;
+    this.openResource(rid, r.highlight_id);
+  }
+
+  private openResource(resourceId: string | null, highlightId: string | null): void {
+    if (!resourceId) {
       promptAction.showToast({ message: I18n.t($r('app.string.question_unknown_target')) });
       return;
     }
-    interface ReaderParams {
-      resourceId: string;
-      highlightId?: string;
-    }
-    const params: ReaderParams = { resourceId: r.resourceId };
-    if (r.highlightId) params.highlightId = r.highlightId;
+    const params: ReaderParams = { resourceId };
+    if (highlightId) params.highlightId = highlightId;
     router.pushUrl({ url: 'pages/Reader', params }).catch((err: Error) => {
       hilog.error(0x0000, 'shibei', 'Reader push fail: %{public}s', err.message);
     });
@@ -282,7 +292,7 @@ struct QuestionDetail {
   private confirmDelete(): void {
     if (!this.question) return;
     const q = this.question;
-    const linkCount = this.links.length;
+    const linkCount = this.totalLinks;
     const msg = linkCount === 0
       ? I18n.t($r('app.string.question_delete_confirm'), q.title)
       : I18n.t($r('app.string.question_delete_confirm_with_links'), q.title, linkCount);
@@ -330,79 +340,125 @@ struct QuestionDetail {
     });
   }
 
-  // Filter helpers — ArkUI @Builder forbids `const` / `return` statements
-  // in the body, so we materialize the filtered list via a method call.
-  private linksByType(targetType: QuestionTargetType): QuestionLink[] {
-    return this.links.filter((l: QuestionLink) => l.target_type === targetType);
-  }
-
-  // Resolved-target field accessors. Same reason — @Builder can't bind a
-  // local with `const r = ...`. Each accessor returns null when the link
-  // isn't resolved yet or when its target was unavailable.
-  private resolvedTitle(linkId: string): string | null {
-    const r = this.resolved.get(linkId);
-    return r ? r.resourceTitle : null;
-  }
-  private resolvedSnippet(linkId: string): string | null {
-    const r = this.resolved.get(linkId);
-    return r ? r.snippet : null;
-  }
-
-  private openLinkById(linkId: string): void {
-    const r = this.resolved.get(linkId);
-    if (r) this.openLink(r);
-  }
+  // ── builders ──
 
   @Builder
-  TargetGroup(links: QuestionLink[], label: string) {
+  GroupCard(g: ResourceGroup) {
     Column() {
-      Text(`${label} (${links.length})`).fontSize(12)
-        .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-        .fontWeight(FontWeight.Medium)
-        .padding({ left: 16, right: 16, top: 12, bottom: 6 });
-      ForEach(links, (link: QuestionLink) => {
-        this.LinkRow(link);
-      }, (link: QuestionLink) => link.id);
-    }.alignItems(HorizontalAlign.Start).width('100%');
+      // Header: resource title + counts (tap → open the resource at the top).
+      Column() {
+        Text(g.resourceTitle ? g.resourceTitle : I18n.t($r('app.string.question_unknown_target')))
+          .fontSize(15).fontWeight(FontWeight.Medium)
+          .fontColor(g.resourceTitle
+            ? $r('sys.color.ohos_id_color_text_primary')
+            : $r('sys.color.ohos_id_color_text_tertiary'))
+          .fontStyle(g.resourceTitle ? FontStyle.Normal : FontStyle.Italic)
+          .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%');
+        Row() {
+          if (!g.resourceLink && g.resourceTitle) {
+            Text(I18n.t($r('app.string.question_via_annotations')))
+              .fontSize(11).fontStyle(FontStyle.Italic)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+              .borderRadius(9).padding({ left: 7, right: 7, top: 1, bottom: 1 })
+              .margin({ right: 6 });
+          }
+          if (this.groupBadge(g)) {
+            Text(this.groupBadge(g))
+              .fontSize(11)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+              .borderRadius(9).padding({ left: 7, right: 7, top: 1, bottom: 1 });
+          }
+        }.margin({ top: 4 });
+      }
+      .alignItems(HorizontalAlign.Start).width('100%')
+      .padding({ left: 12, right: 12, top: 10, bottom: 6 })
+      .onClick(() => this.openResource(g.resourceId, null))
+      .stateStyles({ pressed: pressedRowStyle, normal: normalRowStyle });
+
+      // Whole-article relevance note.
+      if (g.resourceLink && g.resourceLink.link.reason) {
+        Text(g.resourceLink.link.reason).fontSize(12)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .maxLines(4).textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%').padding({ left: 12, right: 12, bottom: 8 });
+      }
+
+      // Evidence (highlights + notes).
+      ForEach(g.evidence, (e: ResolvedQuestionLink) => {
+        this.EvidenceRow(e);
+      }, (e: ResolvedQuestionLink) => e.link.id);
+    }
+    // NOTE: width('100%') + horizontal margin overflows in ArkUI (margin is
+    // added outside the 100% box). Horizontal inset is the wrapper's padding;
+    // here we only add the inter-card top gap.
+    .alignItems(HorizontalAlign.Start).width('100%')
+    .margin({ top: 10 })
+    .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .borderRadius(8)
+    .borderWidth(1)
+    .borderColor($r('sys.color.ohos_id_color_list_separator'));
   }
 
   @Builder
-  LinkRow(link: QuestionLink) {
-    Row() {
-      Column() {
-        if (this.resolvedTitle(link.id)) {
-          Text(this.resolvedTitle(link.id)).fontSize(14)
-            .fontColor($r('sys.color.ohos_id_color_text_primary'))
-            .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
-        } else {
-          Text(I18n.t($r('app.string.question_unknown_target')))
-            .fontSize(14).fontStyle(FontStyle.Italic)
-            .fontColor($r('sys.color.ohos_id_color_text_tertiary'));
-        }
-        if (this.resolvedSnippet(link.id)) {
-          Text(this.resolvedSnippet(link.id)).fontSize(12)
-            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-            .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-            .padding({ top: 4, bottom: 4, left: 6, right: 6 })
-            .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
-            .borderRadius(4)
-            .margin({ top: 4 });
-        }
-        if (link.reason) {
-          Text(link.reason).fontSize(12)
-            .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-            .maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
-            .margin({ top: 4 });
-        }
-      }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-      Text('×').fontSize(18)
-        .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
-        .width(32).height(32).textAlign(TextAlign.Center)
-        .onClick(() => this.confirmUnlink(link));
+  EvidenceRow(e: ResolvedQuestionLink) {
+    Column() {
+      Row() {
+        Column() {
+          if (e.link.target_type === 'comment') {
+            // Note: render Markdown, collapse long bodies behind a toggle.
+            if (this.isNoteExpanded(e.link.id) || !this.noteNeedsFold(e)) {
+              MarkdownText({ content: e.snippet ? e.snippet : '', baseFontSize: 13 });
+            } else {
+              Column() {
+                MarkdownText({ content: e.snippet ? e.snippet : '', baseFontSize: 13 });
+              }.width('100%').constraintSize({ maxHeight: 92 }).clip(true);
+            }
+            if (this.noteNeedsFold(e)) {
+              Text(this.isNoteExpanded(e.link.id)
+                ? I18n.t($r('app.string.question_collapse'))
+                : I18n.t($r('app.string.question_expand')))
+                .fontSize(12).fontColor($r('app.color.accent_primary'))
+                .margin({ top: 2 })
+                .onClick(() => this.toggleNote(e.link.id));
+            }
+          } else {
+            // Highlight: text with a left accent bar in the highlight's color.
+            Text(e.snippet ? e.snippet : I18n.t($r('app.string.question_unknown_target')))
+              .fontSize(13)
+              .fontColor(e.snippet
+                ? $r('sys.color.ohos_id_color_text_primary')
+                : $r('sys.color.ohos_id_color_text_tertiary'))
+              .fontStyle(e.snippet ? FontStyle.Normal : FontStyle.Italic)
+              .maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+              .padding({ left: 8, right: 6, top: 4, bottom: 4 })
+              .backgroundColor($r('sys.color.ohos_id_color_component_normal'))
+              .borderRadius(4)
+              .borderWidth({ left: 3 })
+              .borderColor({ left: e.highlight_color ? e.highlight_color : '#cccccc' });
+          }
+          if (e.link.reason) {
+            Text(e.link.reason).fontSize(12)
+              .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+              .maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%').margin({ top: 4 });
+          }
+        }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+        Text('×').fontSize(18)
+          .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+          .width(32).height(32).textAlign(TextAlign.Center)
+          .onClick(() => this.confirmUnlink(e.link));
+      }
+      .width('100%').alignItems(VerticalAlign.Top)
+      .padding({ left: 12, right: 4, top: 8, bottom: 8 })
+      .onClick(() => this.openResolved(e))
+      .stateStyles({ pressed: pressedRowStyle, normal: normalRowStyle });
     }
-    .width('100%').padding({ left: 16, right: 8, top: 10, bottom: 10 })
-    .onClick(() => this.openLinkById(link.id));
-    Divider().color($r('sys.color.ohos_id_color_list_separator'));
+    .alignItems(HorizontalAlign.Start).width('100%');
   }
 
   build() {
@@ -465,31 +521,28 @@ struct QuestionDetail {
           }
 
           // Links section
-          Text(`${I18n.t($r('app.string.question_links_header'))} (${this.links.length})`)
+          Text(`${I18n.t($r('app.string.question_links_header'))} (${this.totalLinks})`)
             .fontSize(14).fontWeight(FontWeight.Medium)
             .fontColor($r('sys.color.ohos_id_color_text_primary'))
             .padding({ left: 16, right: 16, top: 20, bottom: 8 });
           Divider().color($r('sys.color.ohos_id_color_list_separator'));
 
-          if (this.links.length === 0) {
+          if (this.totalLinks === 0) {
             Text(this.loading ? '' : I18n.t($r('app.string.question_empty_links')))
               .fontSize(13).fontStyle(FontStyle.Italic)
               .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
               .padding({ left: 16, right: 16, top: 24, bottom: 24 })
               .textAlign(TextAlign.Center).width('100%');
           } else {
-            if (this.linksByType('resource').length > 0) {
-              this.TargetGroup(this.linksByType('resource'),
-                I18n.t($r('app.string.question_links_resource')));
-            }
-            if (this.linksByType('highlight').length > 0) {
-              this.TargetGroup(this.linksByType('highlight'),
-                I18n.t($r('app.string.question_links_highlight')));
-            }
-            if (this.linksByType('comment').length > 0) {
-              this.TargetGroup(this.linksByType('comment'),
-                I18n.t($r('app.string.question_links_comment')));
-            }
+            // Horizontal inset lives here (padding), not on the cards — a card
+            // with width('100%') + horizontal margin would overflow the right edge.
+            Column() {
+              ForEach(this.groups, (g: ResourceGroup) => {
+                this.GroupCard(g);
+              }, (g: ResourceGroup) => g.key);
+            }.width('100%').padding({ left: 12, right: 12 });
+            // Bottom breathing room below the last card.
+            Row().height(16);
           }
         }.alignItems(HorizontalAlign.Start).width('100%');
       }

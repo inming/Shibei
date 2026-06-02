@@ -219,6 +219,21 @@ pub async fn handle_list_question_links(
         .map_err(db_err)
 }
 
+/// Resolved variant of `handle_list_question_links`: each link carries its
+/// parent resource + snippet so the MCP stage-summary gets everything in one
+/// round-trip (used by `get_question(include_linked=true)`).
+pub async fn handle_list_resolved_question_links(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<questions::ResolvedQuestionLink>>, (StatusCode, Json<ErrorResponse>)> {
+    verify_token(&headers, &state.token)?;
+    let conn = get_conn(&state)?;
+    questions::list_resolved_links_for_question(&conn, &id)
+        .map(Json)
+        .map_err(db_err)
+}
+
 pub async fn handle_create_link(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

@@ -94,6 +94,7 @@ import {
   unarchiveQuestion as napiUnarchiveQuestion,
   deleteQuestion as napiDeleteQuestion,
   listQuestionLinks as napiListQuestionLinks,
+  listResolvedQuestionLinks as napiListResolvedQuestionLinks,
   listQuestionsForTarget as napiListQuestionsForTarget,
   linkToQuestion as napiLinkToQuestion,
   updateLinkReason as napiUpdateLinkReason,
@@ -895,6 +896,13 @@ export class ShibeiService {
     return parseListOrThrow<QuestionLink>(napiListQuestionLinks(questionId), 'listQuestionLinks');
   }
 
+  listResolvedQuestionLinks(questionId: string): ResolvedQuestionLink[] {
+    return parseListOrThrow<ResolvedQuestionLink>(
+      napiListResolvedQuestionLinks(questionId),
+      'listResolvedQuestionLinks',
+    );
+  }
+
   listQuestionsForTarget(targetType: QuestionTargetType, targetId: string): Question[] {
     return parseListOrThrow<Question>(
       napiListQuestionsForTarget(targetType, targetId),
@@ -1004,6 +1012,18 @@ export interface QuestionLink {
   reason: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A link with its target pre-resolved to a parent resource (+ snippet/anchor)
+ *  by the backend, so the detail view renders in one round-trip instead of
+ *  scanning every resource. Matches Rust `ResolvedQuestionLink`. */
+export interface ResolvedQuestionLink {
+  link: QuestionLink;
+  resource: Resource | null;
+  snippet: string | null;
+  highlight_id: string | null;
+  highlight_color: string | null;
+  anchor: Object | null;
 }
 
 // Internal NAPI envelope shapes (matching the JSON returned by commands.rs).

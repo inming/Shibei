@@ -1,16 +1,16 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import toast from "react-hot-toast";
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { Question, QuestionLink, Resource, QuestionTargetType } from "@/types";
+import type { Question, Resource } from "@/types";
 import * as cmd from "@/lib/commands";
 import { DataEvents, type QuestionChangedPayload } from "@/lib/events";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { QuestionEditDialog } from "@/components/Sidebar/QuestionEditDialog";
-import { useQuestionLinks } from "@/hooks/useQuestionLinks";
+import { useResolvedQuestionLinks } from "@/hooks/useResolvedQuestionLinks";
 import { buildQuestionDeepLink } from "@/lib/deepLink";
-import { QuestionLinkItem } from "./QuestionLinkItem";
+import { ResourceLinkGroup } from "./ResourceLinkGroup";
 import styles from "./QuestionDetailView.module.css";
 
 interface QuestionDetailViewProps {
@@ -38,8 +38,6 @@ interface QuestionDetailViewProps {
   onOpenInTab?: (question: Question) => void;
 }
 
-const GROUP_ORDER: QuestionTargetType[] = ["resource", "highlight", "comment"];
-
 export function QuestionDetailView({
   question: initialQuestion,
   onOpenResource,
@@ -49,7 +47,9 @@ export function QuestionDetailView({
 }: QuestionDetailViewProps) {
   const { t } = useTranslation("question");
   const [question, setQuestion] = useState<Question>(initialQuestion);
-  const { links, loading } = useQuestionLinks(question.id);
+  const { groups, totalLinks, evidenceCount, loading } = useResolvedQuestionLinks(
+    question.id,
+  );
   const [editorOpen, setEditorOpen] = useState(false);
 
   // The initialQuestion prop changes only when the parent receives a fresher
@@ -74,16 +74,6 @@ export function QuestionDetailView({
     return () => { u.then((f) => f()); };
   }, [question.id]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<QuestionTargetType, QuestionLink[]>();
-    for (const target of GROUP_ORDER) map.set(target, []);
-    for (const link of links) {
-      const arr = map.get(link.target_type as QuestionTargetType);
-      if (arr) arr.push(link);
-    }
-    return map;
-  }, [links]);
-
   const handleArchiveToggle = useCallback(async () => {
     try {
       if (question.status === "archived") {
@@ -99,9 +89,9 @@ export function QuestionDetailView({
 
   const handleDelete = useCallback(async () => {
     const message =
-      links.length === 0
+      totalLinks === 0
         ? t("deleteConfirmNoLinks", { title: question.title })
-        : t("deleteConfirm", { title: question.title, count: links.length });
+        : t("deleteConfirm", { title: question.title, count: totalLinks });
     const ok = await ask(message, { title: t("deleteQuestion"), kind: "warning" });
     if (!ok) return;
     try {
@@ -111,14 +101,17 @@ export function QuestionDetailView({
       console.error(err);
       toast.error(t("operationFailed"));
     }
-  }, [question, links.length, onClose, t]);
+  }, [question, totalLinks, onClose, t]);
 
   const handleCopyLink = useCallback(() => {
     navigator.clipboard.writeText(buildQuestionDeepLink(question.id));
     toast.success(t("linkCopied"));
   }, [question.id, t]);
 
-  const totalLinks = links.length;
+  const summaryParts = [t("summaryResources", { count: groups.length })];
+  if (evidenceCount > 0) {
+    summaryParts.push(t("summaryAnnotations", { count: evidenceCount }));
+  }
   const archived = question.status === "archived";
 
   return (
@@ -189,29 +182,21 @@ export function QuestionDetailView({
 
         <div className={styles.linksSection}>
           <div className={styles.linksHeader}>
-            {t("linksHeader")} ({totalLinks})
+            {t("linksHeader")}
+            {totalLinks > 0 && <span className={styles.linksSummary}> ({summaryParts.join(" · ")})</span>}
           </div>
           {totalLinks === 0 ? (
             <div className={styles.empty}>{loading ? "" : t("emptyLinks")}</div>
           ) : (
-            GROUP_ORDER.map((targetType) => {
-              const groupLinks = grouped.get(targetType) ?? [];
-              if (groupLinks.length === 0) return null;
-              return (
-                <div key={targetType} className={styles.linksGroup}>
-                  <div className={styles.groupHeader}>
-                    {t(`linksByType.${targetType}` as "linksByType.resource")} ({groupLinks.length})
-                  </div>
-                  {groupLinks.map((link) => (
-                    <QuestionLinkItem
-                      key={link.id}
-                      link={link}
-                      onOpenResource={onOpenResource}
-                    />
-                  ))}
-                </div>
-              );
-            })
+            <div className={styles.groupList}>
+              {groups.map((group) => (
+                <ResourceLinkGroup
+                  key={group.key}
+                  group={group}
+                  onOpenResource={onOpenResource}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>

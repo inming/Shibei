@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ShibeiClient } from "../client.js";
-import type { Question, QuestionLink, Resource } from "../types.js";
+import type { Question, ResolvedQuestionLink } from "../types.js";
+import { formatLinkedEvidence } from "./questionsFormat.js";
 
 /**
  * Questions = user-tracked research focus areas with polymorphic links to
@@ -69,34 +70,11 @@ export function registerQuestionTools(server: McpServer, client: ShibeiClient) {
       }
 
       if (params.include_linked) {
-        const links = await client.get<QuestionLink[]>(
-          `/api/questions/${encodeURIComponent(params.id)}/links`,
+        // One round-trip: each link arrives with its parent resource + snippet.
+        const links = await client.get<ResolvedQuestionLink[]>(
+          `/api/questions/${encodeURIComponent(params.id)}/links/resolved`,
         );
-        if (links.length === 0) {
-          lines.push("");
-          lines.push("No linked items.");
-        } else {
-          // Group by target type for readability.
-          const byType: Record<string, QuestionLink[]> = { resource: [], highlight: [], comment: [] };
-          for (const l of links) {
-            if (byType[l.target_type]) byType[l.target_type].push(l);
-          }
-
-          for (const [type, group] of Object.entries(byType)) {
-            if (group.length === 0) continue;
-            lines.push("");
-            lines.push(`## Linked ${type}s (${group.length})`);
-            for (const link of group) {
-              const resolved = await resolveLinkSummary(client, link).catch(() => null);
-              const reasonLine = link.reason ? `\n  reason: ${link.reason}` : "";
-              if (!resolved) {
-                lines.push(`- (source unavailable, link id: ${link.id})${reasonLine}`);
-                continue;
-              }
-              lines.push(`- ${resolved}${reasonLine}\n  link id: ${link.id}`);
-            }
-          }
-        }
+        lines.push(...formatLinkedEvidence(links));
       }
 
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
@@ -221,32 +199,4 @@ export function registerQuestionTools(server: McpServer, client: ShibeiClient) {
  * Resolve a link's target to a single human-readable summary line. Falls back
  * to `null` if the target can't be loaded (deleted, etc.).
  */
-async function resolveLinkSummary(client: ShibeiClient, link: QuestionLink): Promise<string | null> {
-  try {
-    switch (link.target_type) {
-      case "resource": {
-        const r = await client.get<Resource>(`/api/resources/${encodeURIComponent(link.target_id)}`);
-        return `📄 ${r.title} (id: ${r.id})\n  url: ${r.url}`;
-      }
-      case "highlight": {
-        // No standalone /api/highlights/{id} endpoint; surface the highlight
-        // by reading its resource's annotations and matching by id. This is
-        // acceptable because question detail UIs already pre-resolve and the
-        // AI workflow is summary-time, not interactive.
-        // Try resources for-target reverse lookup first to find the parent.
-        // We can use the dedicated for-target endpoint to discover the
-        // resource id by walking annotations is overkill — we accept that
-        // for now we just show the link target id; the AI can call
-        // get_resource to dig deeper if needed.
-        return `🖍 highlight ${link.target_id}`;
-      }
-      case "comment": {
-        return `💬 comment ${link.target_id}`;
-      }
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
 

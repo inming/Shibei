@@ -190,3 +190,15 @@ export interface QuestionLink {
   created_at: string;
   updated_at: string;
 }
+
+/** A question link with its target pre-resolved by the backend
+ *  (`cmd_list_resolved_question_links`): parent resource + snippet + anchor in
+ *  one round-trip, no client-side fetch waterfall. */
+export interface ResolvedQuestionLink {
+  link: QuestionLink;
+  resource: Resource | null;
+  snippet: string | null;
+  highlight_id: string | null;
+  highlight_color: string | null;
+  anchor: Anchor | null;
+}

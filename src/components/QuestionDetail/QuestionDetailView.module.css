@@ -120,18 +120,15 @@
   padding-bottom: 6px;
 }
 
-.linksGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.linksSummary {
+  font-weight: 400;
+  color: var(--color-text-secondary);
 }
 
-.groupHeader {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.groupList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .empty {

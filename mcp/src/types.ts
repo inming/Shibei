@@ -79,3 +79,15 @@ export interface QuestionLink {
   created_at: string;
   updated_at: string;
 }
+
+/** A link with its target pre-resolved to the parent resource + a snippet, so
+ *  the stage-summary gets everything in one round-trip. Matches the backend's
+ *  `/api/questions/{id}/links/resolved`. */
+export interface ResolvedQuestionLink {
+  link: QuestionLink;
+  resource: Resource | null;
+  snippet: string | null;
+  highlight_id: string | null;
+  highlight_color: string | null;
+  anchor: unknown | null;
+}

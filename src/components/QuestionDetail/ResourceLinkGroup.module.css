@@ -1,0 +1,260 @@
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-primary);
+  transition: border-color 0.12s;
+}
+
+.group:hover {
+  border-color: var(--color-accent);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.titleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.title:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.titleMissing {
+  color: var(--color-text-secondary);
+  font-style: italic;
+  font-weight: 500;
+  cursor: default;
+}
+
+.titleMissing:hover {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.domain {
+  color: var(--color-text-secondary);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.viaTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.evidenceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 10px;
+  border-left: 2px solid var(--color-border);
+  margin-left: 2px;
+}
+
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.evidenceMain {
+  cursor: pointer;
+  min-width: 0;
+  border-radius: 4px;
+  padding: 6px 9px;
+  background: var(--color-bg-secondary);
+  transition: background 0.15s;
+}
+
+.evidenceMain:hover {
+  background: var(--color-bg-hover);
+}
+
+.evidenceHighlight {
+  border-left: 3px solid var(--color-border);
+}
+
+.highlightText {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.snippetMissing {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* ── Note (resource-level comment): Markdown + show-more/less ── */
+
+.noteSnippet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.noteBody {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-text-primary);
+}
+
+.noteCollapsed {
+  max-height: 6.2em;
+  overflow: hidden;
+}
+
+.foldBtn {
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 0;
+  line-height: 1.2;
+}
+
+.foldBtn:hover {
+  text-decoration: underline;
+}
+
+/* ── Reason (view / edit / empty) + ✎ × tools ── */
+
+.reasonBlock {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.reasonBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.reasonView {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  padding: 2px 0;
+}
+
+.reasonEmpty {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  padding: 2px 0;
+}
+
+.reasonEdit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reasonTextarea {
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  resize: vertical;
+  min-height: 56px;
+}
+
+.reasonActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.reasonBtn {
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.reasonBtnPrimary {
+  composes: reasonBtn;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.reasonTools {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.actionBtn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}

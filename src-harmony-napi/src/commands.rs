@@ -2239,6 +2239,21 @@ pub fn list_question_links(question_id: String) -> String {
     }
 }
 
+/// Resolved variant of `list_question_links`: each link carries its parent
+/// resource + snippet + anchor so the detail view renders in one round-trip
+/// (replaces the old per-link `listResources('__all__')` scan on mobile).
+/// Returns a JSON array of `ResolvedQuestionLink`.
+#[shibei_napi]
+pub fn list_resolved_question_links(question_id: String) -> String {
+    let result = with_conn(|conn| {
+        shibei_db::questions::list_resolved_links_for_question(conn, &question_id)
+    });
+    match result {
+        Ok(links) => to_json(&links),
+        Err(e) => format!(r#"{{"error":"{e}"}}"#),
+    }
+}
+
 #[shibei_napi]
 pub fn list_questions_for_target(target_type: String, target_id: String) -> String {
     let result = with_conn(|conn| {
